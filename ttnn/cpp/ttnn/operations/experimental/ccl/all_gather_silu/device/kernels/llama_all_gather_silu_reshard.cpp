@@ -28,14 +28,11 @@ void kernel_main() {
     ///////////////////////////////////////////////////
     // ARGS
     ///////////////////////////////////////////////////
-    DPRINT << "start\n";
 
-    DPRINT << "cb_out_id: " << (uint32_t)cb_out_id << ENDL();
-    DPRINT << "tensor0_page_size: " << (uint32_t)tensor0_page_size << ENDL();
     size_t arg_idx = 0;
     // Load the input tensor spec
-    uint32_t start_tile = get_arg_val<uint32_t>(arg_idx++);
     address_t tensor_address0 = get_arg_val<address_t>(arg_idx++);
+    uint32_t start_tile = get_arg_val<uint32_t>(arg_idx++);
     uint32_t num_transactions = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t signal_semaphore_addr = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
     tt_l1_ptr uint32_t* core_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
@@ -51,28 +48,20 @@ void kernel_main() {
     if (size_transaction[0] != 4) {
         shift_value += (4 - size_transaction[0]) * tensor0_page_size;
     }
-    DPRINT << "start_tile * tensor0_page_size * 5: " << (uint32_t)start_tile * tensor0_page_size * 5 << ENDL();
+
     uint32_t l1_write_addr = get_write_ptr(cb_out_id);
-    DPRINT << "before semaphore wait\n";
+
     noc_semaphore_wait(signal_semaphore_addr_ptr, 1);
     noc_semaphore_set(signal_semaphore_addr_ptr, 0);
-    DPRINT << "after semaphore set\n";
 
     for (uint32_t i = 0; i < num_transactions; i++) {
-        DPRINT << "i " << (uint32_t)i << " size_transaction " << (uint32_t)size_transaction[i] << ENDL();
         uint64_t read_addr = get_noc_addr(core_noc_x[i], core_noc_y[i], tensor_address0);
         read_addr += shift_value;
-        DPRINT << "read_addr: " << (uint64_t)read_addr << " from core " << core_noc_x[i] << " " << core_noc_y[i]
-               << ENDL();
         noc_async_read(read_addr, l1_write_addr, size_transaction[i] * tensor0_page_size);
-        DPRINT << "after async read\n";
-        noc_async_read_barrier();
-        DPRINT << "after barrier\n";
-        DPRINT << "l1 write addr before: " << (uint32_t)l1_write_addr << ENDL();
+
         l1_write_addr += (size_transaction[i] * tensor0_page_size);
-        DPRINT << "l1 write addr after: " << (uint32_t)l1_write_addr
-               << " adding value:  " << (uint32_t)(size_transaction[i] * tensor0_page_size) << ENDL();
+
         shift_value = 0;
     }
-    DPRINT << "done\n";
+    noc_async_read_barrier();
 }

@@ -284,7 +284,7 @@ def test_fused_all_reduce_create_heads_perf(
     ],
 )
 @pytest.mark.models_device_performance_bare_metal
-def test_fused_all_gather_silu_perf(
+def test_all_gather_silu_perf(
     warmup_iters,
     perf_target_us,
 ):
@@ -293,7 +293,7 @@ def test_fused_all_gather_silu_perf(
     step_name = f"all_gather_silu"
 
     subdir = "llama_ccl_perf"
-    command = f"pytest tests/ttnn/unit_tests/operations/ccl/test_minimals.py::test_all_gather_silu"
+    command = f"pytest tests/ttnn/unit_tests/operations/ccl/test_gather_silu.py::test_all_gather_silu"
     cols = ["DEVICE KERNEL"]
     op_name = "AllGatherSilu"
     warmup_iters = warmup_iters * 32  # 5 iterations per device

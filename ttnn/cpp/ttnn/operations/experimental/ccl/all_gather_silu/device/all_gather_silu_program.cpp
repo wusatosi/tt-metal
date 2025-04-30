@@ -35,7 +35,7 @@ namespace ttnn {
 
 using namespace ccl;
 struct llama_config {
-    CoreRange sem_drain_core = CoreRange({0, 1}, {0, 1});
+    CoreRange sem_drain_core = CoreRange({3, 0}, {3, 0});
     std::array<CoreRange, 6> semaphore_mcast_ranges = {
         CoreRange({1, 0}, {2, 0}),   // 2
         CoreRange({1, 9}, {2, 9}),   // 2
@@ -93,7 +93,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
     // const auto [sender_worker_core_range, sender_worker_cores] =
     //     choose_worker_cores(num_links, num_workers_per_link, enable_persistent_fabric_mode, mesh_device,
     //     sub_device_id);
-    auto sender_worker_core_range = CoreRangeSet(CoreRange({0, 1}, {0, num_links}));
+    auto sender_worker_core_range = CoreRangeSet(CoreRange({1, 0}, {num_links, 0}));
     auto sender_worker_cores = corerange_to_cores(sender_worker_core_range, num_links, true);
 
     // Tensor Info
@@ -177,10 +177,13 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
     for (const auto& arg : reader_kernel_config.compile_args) {
         log_trace(tt::LogOp, "\t{}", arg);
     }
+    auto reader_worker_only_range = CoreRangeSet(CoreRange({3, 0}, {num_links, 0}));
+    auto reader_worker_only_cores = corerange_to_cores(reader_worker_only_range, num_links - 2, true);
+
     auto worker_sender_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_silu/device/kernels/llama_all_gather_silu_reader.cpp",
-        sender_worker_core_range,
+        reader_worker_only_range,
         reader_kernel_config);
 
     // Writer
@@ -208,8 +211,9 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
         writer_kernel_config);
 
     // Kernel Runtime Args
-    CoreCoord drain_sync_core;  // the first worker of each chip is the drain sync core, which contains the output ready
-                                // semaphore
+    CoreCoord drain_sync_core = mesh_device->worker_core_from_logical_core(
+        sender_worker_cores[2]);  // the first worker of each chip is the drain sync core, which contains the output
+                                  // ready semaphore
     auto input_cores_vec = corerange_to_cores(input_tensor_cores, std::nullopt, true);
     auto output_cores_vec = corerange_to_cores(output_tensor_cores, std::nullopt, true);
     auto cores_per_device = 8;
@@ -224,11 +228,47 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
     auto reshard_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
     reshard_kernel_config.compile_args = {q_output_cb_index, single_tile_size};
 
+    std::vector<CoreRange> reshard_worker_only_vector;
+    for (auto cr : reshard_worker_grid.ranges()) {
+        bool common_core = (cr.start_coord.x == 1 || cr.start_coord.x == 2) && cr.start_coord.y == 0;
+        if (!common_core) {
+            reshard_worker_only_vector.push_back(cr);
+        }
+    }
+    for (auto cr : reshard_worker_only_vector) {
+        printf(
+            "reshard only core: %zu %zu %zu %zu\n", cr.start_coord.x, cr.start_coord.y, cr.end_coord.x, cr.end_coord.y);
+    }
+    auto reshard_worker_only_grid = CoreRangeSet(reshard_worker_only_vector);
     auto reshard_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_silu/device/kernels/llama_all_gather_silu_reshard.cpp",
-        reshard_worker_grid,
+        reshard_worker_only_grid,
         reshard_kernel_config);
+
+    auto reader_worker_common_range = CoreRangeSet(CoreRange({1, 0}, {2, 0}));
+    auto reader_worker_common_cores = corerange_to_cores(reader_worker_common_range, 2, true);
+    for (auto cr : reader_worker_common_range.ranges()) {
+        printf(
+            "reader common core: %zu %zu %zu %zu\n",
+            cr.start_coord.x,
+            cr.start_coord.y,
+            cr.end_coord.x,
+            cr.end_coord.y);
+    }
+    auto reader_common_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
+    reader_common_kernel_config.compile_args = {
+        ring_index,
+        src0_cb_index,
+        op_config.get_page_size(),
+        q_output_cb_index,
+    };
+    auto reader_common_kernel_id = tt::tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_silu/device/kernels/"
+        "llama_all_gather_silu_common_reader.cpp",
+        reader_worker_common_range,
+        reader_common_kernel_config);
 
     auto sem_mcast_ranges = CoreRangeSet(llama_configuration.semaphore_mcast_ranges);
     std::vector<uint32_t> mcast_start_x;
@@ -247,7 +287,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
         mcast_end_x.push_back(end_core.x);
         mcast_end_y.push_back(end_core.y);
     }
-
+    std::unordered_map<uint32_t, std::vector<uint32_t>> reader_common_dict;
     uint32_t start_value = 0;
     for (uint32_t link = 0; link < num_links; link++) {
         CoreCoord core = sender_worker_cores[link];
@@ -322,11 +362,13 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
         tt::log_debug(tt::LogOp, "output_tensor_cores_x: {}", output_tensor_cores_x);
         tt::log_debug(tt::LogOp, "output_tensor_cores_y: {}", output_tensor_cores_y);
 
-        if (link == 0) {
-            // drain sync core is the first worker core
-            drain_sync_core = mesh_device->worker_core_from_logical_core(core);
-        }
-        // Set reader runtime args
+        // if (link == 0) {
+        //     // drain sync core is the first worker core
+        //     drain_sync_core = mesh_device->worker_core_from_logical_core(core);
+        // }
+        //  Set reader runtime args
+        std::vector<uint32_t> reader_common_rt_args = {
+            input_tensor.buffer()->address(), buffer_tensor.buffer()->address()};
         std::vector<uint32_t> reader_rt_args = {
             input_tensor.buffer()->address(),    // tensor_address0
             input_tensor_shard_num_pages,        // num_tiles_per_core
@@ -340,11 +382,18 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
         for (const auto& arg : reader_rt_args) {
             log_trace(tt::LogOp, "\t{}", arg);
         }
-        tt::tt_metal::SetRuntimeArgs(program, worker_sender_reader_kernel_id, {core}, reader_rt_args);
+        if ((core.x == 1 || core.x == 2) && core.y == 0) {
+            for (uint32_t rt_idx = 1; rt_idx < reader_rt_args.size(); rt_idx++) {
+                reader_common_rt_args.push_back(reader_rt_args[rt_idx]);
+            }
+            reader_common_dict[core.x] = reader_common_rt_args;
+        } else {
+            tt::tt_metal::SetRuntimeArgs(program, worker_sender_reader_kernel_id, {core}, reader_rt_args);
+        }
 
         // Set writer runtime args
-        bool wait_output_semaphore = (link == 0) && !enable_async_output_tensor;
-        bool reset_global_semaphore = (link == 0) && !enable_async_output_tensor;
+        bool wait_output_semaphore = (link == 2) && !enable_async_output_tensor;
+        bool reset_global_semaphore = (link == 2) && !enable_async_output_tensor;
         uint32_t out_ready_sem_wait_value = (dynamic_alternate ? (ring_size + 1) : ring_size) * num_links;
         std::vector<uint32_t> writer_rt_args = {
             buffer_address,                       // tensor_address0
@@ -407,19 +456,29 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
             }
         }
         std::vector<uint32_t> reshard_rt_args = {
-            i,
             buffer_address,  // input address
+            i,
             reshard_cores_x.size(),
             reshard_semaphore_id};
         reshard_rt_args.insert(reshard_rt_args.end(), reshard_cores_x.begin(), reshard_cores_x.end());
         reshard_rt_args.insert(reshard_rt_args.end(), reshard_cores_y.begin(), reshard_cores_y.end());
         reshard_rt_args.insert(reshard_rt_args.end(), tiles_from_cur_core.begin(), tiles_from_cur_core.end());
-        tt::tt_metal::SetRuntimeArgs(program, reshard_kernel_id, reshard_core, reshard_rt_args);
+
+        if ((reshard_core.x == 1 || reshard_core.x == 2) && (reshard_core.y == 0)) {
+            for (uint32_t rt_idx = 1; rt_idx < reshard_rt_args.size(); rt_idx++) {
+                reader_common_dict[reshard_core.x].push_back(reshard_rt_args[rt_idx]);
+            }
+            tt::tt_metal::SetRuntimeArgs(
+                program, reader_common_kernel_id, reshard_core, reader_common_dict[reshard_core.x]);
+        } else {
+            tt::tt_metal::SetRuntimeArgs(program, reshard_kernel_id, reshard_core, reshard_rt_args);
+        }
     }
     auto override_runtime_arguments_callback =
         [worker_sender_reader_kernel_id,
          worker_sender_writer_kernel_id,
          reshard_kernel_id,
+         reader_common_kernel_id,
          semaphore,
          sender_worker_cores,
          reshard_cores,
@@ -444,10 +503,15 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
             auto& worker_reader_sender_runtime_args_by_core = GetRuntimeArgs(program, worker_sender_reader_kernel_id);
             auto& worker_writer_sender_runtime_args_by_core = GetRuntimeArgs(program, worker_sender_writer_kernel_id);
             auto& reshard_runtime_args_by_core = GetRuntimeArgs(program, reshard_kernel_id);
+            auto& reader_common_runtime_args_by_core = GetRuntimeArgs(program, reader_common_kernel_id);
             for (const auto& core : sender_worker_cores) {
                 // reader
-                auto& worker_reader_sender_runtime_args = worker_reader_sender_runtime_args_by_core[core.x][core.y];
-                worker_reader_sender_runtime_args[0] = input.buffer()->address();
+                bool common_core = ((core.x == 1 || core.x == 2) && core.y == 0);
+                if (!common_core) {
+                    auto& worker_reader_sender_runtime_args = worker_reader_sender_runtime_args_by_core[core.x][core.y];
+                    worker_reader_sender_runtime_args[0] = input.buffer()->address();
+                }
+
                 // writer
                 auto& worker_writer_sender_runtime_args = worker_writer_sender_runtime_args_by_core[core.x][core.y];
                 worker_writer_sender_runtime_args[0] = buffer_tensor.buffer()->address();
@@ -455,8 +519,15 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_silu_llama_sharded(
             }
 
             for (const auto& r_core : reshard_cores) {
-                auto& reshard_runtime_args = reshard_runtime_args_by_core[r_core.x][r_core.y];
-                reshard_runtime_args[1] = buffer_tensor.buffer()->address();
+                bool common_core = ((r_core.x == 1 || r_core.x == 2) && r_core.y == 0);
+                if (!common_core) {
+                    auto& reshard_runtime_args = reshard_runtime_args_by_core[r_core.x][r_core.y];
+                    reshard_runtime_args[0] = buffer_tensor.buffer()->address();
+                } else {
+                    auto& reader_common_runtime_args = reader_common_runtime_args_by_core[r_core.x][r_core.y];
+                    reader_common_runtime_args[0] = input.buffer()->address();
+                    reader_common_runtime_args[1] = buffer_tensor.buffer()->address();
+                }
             }
         };
 

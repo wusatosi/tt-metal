@@ -105,7 +105,6 @@ void kernel_main() {
         uint32_t num_tiles_to_read_this_core =
             start_two == 1 ? 2 : std::min(num_tiles_per_core - shard_tile_id, packet_size_in_pages);  // here
         num_tiles_to_read_this_core = std::min(num_tiles_to_read - tiles_read, num_tiles_to_read_this_core);
-        DPRINT << "start two: " << (uint32_t)start_two << ENDL();
 
         cb_wait_front(cb0_id, num_tiles_to_read_this_core);
         size_t l1_read_addr = get_read_ptr(cb0_id);
@@ -115,8 +114,7 @@ void kernel_main() {
         noc0_dest_noc_addr += shard_tile_id * tensor0_page_size;
 
         // This issues a flush barrier
-        DPRINT << "writing tiles " << (uint32_t)(num_tiles_to_read_this_core) << " to core "
-               << (uint32_t)core_noc_x[core_id] << " and " << (uint32_t)core_noc_y[core_id] << ENDL();
+        DPRINT << "writing a packet of size: " << (uint32_t)num_tiles_to_read_this_core * tensor0_page_size << ENDL();
         write_and_advance_local_read_address_for_fabric_write(
             noc0_dest_noc_addr,
             pkt_hdr_forward,
@@ -180,15 +178,11 @@ void kernel_main() {
         volatile tt_l1_ptr uint32_t* reshard_semaphore_send_addr_ptr =
             reinterpret_cast<volatile tt_l1_ptr uint32_t*>(reshard_semaphore_send_addr);
         noc_semaphore_set(reshard_semaphore_send_addr_ptr, 1);
-        if (reshard_semaphore_send_addr_ptr[0] != 1) {
-            noc_semaphore_set(reshard_semaphore_send_addr_ptr, 1);
-        }
         uint32_t mcast_dest_num = 2;
         for (uint32_t i = 0; i < num_sem_ranges; i++) {
             if (i > 2) {
                 mcast_dest_num += 2;
             }
-            DPRINT << "mcast_dest_num: " << (uint32_t)mcast_dest_num << " for i " << (uint32_t)i << ENDL();
             const uint64_t reshard_sem_rcv_addr = get_noc_multicast_addr(
                 mcast_dest_noc_start_x[i],
                 mcast_dest_noc_start_y[i],
@@ -203,7 +197,6 @@ void kernel_main() {
                 true);  // multicast_path_reserve = true
         }
     }
-    DPRINT << "after mcast send\n";
 
     // 4. global semaphore reset
     if (reset_global_semaphore) {
