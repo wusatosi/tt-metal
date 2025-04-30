@@ -69,7 +69,7 @@ class TtSD3Transformer2DModelParameters:
                 substate(state, "norm_out.linear"), dtype=dtype, device=device, shard_dim=None, unsqueeze_bias=True
             ),
             norm_out=TtLayerNormParameters.from_torch(
-                substate(state, "norm_out.norm"), dtype=dtype, device=device, distributed=False
+                substate(state, "norm_out.norm"), dtype=dtype, device=device, distributed=False, weight_shape=[2432]
             ),
             proj_out=TtLinearParameters.from_torch(
                 substate(state, "proj_out"), dtype=dtype, device=device, shard_dim=None

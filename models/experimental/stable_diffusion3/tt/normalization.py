@@ -49,9 +49,11 @@ class TtRmsNorm:
 @dataclass
 class TtLayerNormParameters:
     device: ttnn.MeshDevice
+    state: dict[str, torch.Tensor]
     weight: ttnn.Tensor | None = None
     bias: ttnn.Tensor | None = None
     distributed: bool = False
+    weight_shape: list[int] | None = (None,)
 
     @classmethod
     def from_torch(
@@ -108,6 +110,8 @@ class TtLayerNormParameters:
             else None,
             distributed=distributed,
             device=device,
+            state=state,
+            weight_shape=weight_shape,
         )
 
 
@@ -121,6 +125,15 @@ class TtLayerNorm:
         self._bias = parameters.bias
         self._device = parameters.device
 
+        with torch.device("meta"):
+            self._torch_model = torch.nn.LayerNorm(
+                parameters.weight_shape, eps=eps, elementwise_affine="weight" in parameters.state
+            )
+
+        self._torch_model.load_state_dict(parameters.state, assign=True)
+        self._torch_model.eval()
+        self._torch_model.to(torch.float32)
+
     def __call__(
         self,
         x: ttnn.Tensor,
@@ -128,6 +141,19 @@ class TtLayerNorm:
         program_config: ttnn.ProgramConfig | None = None,
         compute_kernel_config: ttnn.DeviceComputeKernelConfig | None = None,
     ) -> ttnn.Tensor:
+        shard_dim = -1 if self._distributed else 0
+
+        torch_x = ttnn.to_torch(x, mesh_composer=ttnn.ConcatMeshToTensor(self._device, shard_dim))
+        torch_result = self._torch_model(torch_x)
+
+        return ttnn.from_torch(
+            torch_result,
+            device=self._device,
+            mesh_mapper=ttnn.ShardTensorToMesh(self._device, shard_dim),
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+        )
+
         if not self._distributed:
             return ttnn.layer_norm(
                 x,
