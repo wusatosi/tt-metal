@@ -211,6 +211,7 @@ public:
     //                                      Getters
     // ======================================================================================
     const Storage& get_storage() const;
+    Storage& get_storage();
     DataType get_dtype() const;
     Layout get_layout() const;
     const ttnn::Shape& get_logical_shape() const;
@@ -336,10 +337,6 @@ Tensor create_device_tensor(
     const MemoryConfig& memory_config = {.memory_layout = tt::tt_metal::TensorMemoryLayout::INTERLEAVED},
     const std::optional<Tile>& tile = std::nullopt);
 
-// template<typename Buffer>
-// void *get_host_buffer(const Tensor &tensor);
-void* get_raw_host_data_ptr(const Tensor& tensor);
-
 // The set of memcpy functions below are used to copy data between host buffers/tensors and single-device tensors
 void memcpy(
     CommandQueue& queue,
@@ -385,8 +382,6 @@ Tensor allocate_tensor_on_mesh(const TensorSpec& tensor_spec, distributed::MeshD
 void write_tensor(const Tensor& host_tensor, Tensor device_tensor, ttnn::QueueId cq_id = ttnn::DefaultQueueId);
 
 Tensor set_tensor_id(const Tensor& tensor);
-
-bool validate_worker_modes(const std::vector<IDevice*>& workers);
 
 }  // namespace tt_metal
 

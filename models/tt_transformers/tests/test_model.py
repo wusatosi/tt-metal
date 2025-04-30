@@ -16,11 +16,12 @@ from models.utility_functions import (
     comp_pcc,
     comp_allclose,
 )
-from models.utility_functions import skip_for_grayskull
+from models.utility_functions import skip_for_grayskull, skip_for_blackhole
 
 
 @torch.no_grad()
 @skip_for_grayskull("Requires wormhole_b0 to run")
+@skip_for_blackhole("Failing on DRAM harvested P100a, see #21419")
 @pytest.mark.timeout(1800)
 @pytest.mark.models_performance_bare_metal
 @pytest.mark.parametrize(
@@ -88,7 +89,7 @@ def test_model_inference(
     run_ref_pt = True  # Flag to run reference PyTorch model and compare PCC
     cache_pcc = layers == 1  # Flag to measure KV cache PCC. Avoid running for all layers to speed up test time.
     dtype = ttnn.bfloat8_b
-    mesh_device.enable_async(True)
+
     test_id = request.node.callspec.id
     mode_accuracy = "accuracy" in test_id
     instruct = False  # True if weights == "instruct" else False

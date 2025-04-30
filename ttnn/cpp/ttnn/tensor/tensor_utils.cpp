@@ -64,9 +64,7 @@ bool is_arch_gs(const tt::ARCH& arch) { return arch == tt::ARCH::GRAYSKULL; }
 
 bool is_arch_whb0(const tt::ARCH& arch) { return arch == tt::ARCH::WORMHOLE_B0; }
 
-bool is_cpu_tensor(const Tensor& tensor) {
-    return tensor.storage_type() == StorageType::OWNED || tensor.storage_type() == StorageType::BORROWED;
-}
+bool is_cpu_tensor(const Tensor& tensor) { return tensor.storage_type() == StorageType::HOST; }
 
 bool is_device_tensor(const Tensor& tensor) { return tensor.storage_type() == StorageType::DEVICE; }
 
@@ -98,10 +96,9 @@ Tensor get_shard_for_device(const Tensor& tensor, IDevice* target_device, std::o
     return std::visit(
         tt::stl::overloaded{
             [buffer_index](const MultiDeviceHostStorage& s) {
-                return Tensor{
-                    OwnedStorage{s.get_buffer(buffer_index.value())}, s.get_tensor_spec(buffer_index.value())};
+                return Tensor{HostStorage{s.get_buffer(buffer_index.value())}, s.get_tensor_spec(buffer_index.value())};
             },
-            [&tensor]<OwnedOrBorrowedStorage T>(const T&) { return tensor; },
+            [&tensor](const HostStorage& s) { return tensor; },
             [&tensor](const DeviceStorage& s) { return tensor; },
             [](const auto&) -> Tensor {
                 TT_THROW("get_shard_for_device only supports multi-device or device tensors");
@@ -116,14 +113,14 @@ void insert_buffer_and_shape_for_device(
         [target_device, &shard, buffer_index](auto&& s) {
             using T = std::decay_t<decltype(s)>;
             if constexpr (std::is_same_v<T, MultiDeviceHostStorage>) {
-                TT_FATAL(shard.storage_type() == StorageType::OWNED, "Shard must be an owned tensor");
+                TT_FATAL(shard.storage_type() == StorageType::HOST, "Shard must be a host tensor");
                 s.insert_buffer_and_spec_for_device(
                     buffer_index.value(),
-                    std::get<OwnedStorage>(shard.tensor_attributes->storage).get_buffer(),
+                    std::get<HostStorage>(shard.tensor_attributes->storage).get_buffer(),
                     shard.tensor_attributes->tensor_spec);
-            } else if constexpr (std::is_same_v<T, OwnedStorage>) {
-                TT_FATAL(shard.storage_type() == StorageType::OWNED, "Shard must be an owned tensor");
-                s.insert_buffer(std::get<OwnedStorage>(shard.tensor_attributes->storage).get_buffer());
+            } else if constexpr (std::is_same_v<T, HostStorage>) {
+                TT_FATAL(shard.storage_type() == StorageType::HOST, "Shard must be a host tensor");
+                s.insert_buffer(std::get<HostStorage>(shard.tensor_attributes->storage).get_buffer());
             } else if constexpr (std::is_same_v<T, DeviceStorage>) {
                 TT_FATAL(shard.storage_type() == StorageType::DEVICE, "Shard must be a device tensor");
                 auto& shard_storage = std::get<DeviceStorage>(shard.tensor_attributes->storage);
@@ -138,32 +135,6 @@ void insert_buffer_and_shape_for_device(
             }
         },
         tensor_to_modify.tensor_attributes->storage);
-}
-
-Tensor copy_borrowed_tensor_in_async_mode(IDevice* worker, const Tensor& tensor) {
-    // When using async mode, tensors with borrowed storage cannot be passed to workers.
-    // They need to be copied to owned storage before being passed to the worker.
-    ZoneScopedN("ConvertBorrowedToOwned");
-    // Tensor has workers (on device) or runtime mode is synchronous or tensor has multiple buffers.
-    // No need to check for borrowed storage.
-    if (worker->get_worker_mode() == WorkExecutorMode::SYNCHRONOUS) {
-        return tensor;
-    }
-
-    if (tensor.storage_type() == StorageType::BORROWED) {
-        ZoneScopedN("CopyBorrowedStorage");
-        auto borrowed_buffer = std::get<BorrowedStorage>(tensor.get_storage()).buffer;
-        Tensor owned_tensor;
-        std::visit(
-            [&owned_tensor, &tensor](auto&& buffer) {
-                using BorrowedStorageType = std::vector<std::decay_t<decltype(*(buffer.begin()))>>;
-                auto owned_buf = owned_buffer::create(BorrowedStorageType(buffer.begin(), buffer.end()));
-                owned_tensor = Tensor(OwnedStorage{owned_buf}, tensor.get_tensor_spec());
-            },
-            borrowed_buffer);
-        return owned_tensor;
-    }
-    return tensor;
 }
 
 ShardDivisionSpec compute_shard_division_spec(const Shape2D& shape, const Shape2D& shard_shape) {
