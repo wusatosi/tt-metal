@@ -79,6 +79,7 @@ class AsymmetricAttention(LightweightModule):
         self.qkv_x, self.qkv_x_bias = self._col_parallel_qkv(
             "qkv_x", self.qkv_bias, weight_cache_path, state_dict, state_dict_prefix
         )
+        self.qkv_x = ttnn.unsqueeze_to_4D(self.qkv_x)  # 4D needed for all_gather_async
         self.qkv_y, self.qkv_y_bias = self._col_parallel_qkv(
             "qkv_y", self.qkv_bias, weight_cache_path, state_dict, state_dict_prefix
         )
@@ -86,6 +87,7 @@ class AsymmetricAttention(LightweightModule):
         self.proj_x, self.proj_x_bias = load_linear(
             "proj_x", self.out_bias, weight_cache_path, state_dict, state_dict_prefix, self.mesh_device
         )
+        self.proj_x = ttnn.unsqueeze_to_4D(self.proj_x)  # 4D needed for all_gather_async
         if update_y:
             self.proj_y, self.proj_y_bias = col_parallel_linear(
                 "proj_y", self.out_bias, weight_cache_path, state_dict, state_dict_prefix, self.mesh_device
@@ -100,7 +102,7 @@ class AsymmetricAttention(LightweightModule):
 
         # TODO: using qkv_x program config leads to worse PCC
         self.qkv_x_config = partial(
-            matmul_config, k=dim_x, n=3 * self.n_local_heads * self.head_dim, grid_size=(8, 8), fp32_dest_acc_en=True
+            matmul_config, k=dim_x, n=3 * self.num_heads * self.head_dim, grid_size=(8, 8), fp32_dest_acc_en=True
         )
         self.proj_x_config = partial(
             matmul_config, k=dim_x, n=dim_x, in0_block_w=4, grid_size=(8, 8), fp32_dest_acc_en=True
@@ -209,24 +211,33 @@ class AsymmetricAttention(LightweightModule):
         )
         return replicated_tensor
 
-    def _seq_to_col_parallel_tensor(self, seq_parallel_tensor, N):
-        dim = seq_parallel_tensor.shape[3]
-        local_dim = dim // self.num_devices
-        replicated_tensor = ttnn.all_gather(seq_parallel_tensor, dim=2)
-        tensors = ttnn.get_device_tensors(replicated_tensor)
-        tile_padded_seqlen = math.ceil(N / 32) * 32
-        for i in range(len(tensors)):
-            # Slice out local head and slice sequence padding
-            tensors[i] = ttnn.slice(
-                tensors[i], [0, 0, 0, i * local_dim], [1, 1, tile_padded_seqlen, (i + 1) * local_dim]
-            )
-            # Add padding information
-            tensors[i] = ttnn.reshape(
-                tensors[i], [tensors[i].shape[0], tensors[i].shape[1], N, tensors[i].shape[3]], tensors[i].shape
-            )
-        return ttnn.aggregate_as_tensor(tensors)
+    def _seq_to_col_parallel_tensor(
+        self, seq_parallel_tensor, N, ccl_semaphore_handles, worker_sub_device_id, topology, persistent_buffers
+    ):
+        col_parallel_tensor = ttnn.experimental.all_to_all_async(
+            seq_parallel_tensor,
+            persistent_intermediate_buffer=persistent_buffers["seq_to_col_intermediate"],
+            persistent_output_buffer=persistent_buffers["seq_to_col_output"],
+            in_dim=2,
+            out_dim=3,
+            num_links=1,
+            multi_device_global_semaphore=ccl_semaphore_handles["seq_to_col"],
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            topology=topology,
+            subdevice_id=worker_sub_device_id,
+        )
 
-    def _col_to_seq_parallel_tensor(self, col_parallel_tensor, N):
+        # Give padding information
+        col_parallel_tensor = ttnn.slice(
+            col_parallel_tensor,
+            [0, 0, 0, 0],
+            [1, 1, N, col_parallel_tensor.shape[3]],
+        )
+        return col_parallel_tensor
+
+    def _col_to_seq_parallel_tensor(
+        self, col_parallel_tensor, N, ccl_semaphore_handles, worker_sub_device_id, topology, persistent_buffers
+    ):
         padded_seq_len = get_padded_vision_seq_len(N, self.num_devices)
         if padded_seq_len > N:
             col_parallel_tensor = ttnn.reshape(
@@ -237,15 +248,20 @@ class AsymmetricAttention(LightweightModule):
 
             if padded_seq_len > padded_N:
                 col_parallel_tensor = ttnn.pad(col_parallel_tensor, [(0, 0), (0, padded_seq_len - padded_N)], 0.0)
-        replicated_tensor = ttnn.all_gather(col_parallel_tensor, dim=3)
-        tensors = ttnn.get_device_tensors(replicated_tensor)
 
-        padded_M = padded_seq_len // self.num_devices
-        for i in range(len(tensors)):
-            tensors[i] = ttnn.slice(
-                tensors[i], [0, 0, i * padded_M, 0], [1, 1, (i + 1) * padded_M, tensors[i].shape[3]]
-            )
-        return ttnn.aggregate_as_tensor(tensors)
+        seq_parallel_tensor = ttnn.experimental.all_to_all_async(
+            col_parallel_tensor,
+            persistent_intermediate_buffer=persistent_buffers["col_to_seq_intermediate"],
+            persistent_output_buffer=persistent_buffers["col_to_seq_output"],
+            in_dim=3,
+            out_dim=2,
+            num_links=1,
+            multi_device_global_semaphore=ccl_semaphore_handles["col_to_seq"],
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            topology=topology,
+            subdevice_id=worker_sub_device_id,
+        )
+        return seq_parallel_tensor
 
     def run_qkv_y(self, y):
         # Compute QKV projection
@@ -282,6 +298,10 @@ class AsymmetricAttention(LightweightModule):
         rope_cos: ttnn.Tensor,
         rope_sin: ttnn.Tensor,
         trans_mat: ttnn.Tensor,
+        ccl_semaphore_handles: dict,
+        worker_sub_device_id: ttnn.SubDeviceId,
+        topology: ttnn.Topology,
+        persistent_buffers: dict,
         uncond: bool = False,
     ):
         """Prepare QKV tensors for attention computation.
@@ -309,11 +329,15 @@ class AsymmetricAttention(LightweightModule):
         # ), f"Visual sequence length must be divisible by {self.X_MM_SEQ_LEN}, got {seq_x}"
         x_1BNX = modulated_rmsnorm(x_1BNX, scale_x)
 
-        """
-        # When all-to-all is fast, move all-to-all below gather QKV.
-        # Until then, gather before QKV and do QKV proj col-parallel.
-        # Process visual features
-        qkv_x = ttnn.all_gather(self.qkv_x, dim=-1)
+        qkv_x = ttnn.experimental.all_gather_async(
+            self.qkv_x,
+            dim=3,
+            multi_device_global_semaphore=ccl_semaphore_handles["qkv_x"],
+            num_links=1,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            topology=topology,
+            subdevice_id=worker_sub_device_id,
+        )
         qkv_x_1BNE = ttnn.linear(
             x_1BNX,
             qkv_x,
@@ -324,18 +348,13 @@ class AsymmetricAttention(LightweightModule):
             program_config=self.qkv_x_config(m=M),
         )
 
-        qkv_x_1BNE = self._seq_to_col_parallel_tensor(qkv_x_1BNE, N=N)
-        """
-
-        x_1BNX = self._seq_to_replicated_tensor(x_1BNX, N=N)
-        qkv_x_1BNE = ttnn.linear(
-            x_1BNX,
-            self.qkv_x,
-            bias=self.qkv_x_bias,
-            compute_kernel_config=self.mm_compute_kernel_config,
-            dtype=ttnn.bfloat16,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            program_config=self.qkv_x_config(m=x_1BNX.shape[2]),
+        qkv_x_1BNE = self._seq_to_col_parallel_tensor(
+            qkv_x_1BNE,
+            N=N,
+            ccl_semaphore_handles=ccl_semaphore_handles,
+            worker_sub_device_id=worker_sub_device_id,
+            topology=topology,
+            persistent_buffers=persistent_buffers,
         )
 
         # Split qkv_x into q, k, v
@@ -462,6 +481,10 @@ class AsymmetricAttention(LightweightModule):
         B: int,
         N: int,
         dtype: ttnn.bfloat16,
+        ccl_semaphore_handles: dict,
+        worker_sub_device_id: ttnn.SubDeviceId,
+        topology: ttnn.Topology,
+        persistent_buffers: dict,
         uncond: bool = False,
     ) -> Tuple[ttnn.Tensor, ttnn.Tensor]:
         """Post attention processing to split and project visual and text features.
@@ -483,12 +506,27 @@ class AsymmetricAttention(LightweightModule):
         assert (out_joint_1BLX is None) == uncond
 
         if self.num_devices > 1:
-            out_1BNX = self._col_to_seq_parallel_tensor(out_1BNX, N=N)
+            out_1BNX = self._col_to_seq_parallel_tensor(
+                out_1BNX,
+                N=N,
+                ccl_semaphore_handles=ccl_semaphore_handles,
+                worker_sub_device_id=worker_sub_device_id,
+                topology=topology,
+                persistent_buffers=persistent_buffers,
+            )
 
         M = out_1BNX.shape[2]
 
         # BUG: This linear clobbers `out_joint_1BLX` if padded and certain program configs are used
-        proj_x = ttnn.all_gather(self.proj_x, dim=-1)
+        proj_x = ttnn.experimental.all_gather_async(
+            self.proj_x,
+            dim=3,
+            multi_device_global_semaphore=ccl_semaphore_handles["proj_x"],
+            num_links=1,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            topology=topology,
+            subdevice_id=worker_sub_device_id,
+        )
         out_1BNX = ttnn.linear(
             out_1BNX,
             proj_x,
@@ -504,9 +542,19 @@ class AsymmetricAttention(LightweightModule):
         if not uncond:
             if self.update_y:
                 if self.num_devices > 1:
-                    out_joint_1BLX = ttnn.all_gather(
+                    L = out_joint_1BLX.shape[2]
+                    out_joint_1BLX = ttnn.experimental.all_gather_async(
                         out_joint_1BLX,
                         dim=3,
+                        multi_device_global_semaphore=ccl_semaphore_handles["out_joint"],
+                        num_links=1,
+                        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                        topology=topology,
+                        subdevice_id=worker_sub_device_id,
+                    )
+                    # all_gather_async removes padding information, so we need to reshape
+                    out_joint_1BLX = ttnn.reshape(
+                        out_joint_1BLX, [1, 1, L, out_joint_1BLX.shape[3]], out_joint_1BLX.shape
                     )
                 out_joint_1BLY = ttnn.linear(
                     out_joint_1BLX,
@@ -534,6 +582,10 @@ class AsymmetricAttention(LightweightModule):
         rope_cos: ttnn.Tensor,
         rope_sin: ttnn.Tensor,
         trans_mat: ttnn.Tensor,
+        ccl_semaphore_handles: dict,
+        worker_sub_device_id: ttnn.SubDeviceId,
+        topology: ttnn.Topology,
+        persistent_buffers: dict,
         uncond: bool = False,
     ) -> ttnn.Tensor:
         # input is replicated
@@ -550,6 +602,10 @@ class AsymmetricAttention(LightweightModule):
             rope_sin=rope_sin,
             trans_mat=trans_mat,
             uncond=uncond,
+            ccl_semaphore_handles=ccl_semaphore_handles,
+            worker_sub_device_id=worker_sub_device_id,
+            topology=topology,
+            persistent_buffers=persistent_buffers,
         )
 
         # output is col-sharded
@@ -571,6 +627,10 @@ class AsymmetricAttention(LightweightModule):
             N=N,
             dtype=out_1BNX.dtype,
             uncond=uncond,
+            ccl_semaphore_handles=ccl_semaphore_handles,
+            worker_sub_device_id=worker_sub_device_id,
+            topology=topology,
+            persistent_buffers=persistent_buffers,
         )
 
         return x_1BNX, y_1BLY
