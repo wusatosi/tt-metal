@@ -131,11 +131,11 @@ class Kernel : public JitBuildSettings {
     void set_runtime_args(const CoreCoord &logical_core, stl::Span<const uint32_t> runtime_args);
     void set_common_runtime_args(stl::Span<const uint32_t> runtime_args);
 
-    int get_watcher_kernel_id() const { return watcher_kernel_id_; }
+    int get_watcher_kernel_id() const { return *watcher_kernel_id_; }
 
     HalProgrammableCoreType get_kernel_programmable_core_type() const;
     CoreType get_kernel_core_type() const;
-    void set_full_name(const string& s) { kernel_full_name_ = s; }
+    void set_full_name(const string& s);
     const string& get_full_kernel_name() const override;
     void add_defines(const std::map<std::string, std::string>& defines);
     void process_defines(const std::function<void (const string& define, const string &value)>) const override;
@@ -144,7 +144,7 @@ class Kernel : public JitBuildSettings {
     bool is_idle_eth() const;
 
    protected:
-    int watcher_kernel_id_;
+    std::optional<int> watcher_kernel_id_;
     KernelSource kernel_src_;
     std::string kernel_full_name_;  // Name + hash
     CoreRangeSet core_range_set_;

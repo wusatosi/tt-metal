@@ -48,7 +48,6 @@ Kernel::Kernel(
     core_with_max_runtime_args_({0, 0}),
     compile_time_args_(compile_args),
     defines_(defines) {
-    this->register_kernel_with_watcher();
 
     size_t max_x = 0, max_y = 0;
     for (auto core_range : this->core_range_set_.ranges()) {
@@ -76,14 +75,16 @@ Kernel::Kernel(
 
 void Kernel::register_kernel_with_watcher() {
     if (this->kernel_src_.source_type_ == KernelSource::FILE_PATH) {
-        this->watcher_kernel_id_ = watcher_register_kernel(this->kernel_src_.source_);
+        this->watcher_kernel_id_ = watcher_register_kernel(this->kernel_src_.source_  + "|" + this->get_full_kernel_name());
     } else {
         TT_FATAL(this->kernel_src_.source_type_ == KernelSource::SOURCE_CODE, "Unsupported kernel source type!");
-        this->watcher_kernel_id_ = watcher_register_kernel(this->name());
+        this->watcher_kernel_id_ = watcher_register_kernel(this->get_full_kernel_name());
     }
 }
 
 std::string Kernel::name() const { return this->kernel_src_.name(); }
+
+
 
 const std::set<CoreCoord> &Kernel::logical_cores() const { return this->logical_cores_; }
 
@@ -120,6 +121,13 @@ CoreType Kernel::get_kernel_core_type() const {
     return CoreType::WORKER;
 }
 
+void Kernel::set_full_name(const string& s) {
+    this->kernel_full_name_ = s;
+    if (!this->watcher_kernel_id_.has_value()) {
+        // Register the kernel with the watcher server
+        this->register_kernel_with_watcher();
+    }
+}
 const std::string& Kernel::get_full_kernel_name() const { return this->kernel_full_name_; }
 
 void Kernel::add_defines(const std::map<std::string, std::string>& defines) {
