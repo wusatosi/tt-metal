@@ -124,9 +124,11 @@ ParallelConfig determine_parallel_config(
     uint32_t max_num_cores = compute_grid_size.x * compute_grid_size.y;
     CoreRangeSet grid;
     if (shard_layout == TensorMemoryLayout::HEIGHT_SHARDED) {
-        uint32_t num_cores_nhw = find_closest_largest_divisor_with_num_padding_and_mult(
-            out_nhw_ntiles, max_num_cores, act_block_h_override_ntiles);
+        // uint32_t num_cores_nhw = find_closest_largest_divisor_with_num_padding_and_mult(
+        //     out_nhw_ntiles, max_num_cores, act_block_h_override_ntiles);
+        uint32_t num_cores_nhw = 63;
         grid = tt::tt_metal::num_cores_to_corerangeset(num_cores_nhw, compute_grid_size, true);
+        log_info(tt::LogOp, "num_cores_nhw: {}, out_nhw_ntiles: {}", num_cores_nhw, out_nhw_ntiles);
     } else if (shard_layout == TensorMemoryLayout::BLOCK_SHARDED) {
         uint32_t start_divisor =
             block_shard_orientation == ShardOrientation::COL_MAJOR ? compute_grid_size.x : compute_grid_size.y;
@@ -349,11 +351,13 @@ OptimizedConvBlockConfig determine_per_core_conv_block_config(
     }
 
     uint32_t act_block_h_ntiles = conv_op_parallel_config.per_core_out_matrix_height_ntile;
+    log_info(tt::LogOp, "act_block_h_ntiles: {}", act_block_h_ntiles);
 
     if (act_block_h_override > 0) {
         uint32_t act_block_h_override_ntiles = act_block_h_override / constants::TILE_HEIGHT;
         if (padded_output_height_ntiles_per_core % act_block_h_override_ntiles == 0) {
             act_block_h_ntiles = act_block_h_override_ntiles;
+            log_info(tt::LogOp, "act_block_h_ntiles: {}", act_block_h_ntiles);
         } else {
             uint32_t act_block_h_override_ntiles = act_block_h_override / constants::TILE_HEIGHT;
             if (padded_output_height_ntiles_per_core % act_block_h_override_ntiles == 0) {

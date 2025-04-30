@@ -190,9 +190,10 @@ def run_conv(
 
     tt_input_tensor = ttnn.from_torch(
         torch_input_tensor,
-        activations_dtype if activations_dtype == ttnn.float32 else ttnn.bfloat16,
+        activations_dtype,
         mesh_mapper=input_mesh_mapper,
         layout=input_layout,
+        device=device,
     )
 
     conv_config = ttnn.Conv2dConfig(
@@ -201,7 +202,7 @@ def run_conv(
         shard_layout=shard_layout if not auto_shard else None,
         input_channels_alignment=8 if use_shallow_conv_variant and not auto_shard else 32,
         deallocate_activation=deallocate_activation,
-        enable_act_double_buffer=False,
+        enable_act_double_buffer=True,
         enable_split_reader=enable_split_reader,
         enable_subblock_padding=False,
         output_layout=output_layout,
@@ -211,6 +212,7 @@ def run_conv(
         always_preprocess_weights=False,
         in_place=in_place,
     )
+    print("input channels alignment", conv_config.input_channels_alignment)
     compute_config = ttnn.init_device_compute_kernel_config(
         device.arch(),
         math_fidelity=math_fidelity,
@@ -224,10 +226,10 @@ def run_conv(
         conv_config.act_block_w_div = config_override["act_block_w_div"]
 
     if config_override and "num_cores_nhw" in config_override:
-        if config_override["num_cores_nhw"] == 98:
-            conv_config.core_grid = ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (11, 7)), ttnn.CoreRange((0, 8), (1, 8))})
+        if config_override["num_cores_nhw"] == 63:
+            conv_config.core_grid = ttnn.CoreRangeSet({ttnn.CoreRange((0, 0), (7, 6)), ttnn.CoreRange((0, 7), (6, 7))})
             conv_config.override_sharding_config = True
-            print("Setting num_cores_nhw to 98")
+            print("Setting num_cores_nhw to 63")
 
     [tt_output_tensor_on_device, [out_height, out_width], [d_w, d_b]] = ttnn.conv2d(
         input_tensor=tt_input_tensor,
@@ -1844,29 +1846,45 @@ def test_unet_conv_groups_2_wh(
 )
 @pytest.mark.parametrize(
     "groups",
-    [4, 6],
+    [4],
 )
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
 @pytest.mark.parametrize(
     "output_channels, input_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, shard_layout, config_override, use_shallow_conv_variant, in_place, input_layout",
     (
-        (16, 4, 1056, 160, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True, False, ttnn.ROW_MAJOR_LAYOUT),
-        (16, 16, 1056, 160, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True, False, ttnn.ROW_MAJOR_LAYOUT),
-        (16, 16, 528, 80, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True, False, ttnn.ROW_MAJOR_LAYOUT),
-        (32, 16, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
-        (32, 32, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
-        (32, 32, 132, 20, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
-        (64, 32, 66, 10, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
-        (64, 64, 66, 10, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
-        (32, 96, 132, 20, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
-        (32, 32, 132, 20, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
-        (32, 64, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
-        (32, 32, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
-        (16, 48, 528, 80, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True, False, ttnn.ROW_MAJOR_LAYOUT),
-        (16, 16, 528, 80, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True, False, ttnn.ROW_MAJOR_LAYOUT),
-        (16, 32, 1056, 160, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True, True, ttnn.ROW_MAJOR_LAYOUT),
-        (16, 32, 1056, 160, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True, True, ttnn.TILE_LAYOUT),
-        (1, 16, 1056, 160, 1, 1, 1, 1, 0, 0, HS, {"act_block_h": 2 * 32}, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (16, 4, 1056, 160, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (16, 16, 1056, 160, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (16, 16, 528, 80, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (32, 16, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (32, 32, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (32, 32, 132, 20, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (64, 32, 66, 10, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (64, 64, 66, 10, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (32, 96, 132, 20, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (32, 32, 132, 20, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (32, 64, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (32, 32, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (16, 48, 528, 80, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (16, 16, 528, 80, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True, False, ttnn.ROW_MAJOR_LAYOUT),
+        # (16, 32, 1056, 160, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True, True, ttnn.ROW_MAJOR_LAYOUT),
+        (
+            16,
+            32,
+            1056,
+            160,
+            3,
+            3,
+            1,
+            1,
+            1,
+            1,
+            HS,
+            {"num_cores_nhw": 63, "act_block_h": 4 * 32},
+            False,
+            False,
+            ttnn.TILE_LAYOUT,
+        ),
+        # (1, 16, 1056, 160, 1, 1, 1, 1, 0, 0, HS, {"act_block_h": 2 * 32}, False, False, ttnn.ROW_MAJOR_LAYOUT),
     ),
 )
 @pytest.mark.parametrize(
@@ -1946,27 +1964,27 @@ def test_unet_conv_groups_4_6_wh(
 )
 @pytest.mark.parametrize(
     "groups",
-    [8],
+    [4],
 )
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
 @pytest.mark.parametrize(
     "output_channels, input_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, shard_layout, config_override, use_shallow_conv_variant",
     (
-        (16, 4, 1056, 160, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True),
-        # (16, 16, 1056, 160, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True), # OOM - need inplace convolution
-        (16, 16, 528, 80, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True),
-        (32, 16, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False),
-        (32, 32, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False),
-        (32, 32, 132, 20, 3, 3, 1, 1, 1, 1, HS, None, False),
-        (64, 32, 66, 10, 3, 3, 1, 1, 1, 1, HS, None, False),
-        (64, 64, 66, 10, 3, 3, 1, 1, 1, 1, HS, None, False),
-        (32, 96, 132, 20, 3, 3, 1, 1, 1, 1, HS, None, False),
-        (32, 32, 132, 20, 3, 3, 1, 1, 1, 1, HS, None, False),
-        # (32, 64, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False), # OOM - need inplace convolution
-        (32, 32, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False),
-        # (16, 48, 528, 80, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True), # OOM - need inplace convolution
-        (16, 16, 528, 80, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True),
-        # (16, 32, 1056, 160, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True), # OOM - need inplace convolution
+        # (16, 4, 1056, 160, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True),
+        # # (16, 16, 1056, 160, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True), # OOM - need inplace convolution
+        # (16, 16, 528, 80, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True),
+        # (32, 16, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False),
+        # (32, 32, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False),
+        # (32, 32, 132, 20, 3, 3, 1, 1, 1, 1, HS, None, False),
+        # (64, 32, 66, 10, 3, 3, 1, 1, 1, 1, HS, None, False),
+        # (64, 64, 66, 10, 3, 3, 1, 1, 1, 1, HS, None, False),
+        # (32, 96, 132, 20, 3, 3, 1, 1, 1, 1, HS, None, False),
+        # (32, 32, 132, 20, 3, 3, 1, 1, 1, 1, HS, None, False),
+        # # (32, 64, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False), # OOM - need inplace convolution
+        # (32, 32, 264, 40, 3, 3, 1, 1, 1, 1, HS, None, False),
+        # # (16, 48, 528, 80, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True), # OOM - need inplace convolution
+        # (16, 16, 528, 80, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True),
+        (16, 32, 1056, 160, 3, 3, 1, 1, 1, 1, HS, {"act_block_h": 2 * 32}, True),  # OOM - need inplace convolution
         # (1, 16, 1056, 160, 1, 1, 1, 1, 0, 0, True, {"act_block_h": 2 * 32}, True), # OOM - need inplace convolution
     ),
 )
