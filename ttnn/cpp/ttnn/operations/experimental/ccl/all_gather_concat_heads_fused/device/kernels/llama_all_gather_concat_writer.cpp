@@ -95,6 +95,8 @@ void kernel_main() {
         fabric_connection.open_finish();
     }
 
+    WAYPOINT("WAS");
+
     // 1. mcast via fabric to remote tensor addresses
     uint32_t tiles_read = 0;
     uint32_t shard_tile_id = first_core_tile_start_offset;
@@ -126,6 +128,7 @@ void kernel_main() {
         noc_async_writes_flushed();
         cb_pop_front(cb0_id, num_tiles_to_read_this_core);
     }
+    WAYPOINT("WAD");
 
     // 2. mcast output ready semaphore
     uint64_t out_ready_sem_noc_addr_in_pkt =
@@ -163,10 +166,12 @@ void kernel_main() {
         safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, out_ready_sem_bank_addr);
     noc_semaphore_inc(out_ready_sem_noc_addr, 1);
 
+    WAYPOINT("AS");
     // 3. wait for mcast output ready semaphore
     if (wait_output_semaphore) {
         while (*reinterpret_cast<volatile uint32_t*>(out_ready_sem_bank_addr) != out_ready_sem_wait_value);
     }
+    WAYPOINT("AE");
 
     // Set up for mcasting to concat workers
     if (wait_output_semaphore) {
@@ -186,40 +191,40 @@ void kernel_main() {
     }
 
     if (wait_output_semaphore) {
-        for (uint32_t i = 0; i < 3; i++) {
-            uint32_t mcast_dest_num = 2;
-            if (i == 1) {
-                mcast_dest_num = 6;
-            } else if (i == 2) {
-                mcast_dest_num = 8;
-            }
-            const uint64_t concat_sem_rcv_addr = get_noc_multicast_addr(
-                mcast_dest_noc_start_x[i],
-                mcast_dest_noc_start_y[i],
-                mcast_dest_noc_end_x[i],
-                mcast_dest_noc_end_y[i],
-                concat_semaphore_send_addr);
-            noc_semaphore_set_multicast(
-                concat_semaphore_send_addr,
-                concat_sem_rcv_addr,
-                mcast_dest_num,
-                false,  // linked = false
-                true);  // multicast_path_reserve = true
+        // for (uint32_t i = 0; i < 3; i++) {
+        //     uint32_t mcast_dest_num = 2;
+        //     if (i == 1) {
+        //         mcast_dest_num = 6;
+        //     } else if (i == 2) {
+        //         mcast_dest_num = 8;
+        //     }
+        //     const uint64_t concat_sem_rcv_addr = get_noc_multicast_addr(
+        //         mcast_dest_noc_start_x[i],
+        //         mcast_dest_noc_start_y[i],
+        //         mcast_dest_noc_end_x[i],
+        //         mcast_dest_noc_end_y[i],
+        //         concat_semaphore_send_addr);
+        //     noc_semaphore_set_multicast(
+        //         concat_semaphore_send_addr,
+        //         concat_sem_rcv_addr,
+        //         mcast_dest_num,
+        //         false,  // linked = false
+        //         true);  // multicast_path_reserve = true
 
-            const uint64_t concat_sem_rcv_addr2 = get_noc_multicast_addr(
-                mcast_dest_noc_start_x[i],
-                mcast_dest_noc_start_y[i],
-                mcast_dest_noc_end_x[i],
-                mcast_dest_noc_end_y[i],
-                concat_semaphore_send_addr2);
+        //     const uint64_t concat_sem_rcv_addr2 = get_noc_multicast_addr(
+        //         mcast_dest_noc_start_x[i],
+        //         mcast_dest_noc_start_y[i],
+        //         mcast_dest_noc_end_x[i],
+        //         mcast_dest_noc_end_y[i],
+        //         concat_semaphore_send_addr2);
 
-            noc_semaphore_set_multicast(
-                concat_semaphore_send_addr2,
-                concat_sem_rcv_addr2,
-                mcast_dest_num,
-                false,  // linked = false
-                true);  // multicast_path_reserve = true
-        }
+        //     noc_semaphore_set_multicast(
+        //         concat_semaphore_send_addr2,
+        //         concat_sem_rcv_addr2,
+        //         mcast_dest_num,
+        //         false,  // linked = false
+        //         true);  // multicast_path_reserve = true
+        // }
     }
 
     if (fabric_connection.is_logically_connected()) {

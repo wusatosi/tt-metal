@@ -102,6 +102,8 @@ void kernel_main() {
         fabric_connection.open_finish();
     }
 
+    WAYPOINT("WAS");
+
     // 1. mcast via fabric to remote tensor addresses
     uint32_t tiles_read = 0;
     uint32_t shard_tile_id = first_core_tile_start_offset;
@@ -142,6 +144,7 @@ void kernel_main() {
         }
         cb_pop_front(cb0_id, num_tiles_to_read_this_core);
     }
+    WAYPOINT("WAD");
 
     // 2. mcast output ready semaphore
     uint64_t out_ready_sem_noc_addr_in_pkt =
@@ -184,25 +187,27 @@ void kernel_main() {
     }
 
     // 3. wait for mcast output ready semaphore
+    WAYPOINT("AS");
     while (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(out_ready_sem_bank_addr) != out_ready_sem_wait_value);
+    WAYPOINT("AE");
 
     // loop over mcast ranges
-    for (uint32_t i = 0; i < num_mcast_ranges; i++) {
-        // Signal the reduction workers
-        const uint64_t reduction_semaphore_recv_noc_addr = get_noc_multicast_addr(
-            mcast_dest_noc_start_x[i],
-            mcast_dest_noc_start_y[i],
-            mcast_dest_noc_end_x[i],
-            mcast_dest_noc_end_y[i],
-            reduction_semaphore_send_addr);
+    // for (uint32_t i = 0; i < num_mcast_ranges; i++) {
+    //     // Signal the reduction workers
+    //     const uint64_t reduction_semaphore_recv_noc_addr = get_noc_multicast_addr(
+    //         mcast_dest_noc_start_x[i],
+    //         mcast_dest_noc_start_y[i],
+    //         mcast_dest_noc_end_x[i],
+    //         mcast_dest_noc_end_y[i],
+    //         reduction_semaphore_send_addr);
 
-        noc_semaphore_set_multicast(
-            reduction_semaphore_send_addr,
-            reduction_semaphore_recv_noc_addr,
-            i == 0 ? num_mcast_cores : 0,
-            false,  // linked = false
-            true);  // multicast_path_reserve = true
-    }
+    //     noc_semaphore_set_multicast(
+    //         reduction_semaphore_send_addr,
+    //         reduction_semaphore_recv_noc_addr,
+    //         i == 0 ? num_mcast_cores : 0,
+    //         false,  // linked = false
+    //         true);  // multicast_path_reserve = true
+    // }
 
     // 4. global semaphore reset
     *reinterpret_cast<volatile tt_l1_ptr uint32_t*>(out_ready_sem_bank_addr) = 0;

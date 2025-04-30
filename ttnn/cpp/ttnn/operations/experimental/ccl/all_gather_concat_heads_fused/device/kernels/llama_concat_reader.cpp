@@ -154,10 +154,10 @@ void kernel_main() {
         second_half_core,
         start_row);
     if (ROWS_TO_READ == 1) {
-        noc_semaphore_wait(signal_semaphore_addr_ptr, 1);
+        // noc_semaphore_wait(signal_semaphore_addr_ptr, 1);
         noc_semaphore_set(signal_semaphore_addr_ptr, 0);
     } else if (ROWS_TO_READ == 2) {
-        noc_semaphore_wait(signal_semaphore_addr_ptr2, 1);
+        // noc_semaphore_wait(signal_semaphore_addr_ptr2, 1);
         noc_semaphore_set(signal_semaphore_addr_ptr2, 0);
     }
 
