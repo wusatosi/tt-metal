@@ -1108,6 +1108,8 @@ std::unique_ptr<Program> create_and_compile_1d_fabric_program(IDevice* device, F
     // Refactor this once mesh_id has row/col control
     // This currently checks if chip 0 is a corner chip
     bool wrap_around_mesh = corner_chip_connections == 2;
+    std::cout << "wrap " << wrap_around_mesh << std::endl;
+    std::cout << device->id() << " " << mesh_chip_id.second << " " << active_fabric_eth_channels.size() << std::endl;
 
     for (const auto& [direction, remote_chip_id] : chip_neighbors) {
         bool is_dateline = check_dateline(
