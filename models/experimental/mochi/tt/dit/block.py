@@ -120,7 +120,15 @@ class AsymmetricJointBlock(LightweightModule):
         if self.update_y:
             self.mlp_y.dealloc()
 
-    def ff_block_x(self, x_1BNX: ttnn.Tensor, scale_x_B11X: ttnn.Tensor, gate_x_B11X: ttnn.Tensor) -> ttnn.Tensor:
+    def ff_block_x(
+        self,
+        x_1BNX: ttnn.Tensor,
+        scale_x_B11X: ttnn.Tensor,
+        gate_x_B11X: ttnn.Tensor,
+        ccl_semaphore_handles: dict,
+        worker_sub_device_id: ttnn.SubDeviceId,
+        topology: ttnn.Topology,
+    ) -> ttnn.Tensor:
         """Feed-forward block for visual features.
 
         Args:
@@ -132,11 +140,24 @@ class AsymmetricJointBlock(LightweightModule):
             Tensor of shape (1, B, N, X)
         """
         x_mod_1BNX = modulated_rmsnorm(x_1BNX, scale_x_B11X)
-        x_res_shard_1BNX = self.mlp_x(x_mod_1BNX)
+        x_res_shard_1BNX = self.mlp_x(
+            x_mod_1BNX,
+            ccl_semaphore_handles=ccl_semaphore_handles,
+            worker_sub_device_id=worker_sub_device_id,
+            topology=topology,
+        )
         x_1BNX = residual_tanh_gated_rmsnorm(x_1BNX, x_res_shard_1BNX, gate_x_B11X)
         return x_1BNX
 
-    def ff_block_y(self, y_1BLY: ttnn.Tensor, scale_y_B11Y: ttnn.Tensor, gate_y_B11Y: ttnn.Tensor) -> ttnn.Tensor:
+    def ff_block_y(
+        self,
+        y_1BLY: ttnn.Tensor,
+        scale_y_B11Y: ttnn.Tensor,
+        gate_y_B11Y: ttnn.Tensor,
+        ccl_semaphore_handles: dict,
+        worker_sub_device_id: ttnn.SubDeviceId,
+        topology: ttnn.Topology,
+    ) -> ttnn.Tensor:
         """Feed-forward block for text features.
 
         Args:
@@ -148,10 +169,25 @@ class AsymmetricJointBlock(LightweightModule):
             Tensor of shape (1, B, L, Y)
         """
         y_mod_1BLY = modulated_rmsnorm(y_1BLY, scale_y_B11Y)
-        y_res_shard_1BLY = self.mlp_y(y_mod_1BLY)
+        y_res_shard_1BLY = self.mlp_y(
+            y_mod_1BLY,
+            ccl_semaphore_handles=ccl_semaphore_handles,
+            worker_sub_device_id=worker_sub_device_id,
+            topology=topology,
+        )
         if self.num_devices > 1:
             # Collect hidden-dim-fractured MLP outputs
-            y_res_1BLY = ttnn.all_gather(y_res_shard_1BLY, dim=3)
+            L = y_1BLY.shape[2]
+            y_res_1BLY = ttnn.experimental.all_gather_async(
+                y_res_shard_1BLY,
+                dim=3,
+                multi_device_global_semaphore=ccl_semaphore_handles["ff_block_y"],
+                num_links=1,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                topology=topology,
+                subdevice_id=worker_sub_device_id,
+            )
+            y_res_1BLY = ttnn.reshape(y_res_1BLY, (1, 1, L, self.hidden_size_y), y_res_1BLY.shape)
         else:
             y_res_1BLY = y_res_shard_1BLY
         y_1BLY = residual_tanh_gated_rmsnorm(y_1BLY, y_res_1BLY, gate_y_B11Y)
@@ -166,6 +202,10 @@ class AsymmetricJointBlock(LightweightModule):
         rope_sin: ttnn.Tensor,
         trans_mat: ttnn.Tensor,
         N: int,
+        ccl_semaphore_handles: dict,
+        worker_sub_device_id: ttnn.SubDeviceId,
+        topology: ttnn.Topology,
+        persistent_buffers: dict,
         uncond: bool = False,
     ) -> Tuple[ttnn.Tensor, ttnn.Tensor]:
         """Forward pass of a block.
@@ -210,7 +250,16 @@ class AsymmetricJointBlock(LightweightModule):
             dtype=ttnn.bfloat16,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
-        mod_x_B11Z = ttnn.all_gather(mod_x_B11Z, dim=3)
+        # mod_x_B11Z = ttnn.all_gather(mod_x_B11Z, dim=3)
+        mod_x_B11Z = ttnn.experimental.all_gather_async(
+            mod_x_B11Z,
+            dim=3,
+            multi_device_global_semaphore=ccl_semaphore_handles["mod_x"],
+            num_links=1,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            topology=topology,
+            subdevice_id=worker_sub_device_id,
+        )
 
         scale_msa_x_B11X = ttnn.slice(mod_x_B11Z, [0, 0, 0, 0], [1, 1, 1, self.hidden_size_x])
         gate_msa_x_B11X = ttnn.slice(mod_x_B11Z, [0, 0, 0, self.hidden_size_x], [1, 1, 1, 2 * self.hidden_size_x])
@@ -228,7 +277,15 @@ class AsymmetricJointBlock(LightweightModule):
                 dtype=ttnn.bfloat16,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
             )
-            mod_y_B11C = ttnn.all_gather(mod_y_B11C, dim=3)
+            mod_y_B11C = ttnn.experimental.all_gather_async(
+                mod_y_B11C,
+                dim=3,
+                multi_device_global_semaphore=ccl_semaphore_handles["mod_y"],
+                num_links=1,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                topology=topology,
+                subdevice_id=worker_sub_device_id,
+            )
             if self.update_y:
                 scale_msa_y_B11Y = ttnn.slice(mod_y_B11C, [0, 0, 0, 0], [1, 1, 1, self.hidden_size_y])
                 gate_msa_y_B11Y = ttnn.slice(
@@ -255,22 +312,52 @@ class AsymmetricJointBlock(LightweightModule):
             rope_sin=rope_sin_1HMD,
             trans_mat=trans_mat,
             uncond=uncond,
+            ccl_semaphore_handles=ccl_semaphore_handles,
+            worker_sub_device_id=worker_sub_device_id,
+            topology=topology,
+            persistent_buffers=persistent_buffers,
         )
 
         assert x_attn_1BMX.shape[2] == M
         x_1BMX = residual_tanh_gated_rmsnorm(x_1BMX, x_attn_1BMX, gate_msa_x_B11X)
         # MLP block
-        x_1BMX = self.ff_block_x(x_1BMX, scale_mlp_x_B11X, gate_mlp_x_B11X)
+        x_1BMX = self.ff_block_x(
+            x_1BMX,
+            scale_mlp_x_B11X,
+            gate_mlp_x_B11X,
+            ccl_semaphore_handles=ccl_semaphore_handles,
+            worker_sub_device_id=worker_sub_device_id,
+            topology=topology,
+        )
 
         if not uncond:
             if self.num_devices > 1:
                 # Collect hidden-dim-fractured attention outputs
-                y_attn_1BLY = ttnn.all_gather(y_attn_shard_1BLY, dim=3)
+                L = y_1BLY.shape[2]
+                y_attn_1BLY = ttnn.experimental.all_gather_async(
+                    y_attn_shard_1BLY,
+                    dim=3,
+                    multi_device_global_semaphore=ccl_semaphore_handles["y_attn"],
+                    num_links=1,
+                    memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                    topology=topology,
+                    subdevice_id=worker_sub_device_id,
+                )
+                y_attn_1BLY = ttnn.reshape(y_attn_1BLY, (1, 1, L, self.hidden_size_y), y_attn_1BLY.shape)
             else:
                 y_attn_1BLY = y_attn_shard_1BLY
 
             if self.update_y:
                 y_1BLY = residual_tanh_gated_rmsnorm(y_1BLY, y_attn_1BLY, gate_msa_y_B11Y)
-                y_1BLY = self.ff_block_y(y_1BLY, scale_mlp_y_B11Y, gate_mlp_y_B11Y)
+                y_1BLY = self.ff_block_y(
+                    y_1BLY,
+                    scale_mlp_y_B11Y,
+                    gate_mlp_y_B11Y,
+                    ccl_semaphore_handles=ccl_semaphore_handles,
+                    worker_sub_device_id=worker_sub_device_id,
+                    topology=topology,
+                )
+            else:
+                y_1BLY = y_attn_1BLY
 
         return x_1BMX, y_1BLY
