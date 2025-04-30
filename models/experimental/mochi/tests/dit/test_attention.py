@@ -6,7 +6,6 @@ import ttnn
 from models.utility_functions import skip_for_grayskull, comp_allclose
 from models.experimental.mochi.tt.dit.attention import AsymmetricAttention as TtAsymmetricAttention
 from models.experimental.mochi.tt.common import (
-    get_mochi_dir,
     get_cache_path,
     compute_metrics,
     to_tt_tensor,
@@ -173,9 +172,30 @@ def test_tt_attn_qkv_y(mesh_device, seq_len, use_program_cache, reset_seeds, att
         # ("blocks.47.attn", 3072, 1536, False),
     ],
 )
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_attn_prepare_qkv(
     mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, dim_x, dim_y, update_y
 ):
+    # Fabric setup
+    compute_grid_size = mesh_device.compute_with_storage_grid_size()
+    ccl_sub_device_crs = ttnn.CoreRangeSet(
+        {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
+    )
+    worker_sub_device = ttnn.SubDevice(
+        [
+            ccl_sub_device_crs,
+        ]
+    )
+    worker_sub_device_id = ttnn.SubDeviceId(0)
+    sub_device_stall_group = [worker_sub_device_id]
+    sub_device_manager = mesh_device.create_sub_device_manager([worker_sub_device], 0)
+    mesh_device.load_sub_device_manager(sub_device_manager)
+    mesh_device.set_sub_device_stall_group(sub_device_stall_group)
+    # create global semaphore handles
+    ccl_semaphore_handles = {
+        s: ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0) for s in ["seq_to_col", "qkv_x"]
+    }
+
     state_dict, partial_state_dict = load_model_weights(attn_path)
     reference_model, tt_model = create_models(
         mesh_device, state_dict, partial_state_dict, attn_path, dim_x, dim_y, update_y
@@ -216,6 +236,25 @@ def test_tt_attn_prepare_qkv(
     trans_mat = get_rot_transformation_mat(None)
     trans_mat_tt = to_tt_tensor(trans_mat, mesh_device)
 
+    persistent_buffers = {
+        "seq_to_col_intermediate": ttnn.from_torch(
+            torch.zeros([1, batch_size, x_pad.shape[2], 3 * head_dim * NUM_HEADS // mesh_device.get_num_devices()]),
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        ),
+        "seq_to_col_output": ttnn.from_torch(
+            torch.zeros([1, batch_size, x_pad.shape[2], 3 * head_dim * NUM_HEADS // mesh_device.get_num_devices()]),
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        ),
+    }
+
     logger.info("Run TtAsymmetricAttention prepare_qkv")
     tt_q_x, tt_k_x, tt_v_x, tt_q_y, tt_k_y, tt_v_y = tt_model.prepare_qkv(
         tt_x,
@@ -226,6 +265,10 @@ def test_tt_attn_prepare_qkv(
         rope_cos=tt_rope_cos,
         rope_sin=tt_rope_sin,
         trans_mat=trans_mat_tt,
+        ccl_semaphore_handles=ccl_semaphore_handles,
+        worker_sub_device_id=worker_sub_device_id,
+        topology=ttnn.Topology.Ring,
+        persistent_buffers=persistent_buffers,
     )
 
     # Convert TT outputs to torch tensors
@@ -235,6 +278,9 @@ def test_tt_attn_prepare_qkv(
     tt_q_y_torch = to_torch_tensor(tt_q_y, mesh_device, dim=-3)
     tt_k_y_torch = to_torch_tensor(tt_k_y, mesh_device, dim=-3)
     tt_v_y_torch = to_torch_tensor(tt_v_y, mesh_device, dim=-3)
+
+    mesh_device.reset_sub_device_stall_group()
+    mesh_device.clear_loaded_sub_device_manager()
 
     # Concat for comparison
     tt_q_torch = torch.cat([tt_q_x_torch, tt_q_y_torch], dim=2)
@@ -287,6 +333,7 @@ def test_tt_attn_prepare_qkv(
         ("blocks.47.attn", 3072, 1536, False),
     ],
 )
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_attn_run_attention(
     mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, dim_x, dim_y, update_y
 ):
@@ -388,9 +435,31 @@ def test_tt_attn_run_attention(
         #        ("blocks.47.attn", 3072, 1536, False),
     ],
 )
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_attn_post_attention(
     mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, dim_x, dim_y, update_y
 ):
+    # Fabric setup
+    compute_grid_size = mesh_device.compute_with_storage_grid_size()
+    ccl_sub_device_crs = ttnn.CoreRangeSet(
+        {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
+    )
+    worker_sub_device = ttnn.SubDevice(
+        [
+            ccl_sub_device_crs,
+        ]
+    )
+    worker_sub_device_id = ttnn.SubDeviceId(0)
+    sub_device_stall_group = [worker_sub_device_id]
+    sub_device_manager = mesh_device.create_sub_device_manager([worker_sub_device], 0)
+    mesh_device.load_sub_device_manager(sub_device_manager)
+    mesh_device.set_sub_device_stall_group(sub_device_stall_group)
+    # create global semaphore handles
+    ccl_semaphore_handles = {
+        s: ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0)
+        for s in ["col_to_seq", "proj_x", "out_joint"]
+    }
+
     """Test post_attention implementation by comparing with reference model."""
     state_dict, partial_state_dict = load_model_weights(attn_path)
     reference_model, tt_model = create_models(
@@ -410,6 +479,25 @@ def test_tt_attn_post_attention(
     tt_x = to_tt_tensor(x_padded, mesh_device, shard_dim=-1)
     tt_y = to_tt_tensor(torch_y, mesh_device, shard_dim=-1)
 
+    persistent_buffers = {
+        "col_to_seq_intermediate": ttnn.from_torch(
+            torch.zeros([1, batch_size, x_padded.shape[2] // mesh_device.get_num_devices(), x_padded.shape[3]]),
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        ),
+        "col_to_seq_output": ttnn.from_torch(
+            torch.zeros([1, batch_size, x_padded.shape[2] // mesh_device.get_num_devices(), x_padded.shape[3]]),
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        ),
+    }
+
     logger.info("Run TtAsymmetricAttention post_attention")
     tt_x, tt_y = tt_model.post_attention(
         tt_x,
@@ -417,11 +505,18 @@ def test_tt_attn_post_attention(
         B=batch_size,
         N=vision_seq_len,
         dtype=ttnn.bfloat16,
+        ccl_semaphore_handles=ccl_semaphore_handles,
+        worker_sub_device_id=worker_sub_device_id,
+        topology=ttnn.Topology.Ring,
+        persistent_buffers=persistent_buffers,
     )
 
     # Convert TT outputs to torch tensors
     tt_x_torch = to_torch_tensor(tt_x, mesh_device, dim=-2)[:, :, :vision_seq_len, :]
     tt_y_torch = to_torch_tensor(tt_y, mesh_device, dim=-1)
+
+    mesh_device.reset_sub_device_stall_group()
+    mesh_device.clear_loaded_sub_device_manager()
 
     # Get reference outputs
     with torch.no_grad():
@@ -484,9 +579,31 @@ def test_tt_attn_post_attention(
         # ("blocks.47.attn", 3072, 1536, False),
     ],
 )
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_attn_forward(
     mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, dim_x, dim_y, update_y
 ):
+    # Fabric setup
+    compute_grid_size = mesh_device.compute_with_storage_grid_size()
+    ccl_sub_device_crs = ttnn.CoreRangeSet(
+        {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
+    )
+    worker_sub_device = ttnn.SubDevice(
+        [
+            ccl_sub_device_crs,
+        ]
+    )
+    worker_sub_device_id = ttnn.SubDeviceId(0)
+    sub_device_stall_group = [worker_sub_device_id]
+    sub_device_manager = mesh_device.create_sub_device_manager([worker_sub_device], 0)
+    mesh_device.load_sub_device_manager(sub_device_manager)
+    mesh_device.set_sub_device_stall_group(sub_device_stall_group)
+    # create global semaphore handles
+    ccl_semaphore_handles = {
+        s: ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0)
+        for s in ["seq_to_col", "col_to_seq", "qkv_x", "proj_x", "out_joint"]
+    }
+
     min_pcc = 0.9974
     max_mse = 1.2e-4
     """Test complete forward pass of TtAsymmetricAttention."""
@@ -527,6 +644,41 @@ def test_tt_attn_forward(
     tt_rope_cos = to_tt_tensor(cos_padded, mesh_device, shard_dim=-3)
     tt_rope_sin = to_tt_tensor(sin_padded, mesh_device, shard_dim=-3)
 
+    persistent_buffers = {
+        "seq_to_col_intermediate": ttnn.from_torch(
+            torch.zeros([1, batch_size, x_padded.shape[2], 3 * head_dim * NUM_HEADS // mesh_device.get_num_devices()]),
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        ),
+        "seq_to_col_output": ttnn.from_torch(
+            torch.zeros([1, batch_size, x_padded.shape[2], 3 * head_dim * NUM_HEADS // mesh_device.get_num_devices()]),
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        ),
+        "col_to_seq_intermediate": ttnn.from_torch(
+            torch.zeros([1, batch_size, x_padded.shape[2] // mesh_device.get_num_devices(), head_dim * NUM_HEADS]),
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        ),
+        "col_to_seq_output": ttnn.from_torch(
+            torch.zeros([1, batch_size, x_padded.shape[2] // mesh_device.get_num_devices(), head_dim * NUM_HEADS]),
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        ),
+    }
+
     # Create transformation matrix for RoPE
     trans_mat = get_rot_transformation_mat(None)
     trans_mat_tt = to_tt_tensor(trans_mat, mesh_device)
@@ -544,12 +696,18 @@ def test_tt_attn_forward(
         rope_cos=tt_rope_cos,
         rope_sin=tt_rope_sin,
         trans_mat=trans_mat_tt,
+        ccl_semaphore_handles=ccl_semaphore_handles,
+        worker_sub_device_id=worker_sub_device_id,
+        topology=ttnn.Topology.Ring,
+        persistent_buffers=persistent_buffers,
     )
 
     # Convert TT outputs to torch tensors
     tt_x_torch = to_torch_tensor(tt_x_out, mesh_device, dim=-2)
     tt_y_torch = to_torch_tensor(tt_y_out, mesh_device, dim=-1)
 
+    mesh_device.reset_sub_device_stall_group()
+    mesh_device.clear_loaded_sub_device_manager()
     # unpad TT
     tt_x_torch = tt_x_torch[:, :, :vision_seq_len, :]
     tt_y_torch = tt_y_torch[:, :, :text_seq_len, :]
