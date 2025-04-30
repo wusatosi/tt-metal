@@ -22,13 +22,13 @@ void kernel_main() {
     constexpr uint32_t face_hw = face_size * face_size;
     constexpr uint32_t alignment_adjustor = 16;
 
+    constexpr uint32_t dst_addr = get_compile_time_arg_val(12);
+
     uint32_t rt_arg_ind = 0;
-    uint32_t dst_addr = get_arg_val<uint32_t>(rt_arg_ind++);
     uint32_t cb_page_size = get_arg_val<uint32_t>(rt_arg_ind++);
     uint32_t num_elems = get_arg_val<uint32_t>(rt_arg_ind++);
     uint32_t starting_tile_offset = get_arg_val<uint32_t>(rt_arg_ind++);
-    uint32_t starting_tensor = get_arg_val<uint32_t>(rt_arg_ind++);
-    // uint32_t starting_dim = get_arg_val<uint32_t>(rt_arg_ind++);
+    uint32_t current_tensor = get_arg_val<uint32_t>(rt_arg_ind++);
     uint32_t starting_row = get_arg_val<uint32_t>(rt_arg_ind++);
     uint32_t starting_col = get_arg_val<uint32_t>(rt_arg_ind++);
 
@@ -54,7 +54,7 @@ void kernel_main() {
     }
 
     const DataFormat data_format = get_dataformat(cb_id_0);
-    const InterleavedAddrGenFast<tensor_in_dram> s0 = {
+    InterleavedAddrGenFast<tensor_in_dram> s0 = {
         .bank_base_address = dst_addr,
         .page_size = tile_hw * element_size_bytes,
         .data_format = data_format  // page_size needs to be tile_size_bytes
@@ -96,9 +96,11 @@ void kernel_main() {
             col = 0;
 
             // Check if we've completed the current 2D tensor
-            if (row >= logical_height) {
+            if (row >= input_tensor_heights[current_tensor]) {
                 // Round up to the next tensor's starting tile
-                uint32_t current_tensor = curr_tile / tiles_per_2d_tensor;
+                // uint32_t current_tensor = curr_tile / tiles_per_2d_tensor;
+                current_tensor++;
+                s0.bank_base_address = input_tensor_addrs[current_tensor];
                 curr_tile = (current_tensor + 1) * tiles_per_2d_tensor + starting_tile_offset;
                 row = 0;
             } else {
