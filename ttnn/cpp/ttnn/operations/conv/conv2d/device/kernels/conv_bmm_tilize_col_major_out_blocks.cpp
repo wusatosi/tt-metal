@@ -87,14 +87,14 @@ void MAIN {
     constexpr uint32_t out_subblock_h = get_compile_time_arg_val(11);          // inner row block size in tiles
     constexpr uint32_t out_subblock_w = get_compile_time_arg_val(12);          // inner column block size in tiles
     constexpr uint32_t out_subblock_num_tiles = get_compile_time_arg_val(13);  // out_subblock_h * out_subblock_w;
-    constexpr bool tilize_in0 = get_compile_time_arg_val(14);
+    constexpr bool tilize_in0 = false;                                         // get_compile_time_arg_val(14);
     constexpr bool untilize_out = get_compile_time_arg_val(15);
     constexpr uint32_t in0_cb_id = get_compile_time_arg_val(18);
     constexpr uint32_t in1_cb_id = get_compile_time_arg_val(19);
     constexpr uint32_t in0_pretilize_cb_id = get_compile_time_arg_val(20);
     constexpr uint32_t in0_cb_second_reader_id = get_compile_time_arg_val(21);
     constexpr uint32_t matmul_partials_cb = get_compile_time_arg_val(22);
-    constexpr uint32_t tilized_in0_cb_id = get_compile_time_arg_val(23);
+    // constexpr uint32_t tilized_in0_cb_id = get_compile_time_arg_val(23);
     constexpr uint32_t out_cb_id = get_compile_time_arg_val(24);
     constexpr bool partials_cb_uses_output = get_compile_time_arg_val(26);
 
@@ -117,7 +117,7 @@ void MAIN {
     constexpr uint32_t mm_out_cb_id = untilize_mode_out_cb_id;
 #endif
 
-    constexpr uint32_t mm_in0_cb_id = tilize_in0 ? tilized_in0_cb_id : in0_cb_id;
+    constexpr uint32_t mm_in0_cb_id = in0_cb_id;
 
 #ifdef SPLIT_READER
     constexpr uint32_t in0_num_subblocks_read_last = in0_num_subblocks / 2;
@@ -126,7 +126,8 @@ void MAIN {
     constexpr uint32_t in0_num_subblocks_read = in0_num_subblocks;
 #endif
 
-    mm_block_init(mm_in0_cb_id, in1_cb_id, out_cb_id, false, out_subblock_w, out_subblock_h, in0_block_w);
+    mm_block_tilize_A_init(mm_in0_cb_id, in1_cb_id, out_cb_id, out_subblock_w, out_subblock_h, in0_block_w);
+    // mm_block_init        (mm_in0_cb_id, in1_cb_id, out_cb_id, false, out_subblock_w, out_subblock_h, in0_block_w);
 #ifdef SFPU_OP_INIT_ACTIVATION
     SFPU_OP_INIT_ACTIVATION
 #endif
@@ -168,39 +169,6 @@ void MAIN {
                 }
 #endif
                 bool last_out = (in0_block_w_i == in0_num_blocks_w - 1);
-                if constexpr (tilize_in0) {
-#if defined PACK_RELU and not defined FUSE_BIAS
-                    if (last_out) {
-                        // if last block we pack the final result with relu enabled
-                        PACK((llk_pack_relu_config(ReluType::NO_RELU)));
-                    }
-#endif
-#ifdef PACKER_L1_ACC
-                    pack_reconfig_data_format(curr_matmul_out_cb, tilized_in0_cb_id);
-                    pack_reconfig_l1_acc(0);
-#endif
-
-                    reconfig_data_format_srca(in1_cb_id, in0_cb_id);
-
-                    tilize_in(in0_cb_id, in0_subblock_h, in0_block_w, in0_num_subblocks_read, tilized_in0_cb_id);
-#ifdef SPLIT_READER
-                    tilize_in(
-                        in0_cb_second_reader_id,
-                        in0_subblock_h,
-                        in0_block_w,
-                        in0_num_subblocks_read_last,
-                        tilized_in0_cb_id);
-#endif
-
-                    mm_block_init_short_with_dt(
-                        mm_in0_cb_id,
-                        in1_cb_id,
-                        /*srca_old_operand=*/in0_cb_id,
-                        false,
-                        out_subblock_w,
-                        out_subblock_h,
-                        in0_block_w);
-                }
                 cb_wait_front(mm_in0_cb_id, in0_block_num_tiles);
                 cb_wait_front(in1_cb_id, in1_block_num_tiles);
 
@@ -234,11 +202,10 @@ void MAIN {
 
                             cb_pop_front(matmul_partials_cb, out_subblock_num_tiles);
                             // Reconfigure srcA back
-                            mm_block_init_short_with_dt(
+                            mm_block_tilize_A_init_short_with_dt(
                                 mm_in0_cb_id,
                                 in1_cb_id,
                                 matmul_partials_cb,
-                                false,
                                 out_subblock_w,
                                 out_subblock_h,
                                 in0_block_w);
@@ -257,13 +224,13 @@ void MAIN {
                             // matmul outer product of (out_subblock_h x out_subblock_w) tiles that fill dst
                             // accumulation is done by iterating matmul_block across inner dim
                             // in0_block_w is passed as innder dim (kt) to matmul_block, interally used to stride in0
-                            matmul_block(
+                            matmul_block_tilize_A(
                                 mm_in0_cb_id,
                                 in1_cb_id,
                                 in0_index,
                                 in1_index,
                                 dst_index,
-                                false,
+                                // false,
                                 out_subblock_w,
                                 out_subblock_h,
                                 in0_block_w);
@@ -451,7 +418,7 @@ void MAIN {
 #endif
 
                 if constexpr (!tilize_in0) {
-                    mm_block_init_short(mm_in0_cb_id, in1_cb_id, false, out_subblock_w, out_subblock_h, in0_block_w);
+                    mm_block_tilize_A_init(mm_in0_cb_id, in1_cb_id, out_subblock_w, out_subblock_h, in0_block_w);
 #ifdef PACK_RELU
                     PACK((llk_pack_relu_config(ReluType::NO_RELU)));
 #endif
