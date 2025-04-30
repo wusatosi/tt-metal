@@ -91,11 +91,6 @@ def run_all_gather_impl(
     enable_persistent_fabric = True
     if num_iters < 1:
         pytest.fail("num_iters must be >= 1")
-    # Use Async mode based on test input config
-    mesh_device.enable_async(enable_async)
-
-    if enable_async:
-        logger.info(f"Using Async Mode for All Gather Op Dispatch")
 
     compute_grid_size = mesh_device.compute_with_storage_grid_size()
     ccl_sub_device_crs = ttnn.CoreRangeSet(
@@ -236,7 +231,6 @@ def run_all_gather_impl(
     ],
 )
 @pytest.mark.parametrize("num_iters", [10])
-@pytest.mark.parametrize("enable_async", [True])
 def test_all_gather_minimal(
     t3k_mesh_device,
     # pcie_mesh_device,
@@ -250,7 +244,6 @@ def test_all_gather_minimal(
     num_iters,
     use_program_cache,
     function_level_defaults,
-    enable_async,
 ):
     run_all_gather_impl(
         t3k_mesh_device,
@@ -264,7 +257,6 @@ def test_all_gather_minimal(
         function_level_defaults,
         all_gather_topology=ttnn.Topology.Ring,
         num_iters=num_iters,
-        enable_async=enable_async,
         rand_tensor=True,
         create_persistent_fabric=True,
         teardown_persistent_fabric=True,

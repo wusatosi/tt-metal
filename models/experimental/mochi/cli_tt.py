@@ -11,7 +11,6 @@ import pytest
 from genmo.lib.progress import progress_bar
 from genmo.lib.utils import save_video
 from genmo.mochi_preview.pipelines import (
-    DecoderModelFactory,
     T5ModelFactory,
     linear_quadratic_schedule,
 )
@@ -61,7 +60,6 @@ def load_model(mesh_device):
 )
 def test_generate_video(mesh_device, generation_args, use_program_cache):
     """Generate video using the provided mesh device and arguments."""
-    mesh_device.enable_async(True)
     load_model(mesh_device)
 
     # sigma_schedule should be a list of floats of length (num_inference_steps + 1),

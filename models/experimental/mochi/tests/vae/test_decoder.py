@@ -14,7 +14,6 @@ from models.experimental.mochi.tt.vae.common import load_decoder_weights
 from models.experimental.mochi.tests.dit.test_model import create_models
 from genmo.mochi_preview.vae.vae_stats import dit_latents_to_vae_latents
 from genmo.mochi_preview.vae.models import normalize_decoded_frames
-from pathlib import Path
 from genmo.lib.utils import save_video
 
 # Common test configurations
@@ -182,7 +181,6 @@ def test_decoder(mesh_device, config, divide_T, use_program_cache, reset_seeds, 
     indirect=True,
 )
 def test_decoder_gen_video(mesh_device, use_program_cache):
-    mesh_device.enable_async(True)
     """Use real H100 output to test decoder"""
     # Create models
     logger.info("Creating VAE decoder models")

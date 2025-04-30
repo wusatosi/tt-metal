@@ -36,7 +36,6 @@ def test_tt_patch_embed_inference(
     mesh_device, patch_size, in_chans, embed_dim, bias, B, T, H, W, use_program_cache, reset_seeds
 ):
     dtype = ttnn.bfloat16
-    mesh_device.enable_async(True)
 
     state_dict, partial_state_dict = load_model_weights("x_embedder")
 
