@@ -709,12 +709,14 @@ void run_sender_channel_step(
             to_sender_packets_completed_streams[sender_channel_index], -completions_since_last_check);
         if constexpr (!enable_first_level_ack) {
             if constexpr (SKIP_CONNECTION_LIVENESS_CHECK) {
-                local_sender_channel_worker_interface.template update_worker_copy_of_read_ptr<enable_ring_support>(
-                    sender_rdptr.get_ptr());
+                local_sender_channel_worker_interface
+                    .template update_worker_copy_of_read_ptr<enable_ring_support, use_stateful_api_on_sender_ack>(
+                        sender_rdptr.get_ptr());
             } else {
                 if (channel_connection_established) {
-                    local_sender_channel_worker_interface.template update_worker_copy_of_read_ptr<enable_ring_support>(
-                        sender_rdptr.get_ptr());
+                    local_sender_channel_worker_interface
+                        .template update_worker_copy_of_read_ptr<enable_ring_support, use_stateful_api_on_sender_ack>(
+                            sender_rdptr.get_ptr());
                 }
             }
         }
@@ -729,12 +731,14 @@ void run_sender_channel_step(
         if (acks_since_last_check > 0) {
             sender_ackptr.increment_n(acks_since_last_check);
             if constexpr (SKIP_CONNECTION_LIVENESS_CHECK) {
-                local_sender_channel_worker_interface.template update_worker_copy_of_read_ptr<enable_ring_support>(
-                    sender_ackptr.get_ptr());
+                local_sender_channel_worker_interface
+                    .template update_worker_copy_of_read_ptr<enable_ring_support, use_stateful_api_on_sender_ack>(
+                        sender_ackptr.get_ptr());
             } else {
                 if (channel_connection_established) {
-                    local_sender_channel_worker_interface.template update_worker_copy_of_read_ptr<enable_ring_support>(
-                        sender_ackptr.get_ptr());
+                    local_sender_channel_worker_interface
+                        .template update_worker_copy_of_read_ptr<enable_ring_support, use_stateful_api_on_sender_ack>(
+                            sender_ackptr.get_ptr());
                 }
             }
             increment_local_update_ptr_val(

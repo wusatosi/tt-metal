@@ -34,13 +34,15 @@ FORCE_INLINE bool connect_is_requested(uint32_t cached) {
 template <bool enable_ring_support = false, bool enable_first_level_ack = false, uint8_t SENDER_NUM_BUFFERS>
 FORCE_INLINE void establish_connection(
     tt::tt_fabric::EdmChannelWorkerInterface<SENDER_NUM_BUFFERS>& local_sender_channel_worker_interface) {
-    local_sender_channel_worker_interface.cache_producer_noc_addr();
+    local_sender_channel_worker_interface.template cache_producer_noc_addr<use_stateful_api_on_sender_ack>();
     if constexpr (enable_first_level_ack) {
-        local_sender_channel_worker_interface.template update_worker_copy_of_read_ptr<enable_ring_support>(
-            local_sender_channel_worker_interface.local_ackptr.get_ptr());
+        local_sender_channel_worker_interface
+            .template update_worker_copy_of_read_ptr<enable_ring_support, use_stateful_api_on_sender_ack>(
+                local_sender_channel_worker_interface.local_ackptr.get_ptr());
     } else {
-        local_sender_channel_worker_interface.template update_worker_copy_of_read_ptr<enable_ring_support>(
-            local_sender_channel_worker_interface.local_rdptr.get_ptr());
+        local_sender_channel_worker_interface
+            .template update_worker_copy_of_read_ptr<enable_ring_support, use_stateful_api_on_sender_ack>(
+                local_sender_channel_worker_interface.local_rdptr.get_ptr());
     }
 }
 
