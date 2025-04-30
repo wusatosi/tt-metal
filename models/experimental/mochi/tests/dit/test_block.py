@@ -102,8 +102,44 @@ def create_models(mesh_device, state_dict, partial_state_dict, block_path, dim_x
         # ("blocks.47", False),
     ],
 )
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_block(mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, block_path, update_y):
     """Test TtAsymmetricJointBlock implementation by comparing with reference model."""
+
+    # Fabric setup
+    compute_grid_size = mesh_device.compute_with_storage_grid_size()
+    ccl_sub_device_crs = ttnn.CoreRangeSet(
+        {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
+    )
+    worker_sub_device = ttnn.SubDevice(
+        [
+            ccl_sub_device_crs,
+        ]
+    )
+    worker_sub_device_id = ttnn.SubDeviceId(0)
+    sub_device_stall_group = [worker_sub_device_id]
+    sub_device_manager = mesh_device.create_sub_device_manager([worker_sub_device], 0)
+    mesh_device.load_sub_device_manager(sub_device_manager)
+    mesh_device.set_sub_device_stall_group(sub_device_stall_group)
+    # create global semaphore handles
+    ccl_semaphore_handles = {
+        s: ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0)
+        for s in [
+            "ff_block_y",
+            "mod_x",
+            "mod_y",
+            "y_attn",
+            "seq_to_col",
+            "col_to_seq",
+            "qkv_x",
+            "proj_x",
+            "out_joint",
+            "w1",
+            "w2",
+            "w3",
+            "w2_in",
+        ]
+    }
 
     min_pcc = 0.997
     max_mse = 0.0089
@@ -153,6 +189,41 @@ def test_tt_block(mesh_device, vision_seq_len, text_seq_len, use_program_cache, 
     tt_rope_sin = to_tt_tensor(sin_padded, mesh_device, shard_dim=-3)
     tt_trans_mat = to_tt_tensor(trans_mat, mesh_device)
 
+    persistent_buffers = {
+        "seq_to_col_intermediate": ttnn.from_torch(
+            torch.zeros([1, batch_size, x_padded.shape[2], 3 * head_dim * NUM_HEADS // mesh_device.get_num_devices()]),
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        ),
+        "seq_to_col_output": ttnn.from_torch(
+            torch.zeros([1, batch_size, x_padded.shape[2], 3 * head_dim * NUM_HEADS // mesh_device.get_num_devices()]),
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        ),
+        "col_to_seq_intermediate": ttnn.from_torch(
+            torch.zeros([1, batch_size, x_padded.shape[2] // mesh_device.get_num_devices(), head_dim * NUM_HEADS]),
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        ),
+        "col_to_seq_output": ttnn.from_torch(
+            torch.zeros([1, batch_size, x_padded.shape[2] // mesh_device.get_num_devices(), head_dim * NUM_HEADS]),
+            device=mesh_device,
+            layout=ttnn.TILE_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        ),
+    }
+
     # Create packed indices
     packed_indices = {
         "max_seqlen_in_batch_kv": max_seqlen_in_batch,
@@ -169,12 +240,19 @@ def test_tt_block(mesh_device, vision_seq_len, text_seq_len, use_program_cache, 
         rope_cos=tt_rope_cos,
         rope_sin=tt_rope_sin,
         trans_mat=tt_trans_mat,
+        ccl_semaphore_handles=ccl_semaphore_handles,
+        worker_sub_device_id=worker_sub_device_id,
+        topology=ttnn.Topology.Ring,
+        persistent_buffers=persistent_buffers,
     )
 
     # Convert TT outputs to torch tensors
     # extract from replicated tensors
     tt_x_torch = to_torch_tensor(tt_x_out, mesh_device, dim=2)[:, :, :vision_seq_len, :]
     tt_y_torch = to_torch_tensor(tt_y_out, mesh_device, dim=0)[0:1]
+
+    mesh_device.reset_sub_device_stall_group()
+    mesh_device.clear_loaded_sub_device_manager()
 
     # Get reference outputs
     ref_x, ref_y = reference_model(
