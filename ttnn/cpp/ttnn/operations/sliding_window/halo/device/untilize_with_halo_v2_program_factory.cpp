@@ -533,6 +533,10 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     // create semaphore
     uint32_t semaphore_id = tt::tt_metal::CreateSemaphore(program, rectangular_cores, 0);
 
+    // create the NC/RB sync CB
+    int32_t sync_cb_id = cb_indices.get_next_cb_id();
+    auto sync_cb = create_circular_buffer(program, all_cores, sync_cb_id, tt::DataFormat::UInt16, 2, 2);
+
     auto aligned_input_nstick_nbytes = out_stick_nbytes;
     log_debug(tt::LogOp, "out_stick_nbytes = {}", out_stick_nbytes);
     log_debug(tt::LogOp, "input_tensor.buffer()->alignment() = {}", input_tensor.buffer()->alignment());
@@ -567,10 +571,12 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         rectangular_y,
         last_active_x,
         semaphore_id,
+        sync_cb_id,
         in_out_buffer_start_delta,
         temp_cb_id,
         ntiles_per_block,
-        input_nblocks_per_core};
+        input_nblocks_per_core,
+        0};
 
     reader_ct_args[0] = 0;
     reader_ct_args[1] = cb_indices.local_config_cb_id;
@@ -585,8 +591,9 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
 
     reader_ct_args[0] = cb_indices.padding_config_cb_id;
     reader_ct_args[1] = 0;
-    reader_ct_args[2] = 0;
+    reader_ct_args[2] = cb_indices.remote_config_cb_id;
     reader_ct_args[3] = 0;
+    reader_ct_args[30] = 1;  // no wait remote
     KernelHandle reader_kernel_id1 = CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/sliding_window/halo/device/kernels/dataflow/halo_gather_in_place.cpp",
