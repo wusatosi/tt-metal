@@ -36,6 +36,7 @@ constexpr uint32_t num_sync_targets_backward = dynamic_alternate ? num_max_targe
  * dispatch implementations depending on those invocation parameters.
  */
 void kernel_main() {
+    return;
     ///////////////////////////////////////////////////
     // ARGS
     ///////////////////////////////////////////////////

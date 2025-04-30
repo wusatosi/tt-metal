@@ -17,6 +17,7 @@
 // SPLIT REDUCE across Cores
 namespace NAMESPACE {
 void MAIN {
+    return;
     constexpr uint32_t num_blocks_first_stage = get_compile_time_arg_val(0);
     constexpr uint32_t block_w = get_compile_time_arg_val(1);
     constexpr uint32_t subblock_w_const = get_compile_time_arg_val(2);

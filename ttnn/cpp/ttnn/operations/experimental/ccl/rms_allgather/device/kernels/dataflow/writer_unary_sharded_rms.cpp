@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <utility>
 void kernel_main() {
+    return;
     constexpr bool is_all_to_all_worker = get_compile_time_arg_val(0) == 1;
     constexpr uint32_t cb_in_2 = get_compile_time_arg_val(1);
     constexpr uint32_t cb_in_4 = get_compile_time_arg_val(2);

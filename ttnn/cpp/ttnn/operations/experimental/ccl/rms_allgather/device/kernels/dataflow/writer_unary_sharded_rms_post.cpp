@@ -10,6 +10,7 @@
 #include "reshard_writer.hpp"
 
 void kernel_main() {
+    return;
     // Run Parameters CTs
     constexpr bool is_all_to_all_worker = get_compile_time_arg_val(0) == 1;
     constexpr bool fuse_gamma = get_compile_time_arg_val(1) == 1;

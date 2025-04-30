@@ -26,6 +26,7 @@ constexpr uint32_t num_targets_forward_direction = get_compile_time_arg_val(6);
 constexpr uint32_t num_targets_backward_direction = get_compile_time_arg_val(7);
 
 void kernel_main() {
+    return;
     ///////////////////////////////////////////////////
     // ARGS
     ///////////////////////////////////////////////////

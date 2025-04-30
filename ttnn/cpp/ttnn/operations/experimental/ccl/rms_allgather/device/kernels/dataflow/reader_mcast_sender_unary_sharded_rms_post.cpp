@@ -8,6 +8,7 @@
 
 // split REDUCE across cores
 void kernel_main() {
+    return;
     uint32_t reduce_sender_semaphore_addr = get_semaphore(get_compile_time_arg_val(0));
     constexpr uint32_t num_blocks = get_compile_time_arg_val(1);
     constexpr uint32_t tile_size = get_compile_time_arg_val(2);

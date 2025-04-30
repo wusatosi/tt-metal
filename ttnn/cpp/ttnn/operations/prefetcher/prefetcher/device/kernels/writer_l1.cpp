@@ -46,22 +46,22 @@ void kernel_main() {
             uint32_t curr_block_size = curr_block_num_tiles * curr_single_tile_sizes;
             uint32_t curr_block_size_per_receiver = curr_block_size / num_receivers;
 
-            experimental::resize_remote_sender_cb_interface<true>(remote_cb_id, curr_block_size_per_receiver, noc);
-            experimental::remote_cb_reserve_back(remote_cb_id, num_blocks);
+            // experimental::resize_remote_sender_cb_interface<true>(remote_cb_id, curr_block_size_per_receiver, noc);
+            // experimental::remote_cb_reserve_back(remote_cb_id, num_blocks);
 
             for (uint32_t block = 0; block < num_blocks; ++block) {
                 {
                     cb_wait_front(local_cb_id, max_block_num_tiles);
 
                     uint32_t local_cb_addr = get_read_ptr(local_cb_id);
-                    experimental::remote_cb_push_back_and_write_pages<skip_ptr_update>(
-                        remote_cb_id,
-                        local_cb_addr,
-                        1,  // wrt to the size of the packet (curr_block_size)
-                        curr_block_height_in_tiles,
-                        curr_coalesced_num_pages,
-                        curr_coalesced_page_size,
-                        noc);
+                    // experimental::remote_cb_push_back_and_write_pages<skip_ptr_update>(
+                    //     remote_cb_id,
+                    //     local_cb_addr,
+                    //     1,  // wrt to the size of the packet (curr_block_size)
+                    //     curr_block_height_in_tiles,
+                    //     curr_coalesced_num_pages,
+                    //     curr_coalesced_page_size,
+                    //     noc);
 
                     cb_pop_front(local_cb_id, max_block_num_tiles);
                 }
@@ -69,7 +69,7 @@ void kernel_main() {
         }
     }
 
-    experimental::remote_cb_sender_barrier(remote_cb_id);
+    // experimental::remote_cb_sender_barrier(remote_cb_id);
 
     experimental::update_remote_cb_config_in_l1(remote_cb_id);
 

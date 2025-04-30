@@ -7,6 +7,7 @@
 
 namespace NAMESPACE {
 void MAIN {
+    return;
     // Define all compile-time arguments at the beginning
     constexpr uint32_t fabric_receiver_cb_id = get_compile_time_arg_val(0);
     constexpr uint32_t accumulator_cb_id = get_compile_time_arg_val(1);

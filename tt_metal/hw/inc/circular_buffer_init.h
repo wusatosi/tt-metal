@@ -82,7 +82,7 @@ inline void setup_remote_cb_interfaces(
             sender_cb_interface.aligned_pages_sent_ptr = aligned_pages_sent_addr;
             sender_cb_interface.num_receivers = num_receivers;
             // Using posted semaphore inc
-            resize_remote_sender_cb_interface<update_remote_over_noc>(cb_id, page_size, noc, nm, posted, cmd_buf);
+            // resize_remote_sender_cb_interface<update_remote_over_noc>(cb_id, page_size, noc, nm, posted, cmd_buf);
         } else {
             uint32_t aligned_pages_acked_addr = aligned_pages_sent_addr + L1_ALIGNMENT;
             uint32_t sender_noc_x = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(remote_noc_xy_addr)[0];
@@ -95,7 +95,7 @@ inline void setup_remote_cb_interfaces(
             receiver_cb_interface.sender_noc_y = sender_noc_y;
             receiver_cb_interface.aligned_pages_acked_ptr = aligned_pages_acked_addr;
             // Using posted semaphore inc
-            resize_remote_receiver_cb_interface<update_remote_over_noc>(cb_id, page_size, noc, nm, posted, cmd_buf);
+            // resize_remote_receiver_cb_interface<update_remote_over_noc>(cb_id, page_size, noc, nm, posted, cmd_buf);
         }
         circular_buffer_config_addr += UINT32_WORDS_PER_REMOTE_CIRCULAR_BUFFER_CONFIG;
     }

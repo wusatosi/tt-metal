@@ -23,6 +23,7 @@ FORCE_INLINE std::uint64_t static_noc_multicast_addr(
 }
 
 void kernel_main() {
+    return;
     // Constants for indexing
     constexpr uint8_t x_index = 0;
     constexpr uint8_t y_index = 1;

@@ -30,6 +30,7 @@ constexpr uint32_t num_sync_targets_forward = dynamic_alternate ? num_max_target
 constexpr uint32_t num_sync_targets_backward = dynamic_alternate ? num_max_targets : num_targets_backward_direction;
 
 void kernel_main() {
+    return;
     ///////////////////////////////////////////////////
     // ARGS
     ///////////////////////////////////////////////////
