@@ -35,10 +35,33 @@ from models.experimental.mochi.tt.common import (
         ("blocks.0.mlp_y", 1536, 118, False),
     ],
 )
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_feedforward_inference(mesh_device, seq_len, use_program_cache, reset_seeds, ff_path, in_feat, seq_shard):
+    # Fabric setup
+    compute_grid_size = mesh_device.compute_with_storage_grid_size()
+    ccl_sub_device_crs = ttnn.CoreRangeSet(
+        {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
+    )
+    worker_sub_device = ttnn.SubDevice(
+        [
+            ccl_sub_device_crs,
+        ]
+    )
+    worker_sub_device_id = ttnn.SubDeviceId(0)
+    sub_device_stall_group = [worker_sub_device_id]
+    sub_device_manager = mesh_device.create_sub_device_manager([worker_sub_device], 0)
+    mesh_device.load_sub_device_manager(sub_device_manager)
+    mesh_device.set_sub_device_stall_group(sub_device_stall_group)
+    # create global semaphore handles
+    if seq_shard:
+        ccl_semaphore_handles = {
+            s: ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0) for s in ["w1", "w2", "w3"]
+        }
+    else:
+        ccl_semaphore_handles = {s: ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0) for s in ["w2_in"]}
+
     dtype = ttnn.bfloat16
 
-    mesh_device.enable_async(True)
     from safetensors.torch import load_file
 
     weights_path = os.path.join(get_mochi_dir(), "dit.safetensors")
@@ -89,7 +112,7 @@ def test_tt_feedforward_inference(mesh_device, seq_len, use_program_cache, reset
     )
 
     logger.info("Run TtFeedForward")
-    tt_output = tt_model(tt_input)
+    tt_output = tt_model(tt_input, ccl_semaphore_handles, worker_sub_device_id, ttnn.Topology.Ring)
 
     if seq_shard:
         tt_output_torch = ttnn.to_torch(tt_output, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-2))[
@@ -97,6 +120,10 @@ def test_tt_feedforward_inference(mesh_device, seq_len, use_program_cache, reset
         ]
     else:
         tt_output_torch = ttnn.to_torch(tt_output, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-1))
+
+    # Tear down what we created for fabric
+    mesh_device.reset_sub_device_stall_group()
+    mesh_device.clear_loaded_sub_device_manager()
 
     # Get reference output from the reference model
     reference_output = reference_model(torch_input)

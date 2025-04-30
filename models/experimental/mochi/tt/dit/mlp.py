@@ -58,9 +58,9 @@ class FeedForward(LightweightModule):
         # Sharded weights
         # Split w1 and w3 into two separate tensors
         w1_tensor, w3_tensor = torch_weight("w1").chunk(2, dim=-1)
-        self.w1 = as_tensor("w1", w1_tensor, ttnn.bfloat16, dim=-1)
-        self.w3 = as_tensor("w3", w3_tensor, ttnn.bfloat16, dim=-1)
-        self.w2 = as_tensor("w2", torch_weight("w2"), ttnn.bfloat16, dim=-1)
+        self.w1 = ttnn.unsqueeze_to_4D(as_tensor("w1", w1_tensor, ttnn.bfloat16, dim=-1))
+        self.w3 = ttnn.unsqueeze_to_4D(as_tensor("w3", w3_tensor, ttnn.bfloat16, dim=-1))
+        self.w2 = ttnn.unsqueeze_to_4D(as_tensor("w2", torch_weight("w2"), ttnn.bfloat16, dim=-1))
 
         if seq_shard:
             self.w13_config = partial(
@@ -102,15 +102,30 @@ class FeedForward(LightweightModule):
         ttnn.deallocate(self.w2)
         ttnn.deallocate(self.w3)
 
-    def forward(self, x_1BSD: ttnn.Tensor) -> ttnn.Tensor:
+    def forward(
+        self,
+        x_1BSD: ttnn.Tensor,
+        ccl_semaphore_handles: dict,
+        worker_sub_device_id: ttnn.SubDeviceId,
+        topology: ttnn.Topology,
+    ) -> ttnn.Tensor:
         B = x_1BSD.shape[1]
         S = x_1BSD.shape[2]
         D = x_1BSD.shape[3]
         assert B == 1, "Batch size must be 1, got {}".format(B)
 
         # W1 computation (includes both x and gate paths)
+
         if self.seq_shard:
-            w1 = ttnn.all_gather(self.w1, dim=-1)
+            w1 = ttnn.experimental.all_gather_async(
+                self.w1,
+                dim=3,
+                multi_device_global_semaphore=ccl_semaphore_handles["w1"],
+                num_links=1,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                topology=topology,
+                subdevice_id=worker_sub_device_id,
+            )
         else:
             w1 = self.w1
         w1_out_1BSF = ttnn.linear(
@@ -123,10 +138,17 @@ class FeedForward(LightweightModule):
         )
 
         if self.seq_shard:
-            w3 = ttnn.all_gather(self.w3, dim=-1)
+            w3 = ttnn.experimental.all_gather_async(
+                self.w3,
+                dim=3,
+                multi_device_global_semaphore=ccl_semaphore_handles["w3"],
+                num_links=1,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                topology=topology,
+                subdevice_id=worker_sub_device_id,
+            )
         else:
             w3 = self.w3
-
         w3_out_1BSF = ttnn.linear(
             x_1BSD,
             w3,
@@ -147,10 +169,26 @@ class FeedForward(LightweightModule):
 
         # W2 computation
         if self.seq_shard:
-            w2 = ttnn.all_gather(self.w2, dim=-1)
+            w2 = ttnn.experimental.all_gather_async(
+                self.w2,
+                dim=3,
+                multi_device_global_semaphore=ccl_semaphore_handles["w2"],
+                num_links=1,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                topology=topology,
+                subdevice_id=worker_sub_device_id,
+            )
         else:
             w2 = self.w2
-            w2_in_1BSF = ttnn.all_gather(w2_in_1BSF, dim=3)
+            w2_in_1BSF = ttnn.experimental.all_gather_async(
+                w2_in_1BSF,
+                dim=3,
+                multi_device_global_semaphore=ccl_semaphore_handles["w2_in"],
+                num_links=1,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                topology=topology,
+                subdevice_id=worker_sub_device_id,
+            )
         result_1BSD = ttnn.linear(
             w2_in_1BSF,
             w2,
@@ -160,5 +198,8 @@ class FeedForward(LightweightModule):
             program_config=self.w2_config(m=S),
         )
 
-        result_1BSD = ttnn.reshape(result_1BSD, (1, B, S, D // (1 if self.seq_shard else self.num_devices)))
+        # Necessary to infuse padded shape into output (deleted by all_gather_async)
+        result_1BSD = ttnn.reshape(
+            result_1BSD, (1, B, S, D // (1 if self.seq_shard else self.num_devices)), result_1BSD.shape
+        )
         return result_1BSD
