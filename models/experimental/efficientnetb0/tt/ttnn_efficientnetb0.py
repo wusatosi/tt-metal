@@ -255,8 +255,7 @@ class MBConvBlock:
             conv_params=conv_params._se_expand,
             shard_layout=ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         )
-        # if id == 5:
-        #     self.shard_layout = ttnn.ttnn.TensorMemoryLayout.WIDTH_SHARDED
+
         self._project_conv = Conv2dDynamicSamePadding(
             device,
             parameters=parameters["_project_conv"],
@@ -277,28 +276,10 @@ class MBConvBlock:
             x = ttnn.sharded_to_interleaved(x, ttnn.L1_MEMORY_CONFIG)
         x = ttnn.global_avg_pool2d(x)
         x = self._se_reduce(x)
-        # x = input_preprocessing(x, self.batch, x.shape[3], 1, 1)
-        # x = x * torch.sigmoid(x)
-        # x = x.reshape(
-        #         1,
-        #         1,
-        #         self.batch * x.shape[2] * x.shape[3],
-        #         x.shape[1],
-        #     )
 
-        # x = ttnn.from_torch(x, dtype=ttnn.bfloat16)
         x = x * ttnn.sigmoid(x)
         x = self._se_expand(x)
-        # x = input_preprocessing(x, self.batch, x.shape[3], 1, 1)
-        # x = x * torch.sigmoid(x)
-        # x = x.reshape(
-        #         1,
-        #         1,
-        #         self.batch * x.shape[2] * x.shape[3],
-        #         x.shape[1],
-        #     )
 
-        # x = ttnn.from_torch(x, dtype=ttnn.bfloat16)
         x = ttnn.sigmoid(x)
         mul1_interleaved = mul1
         if mul1.is_sharded():
@@ -445,7 +426,6 @@ class Efficientnetb0:
             shard_layout=ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         )
 
-        # self._avg_pooling = nn.AdaptiveAvgPool2d(output_size=1)
         self.l1_weight = parameters["l1"]["weight"]
         self.l1_bias = parameters["l1"]["bias"]
 
@@ -454,95 +434,48 @@ class Efficientnetb0:
         x = x * ttnn.sigmoid(x)
 
         x = self._blocks0(x)
-        # torch.save(
-        #     ttnn.to_torch(x).reshape(1, 112, 112, 16).permute(0, 3, 1, 2),
-        #     "models/experimental/functional_mobilenetv2/dumps/block0tt",
-        # )
 
         x_1 = self._blocks1(x)
         x = self._blocks2(x_1)
-        # if x.is_sharded():
-        #     x = ttnn.sharded_to_interleaved(x, ttnn.L1_MEMORY_CONFIG)
 
         x = ttnn.add(x, x_1)
         x_3 = self._blocks3(x)
         x = self._blocks4(x_3)
 
-        # if x.is_sharded():
-        #     x = ttnn.sharded_to_interleaved(x, ttnn.L1_MEMORY_CONFIG)
-        # if x_3.is_sharded():
-        #     x_3 = ttnn.sharded_to_interleaved(x_3, ttnn.L1_MEMORY_CONFIG)
-
         x = x + x_3
         x_5 = self._blocks5(x)
         x = self._blocks6(x_5)
 
-        # if x_5.is_sharded():
-        #     x_5 = ttnn.sharded_to_interleaved(x_5, ttnn.L1_MEMORY_CONFIG)
-
         x_7_in = x + x_5
         x = self._blocks7(x_7_in)
-
-        # if x.is_sharded():
-        #     x = ttnn.sharded_to_interleaved(x, ttnn.L1_MEMORY_CONFIG)
-        # if x_7_in.is_sharded():
-        #     x_7_in = ttnn.sharded_to_interleaved(x_7_in, ttnn.L1_MEMORY_CONFIG)
 
         x = x_7_in + x
         x_8 = self._blocks8(x)
         x = self._blocks9(x_8)
 
-        # if(x.is_sharded()):
-        #     x = ttnn.sharded_to_interleaved(x, ttnn.L1_MEMORY_CONFIG)
-        # if(x_8.is_sharded()):
-        #     x_8 = ttnn.sharded_to_interleaved(x_8, ttnn.L1_MEMORY_CONFIG)
-
         x_10_in = x + x_8
         x = self._blocks10(x_10_in)
-        # x = ttnn.sharded_to_interleaved(x, ttnn.L1_MEMORY_CONFIG)
 
         x = x + x_10_in
         x_11 = self._blocks11(x)
         x = self._blocks12(x_11)
 
-        # x = ttnn.sharded_to_interleaved(x, ttnn.L1_MEMORY_CONFIG)
-        # x_11 = ttnn.sharded_to_interleaved(x_11, ttnn.L1_MEMORY_CONFIG)
-
         x_13_in = x + x_11
         x = self._blocks13(x_13_in)
-
-        # x = ttnn.sharded_to_interleaved(x, ttnn.L1_MEMORY_CONFIG)
 
         x_14_in = x + x_13_in
         x = self._blocks14(x)
 
-        # x = ttnn.sharded_to_interleaved(x, ttnn.L1_MEMORY_CONFIG)
-
         x = x_14_in + x
         x = self._blocks15(x)
         x = self._conv_head(x)
-        torch.save(
-            ttnn.to_torch(x).reshape(1, 7, 7, 1280).permute(0, 3, 1, 2),
-            "models/experimental/mobilenetv2/dumps/conv_head_tt",
-        )
 
         x = x * ttnn.sigmoid(x)
-        torch.save(
-            ttnn.to_torch(x).reshape(1, 7, 7, 1280).permute(0, 3, 1, 2),
-            "models/experimental/mobilenetv2/dumps/conv_head_sigmoid",
-        )
 
         x = ttnn.sharded_to_interleaved(x, memory_config=ttnn.L1_MEMORY_CONFIG)
         x = ttnn.global_avg_pool2d(x)
 
         x = ttnn.reshape(x, (1, -1))
-
-        # x = ttnn.from_torch(x, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=self.device)
-        # # x = ttnn.to_memory_config(x, ttnn.L1_MEMORY_CONFIG)
-        # # self.l1_weight = preprocess_linear_weight(self.l1_weight, dtype=ttnn.bfloat16)
-        # # self.l1_bias = preprocess_linear_bias(self.l1_bias, dtype=ttnn.bfloat16)
-        # # self.l1_weight = ttnn.to_device(self.l1_weight, self.device)
-        # # self.l1_bias = ttnn.to_device(self.l1_bias, self.device)
 
         x = ttnn.linear(x, self.l1_weight, bias=self.l1_bias)
 
