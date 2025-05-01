@@ -57,7 +57,7 @@ jobs:
           name: ${{ inputs.wheel-artifact-name }}
       - name: Enable Performance mode
         # Only touch the perf governor if we're running on a baremetal machine
-        if: ${{ contains(matrix.test-group.name, 'performance') && inputs.runner-label == 'BH-baremetal' }}
+        if: ${{ contains(matrix.test-group.name, 'performance') && inputs.runner-label == 'gh06' }}
         run: |
           sudo cpupower frequency-set -g performance
       - name: Run demo regression tests
