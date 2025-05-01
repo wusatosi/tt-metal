@@ -176,7 +176,7 @@ AllGatherAsyncVersion AllGatherAsync::select_version(const Tensor& input_tensor)
     log_trace(tt::LogOp, "[select_version] input_shard_num_cores: {}", input_shard_num_cores);
     log_trace(tt::LogOp, "[select_version] output_shard_num_cores: {}", output_shard_num_cores);
 
-    if (AllGatherAsync::best_effort_interleave(input_tensor, dim, output_mem_config.buffer_type)) {
+    if (AllGatherAsync::best_effort_interleave(input_tensor, dim, output_mem_config.buffer_type) && num_links == 1) {
         return AllGatherAsyncVersion::MINIMAL_INTERLEAVED_32;
     }
 
