@@ -1049,7 +1049,7 @@ bool check_dateline(
     return false;
 }
 
-std::unique_ptr<Program> create_and_compile_1d_fabric_program(IDevice* device, FabricConfig fabric_config) {
+std::unique_ptr<Program> create_and_compile_tt_fabric_program(IDevice* device, FabricConfig fabric_config) {
     using namespace tt_fabric;
     std::unique_ptr<Program> fabric_program_ptr;
     auto control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
@@ -1060,7 +1060,7 @@ std::unique_ptr<Program> create_and_compile_1d_fabric_program(IDevice* device, F
     std::unordered_map<RoutingDirection, chip_id_t> chip_neighbors;
     std::unordered_map<chan_id_t, tt::tt_fabric::FabricEriscDatamoverBuilder> edm_builders;
     auto routing_directions = {RoutingDirection::N, RoutingDirection::S, RoutingDirection::E, RoutingDirection::W};
-    Topology topology = get_1d_topology(fabric_config);
+    Topology topology = get_tt_fabric_topology(fabric_config);
 
     if (device->is_mmio_capable() &&
         (tt::tt_metal::MetalContext::instance().get_cluster().get_cluster_type() == tt::ClusterType::TG)) {
@@ -1102,7 +1102,7 @@ std::unique_ptr<Program> create_and_compile_1d_fabric_program(IDevice* device, F
     }
 
     fabric_program_ptr = std::make_unique<Program>();
-    const auto edm_config = get_1d_fabric_config();
+    const auto edm_config = get_tt_fabric_config();
     auto soc_desc = tt::tt_metal::MetalContext::instance().get_cluster().get_soc_desc(device->id());
 
     // Refactor this once mesh_id has row/col control
@@ -1252,18 +1252,17 @@ std::unique_ptr<Program> create_and_compile_1d_fabric_program(IDevice* device, F
 
 std::unique_ptr<Program> create_and_compile_fabric_program(IDevice* device) {
     auto fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
-    if (tt_fabric::is_1d_fabric_config(fabric_config)) {
-        return create_and_compile_1d_fabric_program(device, fabric_config);
+    if (tt_fabric::is_tt_fabric_config(fabric_config)) {
+        return create_and_compile_tt_fabric_program(device, fabric_config);
     } else if (tt_fabric::is_2d_fabric_config(fabric_config)) {
-        // return create_and_compile_2d_fabric_program(device, fabric_config);
-        return create_and_compile_1d_fabric_program(device, fabric_config);
+        return create_and_compile_2d_fabric_program(device, fabric_config);
     }
     return nullptr;
 }
 
 void configure_fabric_cores(IDevice* device) {
     auto fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
-    if (fabric_config == tt::tt_metal::FabricConfig::FABRIC_2D) {
+    if (tt_fabric::is_2d_fabric_config(fabric_config)) {
         configure_2d_fabric_cores(device);
     }
 }

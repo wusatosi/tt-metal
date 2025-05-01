@@ -16,17 +16,17 @@
 
 namespace tt::tt_fabric {
 
-bool is_1d_fabric_config(tt::tt_metal::FabricConfig fabric_config) {
+bool is_tt_fabric_config(tt::tt_metal::FabricConfig fabric_config) {
     return fabric_config == tt::tt_metal::FabricConfig::FABRIC_1D ||
-           fabric_config == tt::tt_metal::FabricConfig::FABRIC_1D_RING;
-}
-
-bool is_2d_fabric_config(tt::tt_metal::FabricConfig fabric_config) {
-    return fabric_config == tt::tt_metal::FabricConfig::FABRIC_2D ||
+           fabric_config == tt::tt_metal::FabricConfig::FABRIC_1D_RING ||
            fabric_config == tt::tt_metal::FabricConfig::FABRIC_2D_PUSH;
 }
 
-Topology get_1d_topology(tt::tt_metal::FabricConfig fabric_config) {
+bool is_2d_fabric_config(tt::tt_metal::FabricConfig fabric_config) {
+    return fabric_config == tt::tt_metal::FabricConfig::FABRIC_2D;
+}
+
+Topology get_tt_fabric_topology(tt::tt_metal::FabricConfig fabric_config) {
     switch (fabric_config) {
         case tt::tt_metal::FabricConfig::FABRIC_1D: return tt::tt_fabric::Topology::Linear;
         case tt::tt_metal::FabricConfig::FABRIC_1D_RING: return tt::tt_fabric::Topology::Ring;

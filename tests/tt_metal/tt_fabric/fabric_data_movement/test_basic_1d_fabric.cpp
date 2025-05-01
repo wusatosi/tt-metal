@@ -93,7 +93,7 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
     auto receiver_noc_encoding =
         tt::tt_metal::MetalContext::instance().hal().noc_xy_encoding(receiver_virtual_core.x, receiver_virtual_core.y);
 
-    const auto edm_config = get_1d_fabric_config();
+    const auto edm_config = get_tt_fabric_config();
 
     // test parameters
     uint32_t packet_header_address = 0x25000;

@@ -14,10 +14,10 @@
 
 namespace tt::tt_fabric {
 
-bool is_1d_fabric_config(tt::tt_metal::FabricConfig fabric_config);
+bool is_tt_fabric_config(tt::tt_metal::FabricConfig fabric_config);
 bool is_2d_fabric_config(tt::tt_metal::FabricConfig fabric_config);
 
-Topology get_1d_topology(tt::tt_metal::FabricConfig fabric_config);
+Topology get_tt_fabric_topology(tt::tt_metal::FabricConfig fabric_config);
 
 FabricType get_fabric_type(tt::tt_metal::FabricConfig fabric_config, tt::ClusterType cluster_type);
 
