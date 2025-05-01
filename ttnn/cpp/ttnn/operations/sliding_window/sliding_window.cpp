@@ -1046,17 +1046,18 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                 flat_data[1][idx2++] = 0;
                 int ref_ind = nocx - noc_00.x + (nocy - noc_00.y) * num_cores_x;
                 printf("        ref ind: %d\n", ref_ind);
-                int local_count = flattened_local_config[0][ref_ind][2] / 4;
-                // for (int i = 0; i < local_count; ++i) {
+                int local_ref_count = flattened_local_config[0][ref_ind][2] / 4;
+                int local_core_count = flattened_local_config[0][core][2] / 4;
+                // for (int i = 0; i < local_ref_count; ++i) {
                 //     printf("        src: %d, dst: %d, size: %d\n", flattened_local_config[0][ref_ind][3 + 3 * i],
                 //         flattened_local_config[0][ref_ind][4 + 3 * i],
                 //         flattened_local_config[0][ref_ind][5 + 3 * i]);
                 // }
                 int first_local_dst_relative_src = flattened_local_config[0][ref_ind][3] + in_out_shard_size_delta;
                 int last_local_dst_relative_src =
-                    flattened_local_config[0][ref_ind][3 + 4 * (local_count - 1)] + in_out_shard_size_delta;
+                    flattened_local_config[0][ref_ind][3 + 4 * (local_ref_count - 1)] + in_out_shard_size_delta;
                 int first_local_size = flattened_local_config[0][ref_ind][5];
-                int last_local_size = flattened_local_config[0][ref_ind][5 + 4 * (local_count - 1)];
+                int last_local_size = flattened_local_config[0][ref_ind][5 + 4 * (local_ref_count - 1)];
                 int low_local_bound;
                 int high_local_bound;
                 bool forward_local;
@@ -1095,17 +1096,25 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                         idx1 = flat_data[0][len_idx1] ? idx1 : idx1 - 4;  // TODO: should this be 3 or 4
 
                         // edit the no_wait value for the local config
-                        bool no_wait_streak = true;
-                        for (int j = 0; j < local_count; ++j) {
+                        for (int j = 0; j < local_core_count; ++j) {
                             int local_src = flattened_local_config[0][core][3 + 4 * j];
                             int local_size = flattened_local_config[0][core][5 + 4 * j];
+                            bool no_wait_possible = true;
                             if ((local_src >= src_start && local_src < (src_start + length)) ||
                                 ((local_src + local_size - 1) >= src_start &&
                                  (local_src + local_size - 1) < (src_start + length))) {
-                                no_wait_streak = false;
+                                no_wait_possible = false;
                             }
-                            no_wait_streak = flattened_local_config[0][core][6 + 4 * j] && no_wait_streak;
-                            flattened_local_config[0][core][6 + 4 * j] = no_wait_streak;  // local no_wait = false
+                            printf(
+                                "local_src: %d, local_size: %d, no_wait_possible: %d\n",
+                                local_src,
+                                local_size,
+                                no_wait_possible);
+                            if (!no_wait_possible) {
+                                for (int k = j; k < local_core_count; ++k) {
+                                    flattened_local_config[0][core][6 + 4 * k] = 0;
+                                }
+                            }
                         }
                     } else {
                         if (vector_id) {

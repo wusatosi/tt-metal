@@ -169,8 +169,8 @@ void copy_sticks_async_local(
                 continue;
             }
 
-            // DPRINT << "no_wait: " << no_wait << ", src_local_idx: " << src_local_idx
-            //        << ", dst_local_idx: " << dst_local_idx << ", nsticks: " << nsticks << ENDL();
+            DPRINT << "no_wait: " << no_wait << ", src_local_idx: " << src_local_idx
+                   << ", dst_local_idx: " << dst_local_idx << ", nsticks: " << nsticks << ENDL();
 
             uint32_t size = nsticks * stick_nbytes;
             uint32_t dst_offset = dst_local_idx * stick_nbytes;

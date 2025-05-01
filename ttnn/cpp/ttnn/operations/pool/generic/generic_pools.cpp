@@ -132,19 +132,19 @@ Tensor Pool2DOp<pool_type>::invoke(
         is_out_tiled,
         in_place_halo);
 
-    // auto output_tensor = ttnn::prim::pool2d(
-    //     queue_id,
-    //     haloed_tensor,
-    //     sliding_window_config,
-    //     pool_type,
-    //     DataType::BFLOAT16,      // input_tensor.dtype(), // currently only bfp16 output is supported
-    //     out_memory_config);
+    auto output_tensor = ttnn::prim::pool2d(
+        queue_id,
+        haloed_tensor,
+        sliding_window_config,
+        pool_type,
+        DataType::BFLOAT16,      // input_tensor.dtype(), // currently only bfp16 output is supported
+        out_memory_config);
 
-    // if (memory_config.has_value() && memory_config.value() != out_memory_config) {
-    //     output_tensor = ttnn::to_memory_config(output_tensor, memory_config.value(), std::nullopt);
-    // }
+    if (memory_config.has_value() && memory_config.value() != out_memory_config) {
+        output_tensor = ttnn::to_memory_config(output_tensor, memory_config.value(), std::nullopt);
+    }
 
-    return haloed_tensor;
+    return output_tensor;
 }
 
 template class Pool2DOp<Pool2DType::MAX_POOL2D>;
