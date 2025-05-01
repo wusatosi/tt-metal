@@ -165,9 +165,12 @@ void copy_sticks_async_local(
             uint16_t dst_local_idx = config_data[i + j + 1];
             uint16_t nsticks = config_data[i + j + 2];
             uint16_t no_wait = config_data[i + j + 3];
-            // if (no_wait != no_wait_pass) {  // only copy sticks matching whether this is a no_wait core or not
-            //     continue;
-            // }
+            if (no_wait != no_wait_pass) {  // only copy sticks matching the no_wait condition
+                continue;
+            }
+
+            DPRINT << "no_wait: " << no_wait << ", src_local_idx: " << src_local_idx
+                   << ", dst_local_idx: " << dst_local_idx << ", nsticks: " << nsticks << ENDL();
 
             uint32_t size = nsticks * stick_nbytes;
             uint32_t dst_offset = dst_local_idx * stick_nbytes;
@@ -293,7 +296,6 @@ void kernel_main() {
 
     // copy remote sticks to temp buffer or their final destinations
     if constexpr (!no_wait_remote) {
-        DPRINT << "remote to temp/final" << ENDL();
         const uint32_t temp_base_l1_addr = get_write_ptr(remote_temp_cb_id);
         uint32_t config_data_l1_addr = get_read_ptr(remote_config_cb_id);
         const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
@@ -312,18 +314,21 @@ void kernel_main() {
         // tt::data_movement::common::print_bf16_pages(temp_base_l1_addr, 64, 97);
     }
 
+    noc_async_read_barrier();
+    noc_async_write_barrier();
+    cb_wait_front(sync_cb_id, 1);
+
     // move the no wait local sticks
     if constexpr (local_config_cb_id) {
-        DPRINT << "local no wait" << ENDL();
-        // uint32_t config_data_l1_addr = get_read_ptr(local_config_cb_id);
-        // const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
-        // copy_sticks_async_local<stick_nbytes, input_aligned_page_size, 1>(  // no wait pass
-        //     config_data,
-        //     my_noc_x,
-        //     my_noc_y,
-        //     in_base_l1_addr,
-        //     out_base_l1_addr,
-        //     in_out_buffer_start_delta);
+        uint32_t config_data_l1_addr = get_read_ptr(local_config_cb_id);
+        const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
+        copy_sticks_async_local<stick_nbytes, input_aligned_page_size, 1>(  // no wait pass
+            config_data,
+            my_noc_x,
+            my_noc_y,
+            in_base_l1_addr,
+            out_base_l1_addr,
+            in_out_buffer_start_delta);
 
         noc_async_read_barrier();
         noc_async_write_barrier();
@@ -331,11 +336,12 @@ void kernel_main() {
         cb_push_back(sync_cb_id, 1);
     }
 
+    noc_async_read_barrier();
+    noc_async_write_barrier();
     cb_wait_front(sync_cb_id, 2);
 
     // move the wait local sticks
     if constexpr (local_config_cb_id) {
-        DPRINT << "local wait" << ENDL();
         // cb_pop_front(sync_cb_id, 2);
 
         uint32_t config_data_l1_addr = get_read_ptr(local_config_cb_id);
@@ -366,19 +372,15 @@ void kernel_main() {
         const uint64_t mcast_noc_addr = get_noc_multicast_addr(noc_TL_x, noc_TL_y, noc_BR_x, noc_BR_y, semaphore_addr);
 
         noc_semaphore_set_multicast(semaphore_addr, mcast_noc_addr, rectangular_x * rectangular_y - 1);
-        DPRINT << "multicast sent" << ENDL();
     }
 
     // wait for multicast
     volatile tt_l1_ptr uint32_t* semaphore_noc_addr_ptr =
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(semaphore_noc_addr);
     noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_active_cores);
-    DPRINT << "waited for multicast" << ENDL();
 
     // insert padding
     if constexpr (padding_config_cb_id) {
-        DPRINT << "padding" << ENDL();
-
         // construct the pad stick in its buffer
         cb_reserve_back(pad_cb_id, 1);
         const uint16_t pad_val = pad_val_u32;
@@ -405,8 +407,6 @@ void kernel_main() {
 
     // copy remote sticks from temp buffer to final destinations
     if constexpr (!no_wait_remote && remote_temp_cb_id) {
-        DPRINT << "temp to final" << ENDL();
-
         const uint32_t temp_base_l1_addr = get_read_ptr(remote_temp_cb_id);
         uint32_t config_data_l1_addr = get_read_ptr(remote_config_cb_id);
         const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);

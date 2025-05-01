@@ -878,11 +878,14 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
         max_len += 2;  // account for the null plug
 
         std::vector<std::vector<std::vector<uint16_t>>> flattened_config(2);
+        int core = 0;
         for (const auto& data : config) {
+            printf("    core: %d\n", core);
             std::vector<std::vector<uint16_t>> flat_data(2, std::vector<uint16_t>(max_len, 0));
             uint32_t idx1 = 0, idx2 = 0;
             for (size_t i = 0; i < data.size(); ++i) {
                 auto [dst_start, length] = data[i];
+                printf("        dst: %d, size: %d\n", dst_start, length);
                 if (i % 2 == 0 || in_place) {
                     flat_data[0][idx1++] = dst_start;
                     flat_data[0][idx1++] = length;
@@ -894,6 +897,7 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
 
             flattened_config[0].emplace_back(std::move(flat_data[0]));
             flattened_config[1].emplace_back(std::move(flat_data[1]));
+            core++;
         }
         return flattened_config;
     };
@@ -1091,12 +1095,17 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                         idx1 = flat_data[0][len_idx1] ? idx1 : idx1 - 4;  // TODO: should this be 3 or 4
 
                         // edit the no_wait value for the local config
+                        bool no_wait_streak = true;
                         for (int j = 0; j < local_count; ++j) {
-                            int local_src = flattened_local_config[0][ref_ind][3 + 4 * j];
-                            int local_size = flattened_local_config[0][ref_ind][5 + 4 * j];
-                            if (local_src + local_size - 1 >= src_start && local_src <= src_start + length - 1) {
-                                flattened_local_config[0][ref_ind][6 + 4 * j] = 0;  // local no_wait = false
+                            int local_src = flattened_local_config[0][core][3 + 4 * j];
+                            int local_size = flattened_local_config[0][core][5 + 4 * j];
+                            if ((local_src >= src_start && local_src < (src_start + length)) ||
+                                ((local_src + local_size - 1) >= src_start &&
+                                 (local_src + local_size - 1) < (src_start + length))) {
+                                no_wait_streak = false;
                             }
+                            no_wait_streak = flattened_local_config[0][core][6 + 4 * j] && no_wait_streak;
+                            flattened_local_config[0][core][6 + 4 * j] = no_wait_streak;  // local no_wait = false
                         }
                     } else {
                         if (vector_id) {
