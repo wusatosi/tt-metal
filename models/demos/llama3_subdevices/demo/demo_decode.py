@@ -32,7 +32,11 @@ from models.demos.llama3_subdevices.tt.model_config import LlamaOptimizations
 TSU_PERF_DROP_LIMIT_COUNT = 20
 
 # Constants for TSU thresholds based on the number of layers
-TSU_THRESHOLDS = {1: {"min": 470, "max": 490}, 10: {"min": 195, "max": 215}, 80: {"min": 45, "max": 49}}
+TSU_THRESHOLDS = {
+    "4U": {1: {"min": 480, "max": 500}, 10: {"min": 195, "max": 215}, 80: {"min": 47, "max": 51}},
+    # TODO: Update thresholds for 6U 10L and 80L based on actual perf when 6U are available and added into CI
+    "6U": {1: {"min": 545, "max": 570}, 10: {"min": 230, "max": 250}, 80: {"min": 49, "max": 53}},
+}
 
 
 def load_and_cache_context(context_url, cache_dir, max_length=None):
@@ -113,6 +117,7 @@ def run_llama3_demo(
     stress_test,
     start_pos,
     enable_prefetcher_performance_mode=True,
+    galaxy_type="4U",
 ):
     # Creat batch output file
     benchmark_data = BenchmarkData()
@@ -268,7 +273,7 @@ def run_llama3_demo(
 
     # Prepare the encoded prompts for the decode input
     tt_out_tok = ttnn.from_torch(
-        encoded_prompts_tensor_whole_sequence[:, :1].reshape(1, 1, batch_size),
+        encoded_prompts_tensor_whole_sequence[:, :1].reshape(1, 1, 1, batch_size),
         device=mesh_device,
         dtype=ttnn.uint32,
         layout=ttnn.ROW_MAJOR_LAYOUT,
@@ -316,7 +321,7 @@ def run_llama3_demo(
             tt_out_rm, (1, 1, 1, tt_out_rm.shape[3]), (1, 1, tt_out_rm.shape[2], tt_out_rm.shape[3])
         )
         _ = ttnn.argmax(
-            tt_out_rm, dim=3, keepdim=False, use_multicore=True, output_tensor=tt_out_tok, sub_core_grids=sub_core_grids
+            tt_out_rm, dim=3, keepdim=True, use_multicore=True, output_tensor=tt_out_tok, sub_core_grids=sub_core_grids
         )
         logger.info(f"sampling done")
 
@@ -357,7 +362,7 @@ def run_llama3_demo(
     tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True, sub_core_grids=sub_core_grids)
     tt_out_rm = ttnn.reshape(tt_out_rm, (1, 1, 1, tt_out_rm.shape[3]), (1, 1, tt_out_rm.shape[2], tt_out_rm.shape[3]))
     _ = ttnn.argmax(
-        tt_out_rm, dim=3, keepdim=False, use_multicore=True, output_tensor=tt_out_tok, sub_core_grids=sub_core_grids
+        tt_out_rm, dim=3, keepdim=True, use_multicore=True, output_tensor=tt_out_tok, sub_core_grids=sub_core_grids
     )
 
     if not stress_test:
@@ -385,7 +390,7 @@ def run_llama3_demo(
     )
 
     tt_out_tok_reset = ttnn.from_torch(
-        encoded_prompts_tensor_whole_sequence[:, :1].reshape(1, 1, batch_size),
+        encoded_prompts_tensor_whole_sequence[:, :1].reshape(1, 1, 1, batch_size),
         dtype=ttnn.uint32,
         layout=ttnn.ROW_MAJOR_LAYOUT,
         mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, None), mesh_shape=model_args.cluster_shape),
@@ -414,7 +419,7 @@ def run_llama3_demo(
     profiler.start(f"inference_decode", iteration=iteration)
 
     # Determine TSU threshold based on layer count
-    tsu_thresholds = TSU_THRESHOLDS.get(layers)
+    tsu_thresholds = TSU_THRESHOLDS[galaxy_type].get(layers)
 
     # Tracks the number of iterations where throughput falls below `tsu_threshold`
     tsu_failures = 0
@@ -440,15 +445,15 @@ def run_llama3_demo(
             tt_out_tok_cpu,
             mesh_composer=ttnn.ConcatMesh2dToTensor(
                 mesh_device,
-                dims=(2, 1),
+                dims=(3, 1),
                 mesh_shape=model_args.cluster_shape,
             ),
-        )[0, 0, :batch_size]
+        )[0, 0, 0, :batch_size]
         # Append the generated token to the list of outputs
         if iteration in range(len(encoded_prompts[0])):
             all_outputs.append(encoded_prompts[0][iteration])  # Update list of TT outputs
             tt_out_tok_reset = ttnn.from_torch(
-                encoded_prompts_tensor_whole_sequence[:, iteration].reshape(1, 1, batch_size),
+                encoded_prompts_tensor_whole_sequence[:, iteration].reshape(1, 1, 1, batch_size),
                 dtype=ttnn.uint32,
                 layout=ttnn.ROW_MAJOR_LAYOUT,
                 mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, None), mesh_shape=model_args.cluster_shape),
@@ -677,6 +682,7 @@ def test_llama_demo(
     is_ci_env,
     reset_seeds,
     request,
+    galaxy_type,
 ):
     if is_ci_env and ("long" in input_prompts or optimizations == LlamaOptimizations.accuracy):
         pytest.skip("Do not run the 'long-context' or accuracy tests on CI to reduce load")
@@ -685,7 +691,8 @@ def test_llama_demo(
     if os.environ.get("FAKE_DEVICE") == "TG" and batch_size not in [1, 32]:
         pytest.skip("TG only supports batch 1 and 32")
 
-    mesh_device.enable_async(True)
+    if galaxy_type != "6U" and galaxy_type != "4U":
+        raise Exception("Not running on TG nor on 6U, you must run on those systems for this test")
 
     if paged_attention:
         paged_attention_config = PagedAttentionConfig(
@@ -716,4 +723,5 @@ def test_llama_demo(
         stress_test=stress_test,
         start_pos=start_pos,
         enable_prefetcher_performance_mode=enable_pf_perf_mode,
+        galaxy_type=galaxy_type,
     )
