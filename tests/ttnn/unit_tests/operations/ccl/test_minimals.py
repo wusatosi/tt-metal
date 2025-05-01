@@ -24,6 +24,40 @@ from tests.ttnn.unit_tests.operations.ccl.fusion_subtests.all_gather_silu_test i
 
 from models.perf.benchmarking_utils import BenchmarkData, BenchmarkProfiler
 
+from tests.ttnn.unit_tests.operations.ccl.test_all_gather_TG_post_commit import (
+    run_line_all_gather_on_TG_with_mesh_tensor_along_rows,
+)
+
+
+NUM_ITERATIONS = 75
+
+
+def get_core_range_set(output_core_grid):
+    if isinstance(output_core_grid, ttnn.CoreGrid):
+        output_core_range_set = ttnn.CoreRangeSet(
+            [
+                ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(output_core_grid.x - 1, output_core_grid.y - 1)),
+            ]
+        )
+    else:
+        output_core_range_set = ttnn.CoreRangeSet(
+            [
+                ttnn.CoreRange(
+                    ttnn.CoreCoord(x, y),
+                    ttnn.CoreCoord(x, y),
+                )
+                for x, y in output_core_grid
+            ]
+        )
+    return output_core_range_set
+
+
+CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
+    {
+        ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 0)),
+    }
+)
+
 
 def run_allgather_only_with_trace(
     mesh_device,
@@ -623,7 +657,7 @@ def test_concat_fuse(
         ),
     ],
 )
-@pytest.mark.parametrize("num_links", [3])
+@pytest.mark.parametrize("num_links", [4])
 @pytest.mark.parametrize(
     "input_dtype",
     [
@@ -637,7 +671,7 @@ def test_concat_fuse(
     [
         {
             "trace_region_size": 23887872,
-            "fabric_config": ttnn.FabricConfig.FABRIC_1D,
+            "fabric_config": ttnn.FabricConfig.FABRIC_1D_RING,
             "dispatch_core_axis": ttnn.DispatchCoreAxis.COL,
         }
     ],
@@ -676,7 +710,7 @@ def test_all_gather_silu(
         function_level_defaults,
         input_shard_shape,
         input_shard_grid,
-        all_gather_topology=ttnn.Topology.Linear,
+        all_gather_topology=ttnn.Topology.Ring,
         num_iters=num_iters,
         warmup_iters=warmup_iters,
         output_shard_shape=output_shard_shape,
@@ -684,4 +718,125 @@ def test_all_gather_silu(
         tensor_mem_layout=tensor_mem_layout,
         trace_mode=trace_mode,
         profiler=profiler,
+    )
+
+
+# Enumerate the post-commit cases explicitly
+@skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize(
+    "num_devices",
+    [
+        4,
+    ],
+)
+@pytest.mark.parametrize(
+    "input_dtype",
+    [
+        ttnn.bfloat8_b,
+    ],
+)
+@pytest.mark.parametrize(
+    "num_iters, warmup_iters",
+    [
+        (NUM_ITERATIONS, 10),
+    ],
+)
+@pytest.mark.parametrize("shard_grid_orientation", [ttnn.ShardOrientation.ROW_MAJOR])
+@pytest.mark.parametrize(
+    "tensor_mem_layout, output_shape, num_links, dim, input_shard_shape,input_shard_grid,output_shard_shape, output_shard_grid, layout",
+    (
+        (  # AllGather after Binary Mult+Silu
+            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+            (1, 1, 32, 3840),
+            3,
+            3,
+            (32, 32),
+            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(5, 4))}),
+            (32, 160),
+            get_core_range_set(PREFETCHER_NOC1_GRID),
+            ttnn.TILE_LAYOUT,
+        ),
+        (  # AllGather after Binary Mult+Silu
+            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+            (1, 1, 32, 3840),
+            3,
+            3,
+            (32, 32),
+            ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(5, 4))}),
+            (32, 160),
+            get_core_range_set(PREFETCHER_NOC1_GRID),
+            ttnn.TILE_LAYOUT,
+        ),
+    ),
+    ids=[
+        "sdpa",
+        "binary_mult",
+    ],
+)
+@pytest.mark.parametrize("replication_factor", [8])
+@pytest.mark.parametrize("mesh_device", [pytest.param((8, 4), id="8x4_grid")], indirect=True)
+@pytest.mark.parametrize(
+    "device_params", [{"trace_region_size": 17068032, "fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True
+)
+def test_all_gather_tg_llama(
+    mesh_device,
+    num_devices,
+    output_shape,
+    input_shard_shape,
+    input_shard_grid,
+    output_shard_shape,
+    output_shard_grid,
+    shard_grid_orientation,
+    tensor_mem_layout,
+    dim,
+    num_links,
+    input_dtype,
+    layout,
+    use_program_cache,
+    function_level_defaults,
+    replication_factor,
+    num_iters,
+    warmup_iters,
+):
+    if len(mesh_device.get_devices()) != 32:
+        pytest.skip("Not TG!")
+    input_shard_spec = ttnn.ShardSpec(
+        input_shard_grid,
+        input_shard_shape,
+        shard_grid_orientation,
+    )
+
+    if output_shard_grid is not None and output_shard_shape is not None:
+        output_shard_spec = ttnn.ShardSpec(
+            output_shard_grid,
+            output_shard_shape,
+            shard_grid_orientation,
+        )
+    else:
+        output_shard_spec = None
+
+    profiler = BenchmarkProfiler()
+
+    run_line_all_gather_on_TG_with_mesh_tensor_along_rows(
+        mesh_device,
+        num_devices,
+        output_shape,
+        tensor_mem_layout,
+        dim,
+        num_links,
+        input_dtype,
+        layout,
+        ttnn.BufferType.L1,
+        use_program_cache,
+        function_level_defaults,
+        num_iters=num_iters,
+        warmup_iters=warmup_iters,
+        input_shard_spec=input_shard_spec,
+        output_shard_spec=output_shard_spec,
+        num_all_gather_instances=replication_factor,
+        cluster_axis=1,
+        profiler=profiler,
+        trace_mode=True,
+        use_all_gather_async=True,
+        use_persistent_output=True,
     )

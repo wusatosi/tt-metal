@@ -69,8 +69,8 @@ perf_targets = {
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.5,
     },
-    "AllGatherAsync_0": {
-        "op_name": "AllGatherAsync_Binary_Mult",
+    "AllGatherSilu_0": {
+        "op_name": "AllGatherSilu",
         "kernel_duration": 10607.277777777777,
         "op_to_op": 959.5555,
         "non-overlapped-dispatch-time": 4351.1,

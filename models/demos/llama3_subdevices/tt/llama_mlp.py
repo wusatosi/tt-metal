@@ -159,8 +159,17 @@ class TtLlamaMLP(LightweightModule):
 
         ttnn.deallocate(w3_out_reduced)
         ttnn.deallocate(w1_out_reduced)
-
+        """
         w2_in = self.tt_ccl.line_all_gather(
+            ff1ff3,
+            dim=3,
+            cluster_axis=1,
+            num_links=3,
+            memory_config=self.model_config["FF2_IN_RING_MEMCFG"],
+            buffer_key="BINARY_MUL",
+        )
+        """
+        w2_in = self.tt_ccl.line_all_gather_silu(
             ff1ff3,
             dim=3,
             cluster_axis=1,

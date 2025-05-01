@@ -30,6 +30,7 @@ class TT_CCL:
         self.from_remote_semaphore_handles = []
         self.to_remote_semaphore_handles = []
         self.all_gather_concat_inter_tensor = self.get_all_gather_concat_inter_buffer()
+        self.all_gather_silu_inter_tensor = self.get_all_gather_silu_inter_buffer()
 
         # Double buffered on each axis
         self.gather_semaphore_handles = [[], []]
@@ -108,6 +109,59 @@ class TT_CCL:
             dtype=ttnn.bfloat16,
             memory_config=intermediate_mem_config,
             mesh_mapper=ttnn.ShardTensor2dMesh(self.mesh_device, dims=[0, 1], mesh_shape=[8, 4]),
+        )
+        check_mesh_tensor_alloc(tt_intermediate_tensor)
+        tt_intermediate_tensors = [tt_intermediate_tensor]
+        return tt_intermediate_tensors
+
+    def get_all_gather_silu_inter_buffer(self):
+        intermediate_core_range_set = ttnn.CoreRangeSet(
+            [
+                ttnn.CoreRange(ttnn.CoreCoord(6, 6), ttnn.CoreCoord(6, 6)),
+                ttnn.CoreRange(ttnn.CoreCoord(6, 7), ttnn.CoreCoord(6, 7)),
+                ttnn.CoreRange(ttnn.CoreCoord(6, 9), ttnn.CoreCoord(6, 9)),
+                ttnn.CoreRange(ttnn.CoreCoord(6, 0), ttnn.CoreCoord(6, 0)),
+                ttnn.CoreRange(ttnn.CoreCoord(6, 1), ttnn.CoreCoord(6, 1)),
+                ttnn.CoreRange(ttnn.CoreCoord(6, 2), ttnn.CoreCoord(6, 2)),
+                ttnn.CoreRange(ttnn.CoreCoord(6, 4), ttnn.CoreCoord(6, 4)),
+                ttnn.CoreRange(ttnn.CoreCoord(6, 5), ttnn.CoreCoord(6, 5)),
+                ttnn.CoreRange(ttnn.CoreCoord(5, 5), ttnn.CoreCoord(5, 5)),
+                ttnn.CoreRange(ttnn.CoreCoord(5, 6), ttnn.CoreCoord(5, 6)),
+                ttnn.CoreRange(ttnn.CoreCoord(5, 7), ttnn.CoreCoord(5, 7)),
+                ttnn.CoreRange(ttnn.CoreCoord(5, 9), ttnn.CoreCoord(5, 9)),
+                ttnn.CoreRange(ttnn.CoreCoord(5, 0), ttnn.CoreCoord(5, 0)),
+                ttnn.CoreRange(ttnn.CoreCoord(5, 1), ttnn.CoreCoord(5, 1)),
+                ttnn.CoreRange(ttnn.CoreCoord(5, 2), ttnn.CoreCoord(5, 2)),
+                ttnn.CoreRange(ttnn.CoreCoord(5, 4), ttnn.CoreCoord(5, 4)),
+                ttnn.CoreRange(ttnn.CoreCoord(1, 4), ttnn.CoreCoord(1, 4)),
+                ttnn.CoreRange(ttnn.CoreCoord(1, 5), ttnn.CoreCoord(1, 5)),
+                ttnn.CoreRange(ttnn.CoreCoord(1, 9), ttnn.CoreCoord(1, 9)),
+                ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(1, 0)),
+                ttnn.CoreRange(ttnn.CoreCoord(2, 0), ttnn.CoreCoord(2, 0)),
+                ttnn.CoreRange(ttnn.CoreCoord(2, 4), ttnn.CoreCoord(2, 4)),
+                ttnn.CoreRange(ttnn.CoreCoord(2, 5), ttnn.CoreCoord(2, 5)),
+                ttnn.CoreRange(ttnn.CoreCoord(2, 9), ttnn.CoreCoord(2, 9)),
+                ttnn.CoreRange(ttnn.CoreCoord(3, 0), ttnn.CoreCoord(4, 2)),
+            ]
+        )
+        intermediate_mem_config = ttnn.MemoryConfig(
+            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+            ttnn.BufferType.L1,
+            ttnn.ShardSpec(
+                intermediate_core_range_set,
+                [32, 128],
+                ttnn.ShardOrientation.ROW_MAJOR,
+            ),
+        )
+        temp_shape = [1, 1, 32, 3840]
+        intermediate_tensor = torch.zeros(temp_shape, dtype=torch.bfloat16)
+        tt_intermediate_tensor = ttnn.from_torch(
+            intermediate_tensor,
+            device=self.mesh_device,
+            layout=ttnn.ROW_MAJOR_LAYOUT,
+            dtype=ttnn.bfloat16,
+            memory_config=intermediate_mem_config,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
         )
         check_mesh_tensor_alloc(tt_intermediate_tensor)
         tt_intermediate_tensors = [tt_intermediate_tensor]
@@ -597,6 +651,42 @@ class TT_CCL:
             topology=ttnn.Topology.Linear,
             multi_device_global_semaphore=self.gather_semaphore_handles[cluster_axis][self.gather_idx[cluster_axis]],
             persistent_output_tensor=persistent_buffer,
+            num_links=num_links,
+            memory_config=memory_config,
+            subdevice_id=self.worker_sub_device_id,
+        )
+        if self.mode == "prefill" and buffer_key is not None:
+            # reshape input back
+            ttnn_tensor_out = ttnn.reshape(ttnn_tensor_out, (1, B, seqlen // B, ttnn_tensor_out.shape[-1]))
+
+        self.gather_idx[cluster_axis] = (self.gather_idx[cluster_axis] + 1) % self.num_cbs
+        # ttnn.synchronize_device(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+        return ttnn_tensor_out
+
+    def line_all_gather_silu(self, input_tensor_mesh, dim, cluster_axis, memory_config, num_links=1, buffer_key=None):
+        if self.mode == "prefill":
+            if buffer_key is None:
+                persistent_buffer = None
+            else:
+                # reshape input to [1, 1, S, x]
+                B = input_tensor_mesh.shape[1]
+                input_tensor_mesh = ttnn.reshape(
+                    input_tensor_mesh, (1, 1, B * input_tensor_mesh.shape[-2], input_tensor_mesh.shape[-1])
+                )
+                seqlen = input_tensor_mesh.shape[-2]
+                persistent_buffer = self.all_gather_buffers[seqlen].get(buffer_key, None)
+        else:
+            persistent_buffer = self.all_gather_buffers.get(buffer_key, None)
+        # ttnn.synchronize_device(self.mesh_device, sub_device_ids=[self.worker_sub_device_id])
+
+        ttnn_tensor_out = ttnn.experimental.all_gather_silu(
+            input_tensor_mesh,
+            self.all_gather_silu_inter_tensor[0],
+            dim,
+            cluster_axis=cluster_axis,
+            mesh_device=self.mesh_device,
+            topology=ttnn.Topology.Linear,
+            multi_device_global_semaphore=self.gather_semaphore_handles[cluster_axis][self.gather_idx[cluster_axis]],
             num_links=num_links,
             memory_config=memory_config,
             subdevice_id=self.worker_sub_device_id,

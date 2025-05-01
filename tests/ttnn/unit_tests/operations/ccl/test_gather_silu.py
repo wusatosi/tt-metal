@@ -475,7 +475,7 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
     [
         {
             "trace_region_size": 17068032,
-            "fabric_config": ttnn.FabricConfig.FABRIC_1D,
+            "fabric_config": ttnn.FabricConfig.FABRIC_1D_RING,
             "dispatch_core_axis": ttnn.DispatchCoreAxis.COL,
         }
     ],
