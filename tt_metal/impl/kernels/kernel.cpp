@@ -48,7 +48,6 @@ Kernel::Kernel(
     core_with_max_runtime_args_({0, 0}),
     compile_time_args_(compile_args),
     defines_(defines) {
-    this->register_kernel_with_watcher();
 
     size_t max_x = 0, max_y = 0;
     for (auto core_range : this->core_range_set_.ranges()) {
@@ -74,12 +73,21 @@ Kernel::Kernel(
     this->common_runtime_args_count_ = 0;
 }
 
-void Kernel::register_kernel_with_watcher() {
+void Kernel::register_kernel_with_watcher(IDevice* device) {
+    auto file_path = this->file_paths(device);
+    std::string combined_paths;
+    for (const auto& path : file_path) {
+        if (!combined_paths.empty()) {
+            combined_paths += "|";
+        }
+        combined_paths += path;
+    }
+
     if (this->kernel_src_.source_type_ == KernelSource::FILE_PATH) {
-        this->watcher_kernel_id_ = watcher_register_kernel(this->kernel_src_.source_);
+        this->watcher_kernel_id_ = watcher_register_kernel(this->kernel_src_.source_ + "|" + combined_paths);
     } else {
         TT_FATAL(this->kernel_src_.source_type_ == KernelSource::SOURCE_CODE, "Unsupported kernel source type!");
-        this->watcher_kernel_id_ = watcher_register_kernel(this->name());
+        this->watcher_kernel_id_ = watcher_register_kernel(this->name() + "|" + combined_paths);
     }
 }
 
@@ -462,6 +470,16 @@ void DataMovementKernel::read_binaries(IDevice* device) {
         BuildEnvManager::get_instance().get_device_build_env(device->build_id()).build_key, std::move(binaries));
 }
 
+std::vector<std::string> DataMovementKernel::file_paths(IDevice* device) const {
+    uint32_t tensix_core_type =
+        MetalContext::instance().hal().get_programmable_core_type_index(this->get_kernel_programmable_core_type());
+    uint32_t dm_class_idx = magic_enum::enum_integer(HalProcessorClassType::DM);
+    int riscv_id = static_cast<std::underlying_type<DataMovementProcessor>::type>(this->config_.processor);
+    const JitBuildState& build_state = BuildEnvManager::get_instance().get_kernel_build_state(
+        device->build_id(), tensix_core_type, dm_class_idx, riscv_id);
+    return {build_state.get_target_out_path(this->kernel_full_name_)};
+}
+
 bool EthernetKernel::binaries_exist_on_disk(const IDevice* device) const {
     const uint32_t erisc_core_type =
         MetalContext::instance().hal().get_programmable_core_type_index(this->get_kernel_programmable_core_type());
@@ -510,6 +528,16 @@ void EthernetKernel::read_binaries(IDevice* device) {
         BuildEnvManager::get_instance().get_device_build_env(device->build_id()).build_key, std::move(binaries));
 }
 
+std::vector<std::string> EthernetKernel::file_paths(IDevice* device) const {
+    uint32_t erisc_core_type =
+        MetalContext::instance().hal().get_programmable_core_type_index(this->get_kernel_programmable_core_type());
+    uint32_t dm_class_idx = magic_enum::enum_integer(HalProcessorClassType::DM);
+    int erisc_id = magic_enum::enum_integer(this->config_.processor);
+    const JitBuildState& build_state = BuildEnvManager::get_instance().get_kernel_build_state(
+        device->build_id(), erisc_core_type, dm_class_idx, erisc_id);
+    return {build_state.get_target_out_path(this->kernel_full_name_)};
+}
+
 bool ComputeKernel::binaries_exist_on_disk(const IDevice* device) const {
     const uint32_t tensix_core_type =
         MetalContext::instance().hal().get_programmable_core_type_index(this->get_kernel_programmable_core_type());
@@ -544,6 +572,19 @@ void ComputeKernel::read_binaries(IDevice* device) {
     }
     this->set_binaries(
         BuildEnvManager::get_instance().get_device_build_env(device->build_id()).build_key, std::move(binaries));
+}
+
+std::vector<std::string> ComputeKernel::file_paths(IDevice* device) const {
+    std::vector<std::string> file_paths;
+    uint32_t tensix_core_type =
+        MetalContext::instance().hal().get_programmable_core_type_index(this->get_kernel_programmable_core_type());
+    uint32_t compute_class_idx = magic_enum::enum_integer(HalProcessorClassType::COMPUTE);
+    for (int trisc_id = 0; trisc_id <= 2; trisc_id++) {
+        const JitBuildState& build_state = BuildEnvManager::get_instance().get_kernel_build_state(
+            device->build_id(), tensix_core_type, compute_class_idx, trisc_id);
+        file_paths.push_back(build_state.get_target_out_path(this->kernel_full_name_));
+    }
+    return file_paths;
 }
 
 RISCV DataMovementKernel::processor() const {
