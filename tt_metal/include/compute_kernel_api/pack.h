@@ -35,14 +35,29 @@ namespace ckernel {
  *
  * | Argument       | Description                                       | Type     | Valid Range                                         | Required |
  * |----------------|---------------------------------------------------|----------|-----------------------------------------------------|----------|
- * | ifrom_dst      | The index of the tile in the DST register         | uint32_t | Must be less than the size of the DST register (16) | True     | 
- * | icb            | The identifier of the output circular buffer (CB) | uint32_t | 0 to 31                                             | True     | 
+ * | ifrom_dst      | The index of the tile in the DST register         | uint32_t | Must be less than the size of the DST register (16) | True     |
+ * | icb            | The identifier of the output circular buffer (CB) | uint32_t | 0 to 31                                             | True     |
  * | icb_tile       | The index of the tile in the output CB to copy to | uint32_t | Must be less than the size of the CB                | True     |
  */
- // clang-format on
+// clang-format on
 template <bool out_of_order_output = false>
 ALWI void pack_tile(uint32_t ifrom_dst, uint32_t icb, std::uint32_t output_tile_index = 0) {
     PACK((llk_pack<out_of_order_output, false, DST_ACCUM_MODE>(ifrom_dst, icb, output_tile_index)));
+}
+
+/**
+ * Maybe we should make ifrom_dst a start index of the tile in the DST register, have another parameter to be
+ * the end or number of tiles to densely pack. This would be useful for the case of
+ * packing a tile from the DST register to the CB in a compact way.
+ * For now, let's make it  a fixed number of tiles, eight, just to make the test pass.
+ * The number of tiles to pack densly will be between 1 and 32, but it depends on the tile shape, so maybe
+ * leave it for another time.
+ */
+template <bool out_of_order_output = false>
+ALWI void pack_tile_compact(uint32_t ifrom_dst, uint32_t icb, std::uint32_t output_tile_index = 0) {
+#if defined(ARCH_WORMHOLE)
+    PACK((llk_pack_compact<out_of_order_output, false, DST_ACCUM_MODE>(ifrom_dst, icb, output_tile_index)));
+#endif
 }
 
 // clang-format off
@@ -71,11 +86,11 @@ ALWI void pack_tile(uint32_t ifrom_dst, uint32_t icb, std::uint32_t output_tile_
  *
  * | Argument       | Description                                       | Type     | Valid Range                                         | Required |
  * |----------------|---------------------------------------------------|----------|-----------------------------------------------------|----------|
- * | ifrom_dst      | The index of the tile in the DST register         | uint32_t | Must be less than the size of the DST register (16) | True     | 
- * | icb            | The identifier of the output circular buffer (CB) | uint32_t | 0 to 31                                             | True     | 
+ * | ifrom_dst      | The index of the tile in the DST register         | uint32_t | Must be less than the size of the DST register (16) | True     |
+ * | icb            | The identifier of the output circular buffer (CB) | uint32_t | 0 to 31                                             | True     |
  * | ntiles         | The number of tiles to copy from DST to CB        | uint32_t | Must be less than the size of the CB                | True     |
  */
- // clang-format on
+// clang-format on
 ALWI void matmul_pack_tile(uint32_t ifrom_dst, uint32_t icb, uint32_t ntiles) {
     PACK((llk_matmul_pack<false, false, DST_ACCUM_MODE>(ifrom_dst, icb, ntiles)));
 }

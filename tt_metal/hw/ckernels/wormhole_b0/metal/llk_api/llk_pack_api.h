@@ -213,6 +213,17 @@ inline void llk_pack(std::uint32_t tile_index, std::uint32_t output, std::uint32
     _llk_pack_<DST_SYNC_MODE, untilize, is_fp32_dest_acc_en>(tile_index, pack_tile_addr);
 }
 
+template <bool out_of_order_output = false, bool untilize = false, bool is_fp32_dest_acc_en = false>
+inline void llk_pack_compact(std::uint32_t tile_index, std::uint32_t output, std::uint32_t output_tile_index = 0) {
+    std::uint8_t output_id = get_output_id(output);
+
+    static_assert((!(untilize && out_of_order_output)) && "untilize out of order packing is not supported!");
+
+    std::uint32_t pack_tile_addr = get_output_tile_address<out_of_order_output, untilize>(output_id, output_tile_index);
+
+    _llk_pack_compact_<DST_SYNC_MODE, untilize, is_fp32_dest_acc_en>(tile_index, pack_tile_addr);
+}
+
 /*************************************************************************
  * LLK PACK UNTILIZE
  *************************************************************************/
