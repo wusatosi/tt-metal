@@ -150,7 +150,7 @@ function(add_ttnn_sublibrary SUBLIBRARY_NAME)
     #             COMPONENT tt_build_artifacts
     #     )
     # else()
-    add_library(${SUBLIBRARY_NAME} OBJECT ${ARGN})
+    add_library(${SUBLIBRARY_NAME} STATIC ${ARGN})
     # add_library(${SUBLIBRARY_NAME} SHARED ${ARGN})
     # endif()
 
