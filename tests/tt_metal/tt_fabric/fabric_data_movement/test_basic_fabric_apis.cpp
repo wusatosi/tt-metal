@@ -691,7 +691,7 @@ TEST_F(Fabric2DPushFixture, TestAsyncWrite) { RunAsyncWriteTest(this, fabric_mod
 
 TEST_F(Fabric2DPullFixture, TestAsyncRawWrite) { RunAsyncWriteTest(this, fabric_mode::PULL, true); }
 
-TEST_F(Fabric2DPushFixture, TestUnicastRaw) { RunTestUnicastRaw(this); }
+TEST_F(Fabric2DPushFixture, TestUnicastRaw) { RunTestUnicastRaw(this, 1); }
 
 TEST_F(Fabric2DPullFixture, TestAtomicInc) { RunAtomicIncTest(this, fabric_mode::PULL); }
 

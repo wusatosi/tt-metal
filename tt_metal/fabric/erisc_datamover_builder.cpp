@@ -112,8 +112,8 @@ FabricEriscDatamoverConfig::FabricEriscDatamoverConfig(Topology topology) {
         // persistent mode field
         this->receiver_channels_downstream_flow_control_semaphore_address[i] = buffer_address;
         buffer_address += field_size;
-        // this->receiver_channels_downstream_teardown_semaphore_address[i] = buffer_address;
-        // buffer_address += field_size;
+        this->receiver_channels_downstream_teardown_semaphore_address[i] = buffer_address;
+        buffer_address += field_size;
     }
 
     // Channel Allocations
@@ -810,7 +810,7 @@ void FabricEriscDatamoverBuilder::connect_to_downstream_edm(FabricEriscDatamover
     const auto ds_noc_y = downstream_edm.get_noc_y();
     eth_chan_directions ds_dir = downstream_edm.get_direction();
 
-    log_info(
+    log_debug(
         tt::LogTest,
         "EDM at x={}, y={}, Direction={} :: Connecting to downstream EDM at x={}, y={}, VC={}, Direction={}",
         my_noc_x,
@@ -858,7 +858,7 @@ void FabricEriscDatamoverBuilder::connect_to_downstream_edm(FabricEriscDatamover
                        (this->direction == eth_chan_directions::SOUTH && ds_dir == eth_chan_directions::NORTH);
 
     if (connect_vc1) {
-        log_info(
+        log_debug(
             tt::LogTest,
             "EDM at x={}, y={}, Direction={} :: Connecting to downstream EDM at x={}, y={}, VC={}, Direction={}",
             my_noc_x,

@@ -37,7 +37,7 @@
 namespace tt::tt_fabric {
 namespace fabric_router_tests {
 
-void RunTestUnicastRaw(BaseFabricFixture* fixture, RoutingDirection direction) {
+void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDirection direction) {
     CoreCoord sender_logical_core = {0, 0};
     CoreCoord receiver_logical_core = {1, 0};
 
@@ -47,18 +47,30 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, RoutingDirection direction) {
     std::pair<mesh_id_t, chip_id_t> dst_mesh_chip_id;
     chip_id_t not_used_1;
     chip_id_t not_used_2;
-    // Find a device with a neighbour in the East direction
-    bool connection_found = fixture->find_device_with_neighbor_in_direction(
-        src_mesh_chip_id, dst_mesh_chip_id, not_used_1, not_used_2, RoutingDirection::E);
-    if (!connection_found) {
+    // Find a device num_hops away in specified direction.
+    std::unordered_map<RoutingDirection, uint32_t> fabric_hops;
+    std::unordered_map<RoutingDirection, std::vector<std::pair<mesh_id_t, chip_id_t>>> end_mesh_chip_ids_by_dir;
+    chip_id_t src_physical_device_id;
+    std::unordered_map<RoutingDirection, std::vector<chip_id_t>> physical_end_device_ids_by_dir;
+    fabric_hops[direction] = num_hops;
+    // Find a device with enough neighbours in the specified directions
+    if (!fixture->find_device_with_neighbor_in_multi_direction(
+            src_mesh_chip_id,
+            end_mesh_chip_ids_by_dir,
+            src_physical_device_id,
+            physical_end_device_ids_by_dir,
+            fabric_hops)) {
         GTEST_SKIP() << "No path found between sender and receivers";
     }
 
-    chip_id_t src_physical_device_id = control_plane->get_physical_chip_id_from_mesh_chip_id(src_mesh_chip_id);
-    chip_id_t dst_physical_device_id = control_plane->get_physical_chip_id_from_mesh_chip_id(dst_mesh_chip_id);
+    chip_id_t dst_physical_device_id = physical_end_device_ids_by_dir[direction][num_hops - 1];
+    dst_mesh_chip_id = end_mesh_chip_ids_by_dir[direction][num_hops - 1];
 
+    tt::log_info(tt::LogTest, "mesh/chip ids {}", end_mesh_chip_ids_by_dir[direction]);
+    tt::log_info(tt::LogTest, "physical device ids {}", physical_end_device_ids_by_dir[direction]);
     tt::log_info(tt::LogTest, "Src MeshId {} ChipId {}", src_mesh_chip_id.first, src_mesh_chip_id.second);
     tt::log_info(tt::LogTest, "Dst MeshId {} ChipId {}", dst_mesh_chip_id.first, dst_mesh_chip_id.second);
+    tt::log_info(tt::LogTest, "Dst Device is {} hops in direction: {}", num_hops, direction);
 
     // get a port to connect to
     std::set<chan_id_t> eth_chans = control_plane->get_active_fabric_eth_channels_in_direction(
@@ -88,7 +100,6 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, RoutingDirection direction) {
     uint32_t source_l1_buffer_address = 0x30000;
     uint32_t packet_payload_size_bytes = edm_config.topology == Topology::Mesh ? 2048 : 4096;
     uint32_t num_packets = 10;
-    uint32_t num_hops = 1;
     uint32_t test_results_address = 0x100000;
     uint32_t test_results_size_bytes = 128;
     uint32_t target_address = 0x30000;
@@ -467,7 +478,7 @@ TEST_F(Fabric1DFixture, TestMCastConnAPI) {
     EXPECT_EQ(left_recv_bytes, right_recv_bytes);
 }
 
-TEST_F(Fabric1DFixture, TestUnicastRaw) { RunTestUnicastRaw(this); }
+TEST_F(Fabric1DFixture, TestUnicastRaw) { RunTestUnicastRaw(this, 1); }
 
 }  // namespace fabric_router_tests
 }  // namespace tt::tt_fabric

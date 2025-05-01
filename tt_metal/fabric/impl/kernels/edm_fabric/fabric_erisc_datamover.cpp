@@ -1140,14 +1140,14 @@ void kernel_main() {
     DPRINT << "local_sender_2_channel_address: " << (uint32_t)local_sender_2_channel_address << "\n";
     DPRINT << "local_sender_channel_2_connection_info_addr: " << (uint32_t)local_sender_channel_2_connection_info_addr
            << "\n";
-#ifdef FABRIC_2D
-    DPRINT << "local_sender_3_channel_address: " << (uint32_t)local_sender_3_channel_address << "\n";
-    DPRINT << "local_sender_channel_3_connection_info_addr: " << (uint32_t)local_sender_channel_3_connection_info_addr
-           << "\n";
-    DPRINT << "local_sender_4_channel_address: " << (uint32_t)local_sender_4_channel_address << "\n";
-    DPRINT << "local_sender_channel_4_connection_info_addr: " << (uint32_t)local_sender_channel_4_connection_info_addr
-           << "\n";
-#endif
+    if constexpr (is_2d_fabric) {
+        DPRINT << "local_sender_3_channel_address: " << (uint32_t)local_sender_3_channel_address << "\n";
+        DPRINT << "local_sender_channel_3_connection_info_addr: "
+               << (uint32_t)local_sender_channel_3_connection_info_addr << "\n";
+        DPRINT << "local_sender_4_channel_address: " << (uint32_t)local_sender_4_channel_address << "\n";
+        DPRINT << "local_sender_channel_4_connection_info_addr: "
+               << (uint32_t)local_sender_channel_4_connection_info_addr << "\n";
+    }
     DPRINT << "local_receiver_0_channel_buffer_address: " << (uint32_t)local_receiver_0_channel_buffer_address << "\n";
     DPRINT << "remote_receiver_0_channel_buffer_address: " << (uint32_t)remote_receiver_0_channel_buffer_address
            << "\n";
@@ -1157,10 +1157,10 @@ void kernel_main() {
     DPRINT << "remote_sender_0_channel_address: " << (uint32_t)remote_sender_0_channel_address << "\n";
     DPRINT << "remote_sender_1_channel_address: " << (uint32_t)remote_sender_1_channel_address << "\n";
     DPRINT << "remote_sender_2_channel_address: " << (uint32_t)remote_sender_2_channel_address << "\n";
-#ifdef FABRIC_2D
-    DPRINT << "remote_sender_3_channel_address: " << (uint32_t)remote_sender_3_channel_address << "\n";
-    DPRINT << "remote_sender_4_channel_address: " << (uint32_t)remote_sender_4_channel_address << "\n";
-#endif
+    if constexpr (is_2d_fabric) {
+        DPRINT << "remote_sender_3_channel_address: " << (uint32_t)remote_sender_3_channel_address << "\n";
+        DPRINT << "remote_sender_4_channel_address: " << (uint32_t)remote_sender_4_channel_address << "\n";
+    }
     // TODO: CONVERT TO SEMAPHORE
     volatile auto termination_signal_ptr =
         reinterpret_cast<volatile tt::tt_fabric::TerminationSignal*>(termination_signal_addr);
@@ -1421,6 +1421,10 @@ void kernel_main() {
                 const auto edm_vc0_teardown_semaphore_address =
                     is_2d_fabric ? edm_vc0_teardown_semaphore
                                  : get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(edm_vc0_teardown_semaphore);
+                if constexpr (is_2d_fabric) {
+                    *reinterpret_cast<volatile uint32_t* const>(edm_vc0_forwarding_semaphore_address) = 0;
+                    *reinterpret_cast<volatile uint32_t* const>(edm_vc0_teardown_semaphore_address) = 0;
+                }
                 new (&downstream_edm_noc_interfaces[edm_index]) tt::tt_fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>(
                     // persistent_mode -> hardcode to false for 1D because for 1D, EDM -> EDM
                     // connections we must always use semaphore lookup
@@ -1445,7 +1449,8 @@ void kernel_main() {
                                                                            // dest.
                     receiver_channel_forwarding_data_cmd_buf_ids[0],
                     receiver_channel_forwarding_sync_cmd_buf_ids[0]);
-                downstream_edm_noc_interfaces[0].template setup_edm_noc_cmd_buf<tt::tt_fabric::edm_to_downstream_noc>();
+                downstream_edm_noc_interfaces[edm_index]
+                    .template setup_edm_noc_cmd_buf<tt::tt_fabric::edm_to_downstream_noc>();
             }
             edm_index++;
             has_downstream_edm >>= 1;
@@ -1636,9 +1641,15 @@ void kernel_main() {
     if constexpr (persistent_mode) {
         // we force these values to a non-zero value so that if we run the fabric back to back,
         // and we can reliably probe from host that this kernel has initialized properly.
-        *reinterpret_cast<volatile uint32_t*>(local_sender_channel_0_connection_semaphore_addr) = 99;
-        *reinterpret_cast<volatile uint32_t*>(local_sender_channel_0_connection_buffer_index_addr) = 99;
-        *sender0_worker_semaphore_ptr = 99;
+        if constexpr (is_2d_fabric) {
+            *reinterpret_cast<volatile uint32_t*>(local_sender_connection_live_semaphore_addresses[my_direction]) = 99;
+            *reinterpret_cast<volatile uint32_t*>(local_sender_channel_connection_buffer_index_id[my_direction]) = 99;
+            *reinterpret_cast<volatile uint32_t*>(local_sender_flow_control_semaphores[my_direction]) = 99;
+        } else {
+            *reinterpret_cast<volatile uint32_t*>(local_sender_channel_0_connection_semaphore_addr) = 99;
+            *reinterpret_cast<volatile uint32_t*>(local_sender_channel_0_connection_buffer_index_addr) = 99;
+            *sender0_worker_semaphore_ptr = 99;
+        }
     }
 
     // make sure all the noc transactions are acked before re-init the noc counters

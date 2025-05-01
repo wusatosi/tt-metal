@@ -313,7 +313,7 @@ void DevicePool::initialize_active_devices() const {
     FabricConfig fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
     if (tt_fabric::is_1d_fabric_config(fabric_config) || tt_fabric::is_2d_fabric_config(fabric_config)) {
         log_info(tt::LogMetal, "Initializing Fabric");
-        if (tt_fabric::is_2d_fabric_config(fabric_config)) {
+        if (fabric_config == tt::tt_metal::FabricConfig::FABRIC_2D) {
             // TODO: need to write routing tables for unified 2d fabric.
             // write routing tables to all ethernet cores
             tt::tt_metal::MetalContext::instance()
