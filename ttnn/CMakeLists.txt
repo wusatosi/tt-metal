@@ -138,20 +138,21 @@ function(use_precompiled_header TARGET)
 endfunction()
 
 function(add_ttnn_sublibrary SUBLIBRARY_NAME)
-    if(ENABLE_TTNN_SHARED_SUBLIBS)
-        add_library(${SUBLIBRARY_NAME} SHARED ${ARGN})
-        install(
-            TARGETS
-                ${SUBLIBRARY_NAME}
-            LIBRARY
-                DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            ARCHIVE
-                DESTINATION ${CMAKE_INSTALL_LIBDIR}
-                COMPONENT tt_build_artifacts
-        )
-    else()
-        add_library(${SUBLIBRARY_NAME} OBJECT ${ARGN})
-    endif()
+    # if(ENABLE_TTNN_SHARED_SUBLIBS)
+    #     add_library(${SUBLIBRARY_NAME} SHARED ${ARGN})
+    #     install(
+    #         TARGETS
+    #             ${SUBLIBRARY_NAME}
+    #         LIBRARY
+    #             DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    #         ARCHIVE
+    #             DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    #             COMPONENT tt_build_artifacts
+    #     )
+    # else()
+    # add_library(${SUBLIBRARY_NAME} OBJECT ${ARGN})
+    add_library(${SUBLIBRARY_NAME} SHARED ${ARGN})
+    # endif()
 
     TT_ENABLE_UNITY_BUILD(${SUBLIBRARY_NAME})
     target_include_directories(${SUBLIBRARY_NAME} PUBLIC ${TTNN_PUBLIC_INCLUDE_DIRS})
