@@ -150,8 +150,8 @@ function(add_ttnn_sublibrary SUBLIBRARY_NAME)
     #             COMPONENT tt_build_artifacts
     #     )
     # else()
-    # add_library(${SUBLIBRARY_NAME} OBJECT ${ARGN})
-    add_library(${SUBLIBRARY_NAME} SHARED ${ARGN})
+    add_library(${SUBLIBRARY_NAME} OBJECT ${ARGN})
+    # add_library(${SUBLIBRARY_NAME} SHARED ${ARGN})
     # endif()
 
     TT_ENABLE_UNITY_BUILD(${SUBLIBRARY_NAME})
