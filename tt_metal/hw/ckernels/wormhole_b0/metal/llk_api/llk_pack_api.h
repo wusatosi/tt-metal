@@ -167,6 +167,27 @@ inline void llk_pack_init(const std::uint32_t pack_output = 16) {
     TT_SETADCXX(p_setadc::PAC, pack_x_dim - 1, 0x0);
 }
 
+template <bool untilize = false, bool zero_output = false, bool tilize = false /*unused*/, bool compact = false>
+inline void llk_pack_init_compact(const std::uint32_t pack_output = 16) {
+    const std::uint32_t output_id = get_output_id(pack_output);
+    const std::uint32_t face_r_dim = get_output_face_r_dim(output_id);
+    const std::uint32_t num_faces = get_output_num_faces(output_id);
+    const bool partial_face = get_output_partial_face(output_id);
+    const bool narrow_tile = get_output_narrow_tile(output_id);
+
+    _llk_pack_init_<untilize, zero_output, DstTileFaceLayout::RowMajor, false, compact>(
+        pack_dst_format[output_id], face_r_dim, num_faces, partial_face, narrow_tile);
+
+    set_packer_l1_offset(pack_dst_format[output_id]);
+
+    // To untilize narrow tile (32x16) we just pack 2 faces back to back
+    // Number of datums to pack per row
+    const uint face_dim = face_r_dim * FACE_C_DIM;
+    const uint pack_x_dim = (narrow_tile || !untilize) ? face_dim : FACE_R_DIM;
+
+    TT_SETADCXX(p_setadc::PAC, pack_x_dim - 1, 0x0);
+}
+
 template <bool out_of_order_output, bool untilize>
 inline std::uint32_t get_output_tile_address(std::uint8_t output_id, std::uint32_t output_tile_index) {
     std::uint32_t pack_tile_addr;
@@ -383,13 +404,18 @@ inline void llk_pack_reconfig_l1_acc(const std::uint32_t enable) { _llk_pack_rec
 
 template <bool untilize = false, ReduceDim dim>
 inline void llk_pack_reduce_mask_config() {
-    _llk_pack_reduce_mask_config_<untilize, dim>();
+    _llk_pack_reduce_mask_config_<untilize, dim, false>();
 }
 
 inline void llk_pack_reduce_mask_clear() { _llk_pack_reduce_mask_clear_(); }
 
 // FIXME-WH-UPLIFT
-template <ReduceDim dim, bool at_kernel_start = false, bool revert = false, bool is_fp32_dest_acc_en = false>
+template <
+    ReduceDim dim,
+    bool at_kernel_start = false,
+    bool revert = false,
+    bool is_fp32_dest_acc_en = false,
+    bool compact = false>
 inline void llk_pack_reduce_config_v2(uint32_t icb_out) {
     const bool untilize = false;
     if constexpr (at_kernel_start) {
@@ -419,6 +445,6 @@ inline void llk_pack_reduce_config_v2(uint32_t icb_out) {
     if constexpr (revert) {
         _llk_pack_reduce_mask_clear_();
     } else {
-        _llk_pack_reduce_mask_config_<untilize, dim>();
+        _llk_pack_reduce_mask_config_<untilize, dim, compact>();
     }
 }

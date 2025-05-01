@@ -22,10 +22,16 @@ void MAIN {
     constexpr uint32_t outer_loop = num_tiles / num_single_transfer;
 
     unary_op_init_common(in_cb_id, out_cb_id);
+    // Set the mop for the compact use case
+    PACK((llk_pack_init_compact<false /*untilize*/, false /*zero_output*/, false /*tilize*/, true /*compact*/>(
+        out_cb_id)));
     // Parity with SDPA case. Use only Packer 0/1
-    PACK((
-        llk_pack_reduce_config_v2<ReduceDim::REDUCE_COL, false /*at_start*/, false /*revert*/, false /*DEST_ACCUM_EN*/>(
-            out_cb_id)));
+    PACK((llk_pack_reduce_config_v2<
+          ReduceDim::REDUCE_COL,
+          false /*at_start*/,
+          false /*revert*/,
+          false /*DEST_ACCUM_EN*/,
+          true /*compact*/>(out_cb_id)));
     // Run the outer loop
     for (uint32_t b = 0; b < outer_loop; ++b) {
         // Wait for num_single_transfer tiles to be available in in_cb
