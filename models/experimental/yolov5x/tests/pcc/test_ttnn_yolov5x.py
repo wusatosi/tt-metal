@@ -1,13 +1,8 @@
-import os
-import sys
 import ttnn
 import torch
 import pytest
-from pathlib import Path
 from ultralytics import YOLO
-import torch.nn as nn
 from tests.ttnn.utils_for_testing import assert_with_pcc
-from models.utility_functions import disable_persistent_kernel_cache
 from models.experimental.yolov5x.reference.yolov5x import YOLOv5
 from models.experimental.yolov5x.tt.ttnn_yolov5x import (
     Conv,
