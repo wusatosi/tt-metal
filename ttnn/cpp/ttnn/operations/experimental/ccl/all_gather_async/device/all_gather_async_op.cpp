@@ -231,10 +231,8 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
 
     std::optional<IDevice*> forward_device = std::nullopt;
     std::optional<IDevice*> backward_device = std::nullopt;
-    std::vector<GlobalSemaphore> semaphore;
     uint32_t device_index = 0;  // Initialize device index
     for (uint32_t i = 0; i < this->ring_size; ++i) {
-        semaphore.push_back(this->semaphore.at(i));  // Get raw pointer
         if (devices_to_use.at(i) == target_device) {
             device_index = i;
             if (i != 0) {
@@ -269,7 +267,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
                 this->ring_size,
                 device_index,
                 this->topology,
-                semaphore.at(device_index),
+                this->semaphore.at(device_index),
                 this->sub_device_id);
         }
         case AllGatherAsyncVersion::MINIMAL_INTERLEAVED_ANY: {
@@ -288,7 +286,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
                 this->ring_size,
                 device_index,
                 this->topology,
-                semaphore,
+                this->semaphore,
                 this->sub_device_id);
         }
         case AllGatherAsyncVersion::LLAMA_MINIMAL_SHARDED:
@@ -304,7 +302,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
                 this->ring_size,
                 device_index,
                 this->topology,
-                semaphore.at(device_index),
+                this->semaphore.at(device_index),
                 this->sub_device_id);
 
         case AllGatherAsyncVersion::GENERIC:
@@ -321,7 +319,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
                 this->ring_size,
                 device_index,
                 this->topology,
-                semaphore.at(device_index),
+                this->semaphore.at(device_index),
                 this->sub_device_id);
     }
 }
