@@ -283,22 +283,23 @@ Tensor ExecuteDiv::invoke(
     tt::stl::Span<const ttnn::operations::unary::UnaryWithParam> lhs_activations,
     tt::stl::Span<const ttnn::operations::unary::UnaryWithParam> rhs_activations,
     const std::optional<bool>& use_legacy) {
-    if (not(use_legacy ? *use_legacy
-                       : binary::is_legacy_only(
-                             input_a, input_b, output_mem_config, output_tensor, lhs_activations, rhs_activations))) {
-        return BinaryOperation<BinaryOpType::DIV>::invoke(
-            queue_id,
-            input_a,
-            input_b,
-            std::nullopt,
-            output_mem_config,
-            output_tensor,
-            post_activations,
-            lhs_activations,
-            rhs_activations,
-            use_legacy);
-    }
-
+    // if (not(use_legacy ? *use_legacy
+    //                    : binary::is_legacy_only(
+    //                          input_a, input_b, output_mem_config, output_tensor, lhs_activations, rhs_activations)))
+    //                          {
+    //     return BinaryOperation<BinaryOpType::DIV>::invoke(
+    //         queue_id,
+    //         input_a,
+    //         input_b,
+    //         std::nullopt,
+    //         output_mem_config,
+    //         output_tensor,
+    //         post_activations,
+    //         lhs_activations,
+    //         rhs_activations,
+    //         use_legacy);
+    // }
+    // tt::log_info(tt::LogOp, " ****** past legacy check");
     TT_FATAL(
         (round_mode == std::nullopt || round_mode == "trunc" || round_mode == "floor"),
         "Incorrect rounding mode (expected None, 'trunc', or 'floor')");
@@ -436,17 +437,22 @@ Tensor ExecutePrelu::invoke(
     return result;
 }
 
+// remainder = a - b * trunc(a / b)
 Tensor run_remainder(
     const Tensor& input_a, const Tensor& input_b, float t_nan, const std::optional<MemoryConfig>& output_mem_config) {
-    Tensor result = ttnn::subtract(
-        input_a,
-        ttnn::multiply(
-            input_b,
-            ttnn::div(input_a, input_b, true, "floor", std::nullopt, output_mem_config),
-            std::nullopt,
-            output_mem_config),
-        std::nullopt,
-        output_mem_config);
+    // tt::log_info(tt::LogOp, " ****** input_a");
+    input_a.print();
+    // tt::log_info(tt::LogOp, " ****** input_b");
+    input_b.print();
+    // tt::log_info(tt::LogOp, " ****** div_res");
+    Tensor div_res = ttnn::div(input_a, input_b, true, "floor", std::nullopt, output_mem_config);
+    div_res.print();
+    // tt::log_info(tt::LogOp, " ****** mul_res");
+    Tensor mul_res = ttnn::multiply(input_b, div_res, std::nullopt, output_mem_config);
+    mul_res.print();
+    // tt::log_info(tt::LogOp, " ****** subtract");
+    Tensor result = ttnn::subtract(input_a, mul_res, std::nullopt, output_mem_config);
+    result.print();
     result = ttnn::where(ttnn::ge(result, input_b), ttnn::subtract(result, input_b), result);
     result = ttnn::where(ttnn::ltz(input_b), ttnn::add(result, input_b), result);
     result = ttnn::where(ttnn::eq(input_a, input_b, std::nullopt, output_mem_config), 0.0f, result);
@@ -472,6 +478,7 @@ Tensor ExecuteBinaryRemainder::invoke(
     Tensor result = run_remainder(a, b, t_nan, output_mem_config);
 
     // Return the result, typecasted if necessary
+    // tt::log_info(tt::LogOp, " ****** typecast result");
     return do_typecast ? typecast(result, input_dtype) : result;
 }
 
