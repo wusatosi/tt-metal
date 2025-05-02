@@ -80,12 +80,10 @@ target_sources(
             api/tt-metalium/persistent_kernel_cache.hpp
             api/tt-metalium/program.hpp
             api/tt-metalium/program_cache.hpp
-            api/tt-metalium/program_device_map.hpp
             api/tt-metalium/runtime_args_data.hpp
             api/tt-metalium/semaphore.hpp
             api/tt-metalium/shape.hpp
             api/tt-metalium/sub_device.hpp
-            api/tt-metalium/sub_device_manager_tracker.hpp
             api/tt-metalium/sub_device_types.hpp
             api/tt-metalium/system_mesh.hpp
             api/tt-metalium/system_memory_manager.hpp
@@ -128,6 +126,7 @@ target_sources(
             fabric/mesh_graph_descriptors/quanta_galaxy_mesh_graph_descriptor.yaml
             fabric/mesh_graph_descriptors/t3k_mesh_graph_descriptor.yaml
             fabric/mesh_graph_descriptors/tg_mesh_graph_descriptor.yaml
+            fabric/hw/inc/fabric_routing_mode.h
             impl/dispatch/kernels/cq_commands.hpp
             impl/dispatch/kernels/cq_common.hpp
             impl/dispatch/kernels/cq_helpers.hpp
