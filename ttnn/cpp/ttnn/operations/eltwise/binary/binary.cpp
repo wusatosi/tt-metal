@@ -222,17 +222,17 @@ inline auto any_subtile_broadcasted_block_format(const Tensor& a, const auto& b)
 
 inline auto any_non_height_sharded(const Tensor& a, const auto& b, const MemoryConfig& c) {
     if (a.is_sharded()) {
-        return a.memory_config().memory_layout != TensorMemoryLayout::HEIGHT_SHARDED;
+        return a.memory_config().memory_layout() != TensorMemoryLayout::HEIGHT_SHARDED;
     }
 
     if constexpr (requires { b.is_sharded(); }) {
         if (b.is_sharded()) {
-            return b.memory_config().memory_layout != TensorMemoryLayout::HEIGHT_SHARDED;
+            return b.memory_config().memory_layout() != TensorMemoryLayout::HEIGHT_SHARDED;
         }
     }
 
     if (c.is_sharded()) {
-        return c.memory_layout != TensorMemoryLayout::HEIGHT_SHARDED;
+        return c.memory_layout() != TensorMemoryLayout::HEIGHT_SHARDED;
     }
 
     return false;
