@@ -1105,11 +1105,6 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                                  (local_src + local_size - 1) < (src_start + length))) {
                                 no_wait_possible = false;
                             }
-                            printf(
-                                "local_src: %d, local_size: %d, no_wait_possible: %d\n",
-                                local_src,
-                                local_size,
-                                no_wait_possible);
                             if (!no_wait_possible) {
                                 for (int k = j; k < local_core_count; ++k) {
                                     flattened_local_config[0][core][6 + 4 * k] = 0;

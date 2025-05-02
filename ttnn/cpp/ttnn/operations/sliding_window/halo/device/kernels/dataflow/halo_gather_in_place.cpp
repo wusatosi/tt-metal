@@ -47,8 +47,6 @@ void copy_sticks_async_to_temp_or_final(
         uint16_t noc_x = ((is_block_sharded && !is_col_major) || is_width_sharded) ? my_noc_x : config_data[i + 0];
         uint16_t noc_y = ((is_block_sharded && is_col_major) || is_width_sharded) ? my_noc_y : config_data[i + 1];
         length = config_data[i + 2];
-        // DPRINT << "copy_sticks_async_to_temp_or_final: noc_x: " << noc_x << ", noc_y: " << noc_y
-        //        << ", length: " << length << ENDL();
         i += 3;
         const uint64_t base_addr_final = get_noc_addr(noc_x, noc_y, out_base_l1_addr);
         for (uint16_t j = 0; j < length; j += 4) {
@@ -56,9 +54,6 @@ void copy_sticks_async_to_temp_or_final(
             uint16_t dst_local_idx = config_data[i + j + 1];
             uint16_t nsticks = config_data[i + j + 2];
             uint16_t no_wait = config_data[i + j + 3];
-            // DPRINT << "copy_sticks_async_to_temp_or_final: src_local_idx: " << src_local_idx
-            //        << ", dst_local_idx: " << dst_local_idx << ", nsticks: " << nsticks
-            //        << ", no_wait: " << no_wait << ENDL();
             uint32_t size = nsticks * stick_nbytes;
             uint32_t src_offset = src_local_idx * input_aligned_page_size;
             uint32_t dst_offset = dst_local_idx * stick_nbytes;
@@ -168,9 +163,6 @@ void copy_sticks_async_local(
             if (no_wait != no_wait_pass) {  // only copy sticks matching the no_wait condition
                 continue;
             }
-
-            DPRINT << "no_wait: " << no_wait << ", src_local_idx: " << src_local_idx
-                   << ", dst_local_idx: " << dst_local_idx << ", nsticks: " << nsticks << ENDL();
 
             uint32_t size = nsticks * stick_nbytes;
             uint32_t dst_offset = dst_local_idx * stick_nbytes;
@@ -295,7 +287,7 @@ void kernel_main() {
     cb_wait_front(in_cb_id, in_npages);
 
     // copy remote sticks to temp buffer or their final destinations
-    if constexpr (!no_wait_remote) {
+    if constexpr (no_wait_remote) {
         const uint32_t temp_base_l1_addr = get_write_ptr(remote_temp_cb_id);
         uint32_t config_data_l1_addr = get_read_ptr(remote_config_cb_id);
         const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
@@ -310,13 +302,7 @@ void kernel_main() {
         noc_async_write_barrier();
         cb_reserve_back(sync_cb_id, 1);
         cb_push_back(sync_cb_id, 1);
-
-        // tt::data_movement::common::print_bf16_pages(temp_base_l1_addr, 64, 97);
     }
-
-    noc_async_read_barrier();
-    noc_async_write_barrier();
-    cb_wait_front(sync_cb_id, 1);
 
     // move the no wait local sticks
     if constexpr (local_config_cb_id) {
@@ -336,8 +322,6 @@ void kernel_main() {
         cb_push_back(sync_cb_id, 1);
     }
 
-    noc_async_read_barrier();
-    noc_async_write_barrier();
     cb_wait_front(sync_cb_id, 2);
 
     // move the wait local sticks
@@ -406,7 +390,7 @@ void kernel_main() {
     }
 
     // copy remote sticks from temp buffer to final destinations
-    if constexpr (!no_wait_remote && remote_temp_cb_id) {
+    if constexpr (!no_wait_remote) {
         const uint32_t temp_base_l1_addr = get_read_ptr(remote_temp_cb_id);
         uint32_t config_data_l1_addr = get_read_ptr(remote_config_cb_id);
         const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);

@@ -592,7 +592,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     reader_ct_args[0] = cb_indices.padding_config_cb_id;
     reader_ct_args[1] = 0;
     reader_ct_args[2] = cb_indices.remote_config_cb_id;
-    reader_ct_args[3] = 0;
+    reader_ct_args[3] = remote_temp_cb_id;
     reader_ct_args[30] = 1;  // no wait remote
     KernelHandle reader_kernel_id1 = CreateKernel(
         program,
