@@ -23,7 +23,7 @@ from gi.repository import Gst, GLib
 import ttnn
 from ttnn.model_preprocessing import preprocess_model_parameters
 from models.utility_functions import is_wormhole_b0, torch2tt_tensor, is_blackhole
-from models.experimental.functional_UFLD_v2_rn18.tests.UFLD_v2_RN18_test_infra import create_test_infra
+from models.experimental.ufld_v2_rn18like.tests.ufld_v2_rn18like_test_infra import create_test_infra
 from models.utility_functions import (
     is_wormhole_b0,
     enable_persistent_kernel_cache,
