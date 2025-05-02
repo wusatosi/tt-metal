@@ -23,7 +23,8 @@ bool is_tt_fabric_config(tt::tt_metal::FabricConfig fabric_config) {
 }
 
 bool is_2d_fabric_config(tt::tt_metal::FabricConfig fabric_config) {
-    return fabric_config == tt::tt_metal::FabricConfig::FABRIC_2D;
+    return fabric_config == tt::tt_metal::FabricConfig::FABRIC_2D ||
+           fabric_config == tt::tt_metal::FabricConfig::FABRIC_2D_PUSH;
 }
 
 Topology get_tt_fabric_topology(tt::tt_metal::FabricConfig fabric_config) {

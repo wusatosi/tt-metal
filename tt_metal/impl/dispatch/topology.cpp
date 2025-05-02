@@ -1262,7 +1262,8 @@ std::unique_ptr<Program> create_and_compile_fabric_program(IDevice* device) {
 
 void configure_fabric_cores(IDevice* device) {
     auto fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
-    if (tt_fabric::is_2d_fabric_config(fabric_config)) {
+    // temporary. this needs to be removed once we deprecate pull routers.
+    if (fabric_config == tt::tt_metal::FabricConfig::FABRIC_2D) {
         configure_2d_fabric_cores(device);
     }
 }

@@ -133,8 +133,8 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
 
     auto mesh_shape = control_plane->get_physical_mesh_shape(src_mesh_chip_id.first);
     tt::log_info(tt::LogTest, "mesh dimensions {:x}", mesh_shape.dims());
-    tt::log_info(tt::LogTest, "mesh dimension 0 stride {:x}", mesh_shape.get_stride(0));
-    tt::log_info(tt::LogTest, "mesh dimension 1 stride {:x}", mesh_shape.get_stride(1));
+    tt::log_info(tt::LogTest, "mesh dimension 0 {:x}", mesh_shape[0]);
+    tt::log_info(tt::LogTest, "mesh dimension 1 {:x}", mesh_shape[1]);
 
     std::vector<uint32_t> sender_runtime_args = {
         packet_header_address,
@@ -146,7 +146,7 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
         edm_direction,
         src_mesh_chip_id.second,
         dst_mesh_chip_id.second,
-        mesh_shape.get_stride(0),
+        mesh_shape[1],
         num_hops};
 
     // append the EDM connection rt args
