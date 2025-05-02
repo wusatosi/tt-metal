@@ -120,7 +120,7 @@ def run_trace_2cq_model(device, test_infra, num_warmup_iterations, num_measureme
         op_event = ttnn.record_event(device, 0)
         ttnn.execute_trace(device, tid, cq_id=0, blocking=False)
         outputs.append(tt_output_res.cpu(blocking=False))
-        ttnn.synchronize_device(device)
+    ttnn.synchronize_device(device)
     profiler.end(f"run")
     if use_signpost:
         signpost(header="stop")
@@ -130,7 +130,7 @@ def run_trace_2cq_model(device, test_infra, num_warmup_iterations, num_measureme
 
 
 @pytest.mark.skipif(is_blackhole(), reason="Unsupported on BH")
-@pytest.mark.parametrize("batch_size", [1, 2, 3, 4, 5, 6, 7])
+@pytest.mark.parametrize("batch_size", [1,2,3,4,5,6,7])
 @pytest.mark.models_performance_bare_metal
 @pytest.mark.models_performance_virtual_machine
 @pytest.mark.parametrize(

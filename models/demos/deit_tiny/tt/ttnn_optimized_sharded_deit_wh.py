@@ -4,6 +4,7 @@
 
 import transformers
 import torch
+import torch.nn as nn
 from ttnn.model_preprocessing import (
     preprocess_linear_weight,
     preprocess_linear_bias,
@@ -116,7 +117,7 @@ def update_model_config(config, batch_size):
     return DotAccessDict(dict(**config.to_dict(), core_grid=core_grid, program_configs=program_configs))
 
 
-# https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/deit/modeling_deit.py
+# https://github.com/huggingface/transformers/blob/v4.37.2/src/transformers/models/vit/modeling_vit.py
 
 
 def deit_patch_embeddings(config, pixel_values, *, parameters, unittest_check=False):
@@ -147,7 +148,7 @@ def deit_patch_embeddings(config, pixel_values, *, parameters, unittest_check=Fa
     folded_pixel_values = ttnn.to_layout(folded_pixel_values, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat8_b)
 
     if unittest_check:
-        parameters = parameters.deit.embeddings.patch_embeddings
+        parameters = parameters.vit.embeddings.patch_embeddings
 
     patch_embedding_output = ttnn.linear(
         folded_pixel_values,
@@ -173,13 +174,13 @@ def deit_embeddings(
     *,
     parameters,
 ):
-    parameters = parameters.deit.embeddings
+    parameters = parameters.vit.embeddings
 
     l1_memory_config = ttnn.L1_MEMORY_CONFIG
 
     patch_embeddings = deit_patch_embeddings(config, pixel_values, parameters=parameters.patch_embeddings)
     embedding_output = ttnn.concat(
-        [cls_token, distillation_token, patch_embeddings], -2, memory_config=l1_memory_config
+        [cls_token, patch_embeddings], -2, memory_config=l1_memory_config
     )
     embedding_output = ttnn.to_layout(embedding_output, layout=ttnn.TILE_LAYOUT)
     embedding_output = ttnn.add(
@@ -452,14 +453,14 @@ def deit(
         config,
         embeddings_output,
         attention_mask,
-        parameters=parameters.deit.encoder,
+        parameters=parameters.vit.encoder,
     )
 
     # Final LayerNorm
     output = ttnn.layer_norm(
         hidden_states,
-        weight=parameters.deit.layernorm.weight,
-        bias=parameters.deit.layernorm.bias,
+        weight=parameters.vit.layernorm.weight,
+        bias=parameters.vit.layernorm.bias,
         epsilon=config.layer_norm_eps,
         memory_config=ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG,
         program_config=config.program_configs["layernorm_program_config"],
@@ -508,7 +509,7 @@ def preprocess_inputs(
 
 def custom_preprocessor(torch_model, name):
     parameters = {}
-    if isinstance(torch_model, transformers.models.deit.modeling_deit.DeiTEmbeddings):
+    if isinstance(torch_model, transformers.models.vit.modeling_vit.ViTEmbeddings):
         weight = torch_model.patch_embeddings.projection.weight
         bias = torch_model.patch_embeddings.projection.bias
 
@@ -528,8 +529,8 @@ def custom_preprocessor(torch_model, name):
         )
 
         parameters["cls_token"] = ttnn.from_torch(torch_model.cls_token, dtype=ttnn.bfloat8_b, layout=ttnn.TILE_LAYOUT)
-        parameters["distillation_token"] = ttnn.from_torch(
-            torch_model.distillation_token, dtype=ttnn.bfloat8_b, layout=ttnn.TILE_LAYOUT
+        parameters["distillation_token"] = nn.Parameter(
+            torch.zeros(1, 1, 192)
         )
         parameters["position_embeddings"] = ttnn.from_torch(
             torch_model.position_embeddings, dtype=ttnn.bfloat8_b, layout=ttnn.TILE_LAYOUT

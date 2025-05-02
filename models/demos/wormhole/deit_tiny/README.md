@@ -23,3 +23,11 @@ To run the demo for the DEIT model, follow these instructions:
   ```sh
   pytest --disable-warnings models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_inference_device_OPs.py
   ```
+
+- For running the demo and benchmarking, use the following command:
+
+  ```sh
+  pytest --disable-warnings models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_cifar10_inference.py
+  ```
+
+

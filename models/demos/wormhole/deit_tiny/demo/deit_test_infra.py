@@ -13,9 +13,11 @@ from models.utility_functions import (
 )
 
 from models.demos.deit_tiny.tt import ttnn_optimized_sharded_deit_wh
-from models.demos.wormhole.deit_tiny.demo.deit_helper_funcs import get_data_loader, get_batch
+from models.demos.wormhole.deit_tiny.demo.deit_helper_funcs import get_data_loader_cifar10, get_batch_cifar
 import transformers
-from transformers import AutoImageProcessor
+import torch
+import torch.nn as nn
+from transformers import AutoFeatureExtractor
 
 
 class DeitTestInfra:
@@ -37,14 +39,16 @@ class DeitTestInfra:
         self.weights_mesh_mapper = weights_mesh_mapper
         self.output_mesh_composer = output_mesh_composer
 
-        model_name = "facebook/deit-tiny-distilled-patch16-224"
+        model_name = "facebook/deit-tiny-patch16-224"
         sequence_size = 224
 
         config = transformers.DeiTConfig.from_pretrained(model_name)
         config.num_hidden_layers = 12
-        model = transformers.DeiTForImageClassification.from_pretrained(model_name, config=config)
+        model = transformers.ViTForImageClassification.from_pretrained(model_name)
+        model.classifier = nn.Linear(192, 10, bias=True)
+        model.load_state_dict(torch.load("models/demos/wormhole/deit_tiny/demo/deit_tiny_patch16_224_trained_statedict.pth"), strict=True)
         self.config = ttnn_optimized_sharded_deit_wh.update_model_config(config, batch_size)
-        image_processor = AutoImageProcessor.from_pretrained(model_name)
+        image_processor = AutoFeatureExtractor.from_pretrained(model_name)
 
         self.parameters = preprocess_model_parameters(
             initialize_model=lambda: model,
@@ -55,9 +59,9 @@ class DeitTestInfra:
         # cls_token & position embeddings expand to batch_size
         # TODO: pass batch_size to preprocess_model_parameters
         model_state_dict = model.state_dict()
-        torch_cls_token = model_state_dict["deit.embeddings.cls_token"]
-        torch_distillation_token = model_state_dict["deit.embeddings.distillation_token"]
-        torch_position_embeddings = model_state_dict["deit.embeddings.position_embeddings"]
+        torch_cls_token = model_state_dict["vit.embeddings.cls_token"]
+        torch_distillation_token = torch.nn.Parameter(torch.zeros(1, 1, 192))
+        torch_position_embeddings = model_state_dict["vit.embeddings.position_embeddings"]
         if batch_size > 1:
             torch_cls_token = torch.nn.Parameter(torch_cls_token.expand(batch_size, -1, -1))
             torch_distillation_token = torch.nn.Parameter(torch_distillation_token.expand(batch_size, -1, -1))
@@ -91,9 +95,9 @@ class DeitTestInfra:
         else:
             self.head_masks = [None for _ in range(self.config.num_hidden_layers)]
 
-        ## IMAGENET INFERENCE
-        data_loader = get_data_loader("ImageNet_data", batch_size, 2)
-        self.torch_pixel_values, labels = get_batch(data_loader, image_processor)
+        ## CIFAR INFERENCE
+        data_loader = get_data_loader_cifar10(batch_size=batch_size, iterations=2)
+        self.torch_pixel_values, labels = get_batch_cifar(data_loader)
 
     def setup_l1_sharded_input(self, device, torch_pixel_values, mesh_mapper=None, mesh_composer=None):
         torch_pixel_values = torch.permute(torch_pixel_values, (0, 2, 3, 1))
@@ -169,3 +173,4 @@ def create_test_infra(
         weights_mesh_mapper,
         output_mesh_composer,
     )
+
