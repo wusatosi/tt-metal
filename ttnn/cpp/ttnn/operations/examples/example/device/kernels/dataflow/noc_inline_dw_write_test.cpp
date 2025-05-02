@@ -83,67 +83,52 @@ void kernel_main() {
 
     uint32_t noc_x = get_arg_val<uint32_t>(0);
     uint32_t noc_y = get_arg_val<uint32_t>(1);
-    uint32_t dst_addr = get_arg_val<uint32_t>(2);
+    uint32_t src_addr = get_arg_val<uint32_t>(2);
+    uint32_t dst_addr = get_arg_val<uint32_t>(3);
 
     constexpr uint8_t cb_print = 0;
+    constexpr uint8_t cb_output = 2;
     constexpr uint32_t first_tile = 0;
     constexpr uint32_t one_tile_size_1B = 4096;
 
     InterleavedAddrGenFast<true> dst_addr_gen = {
         .bank_base_address = dst_addr, .page_size = one_tile_size_1B, .data_format = get_dataformat(cb_print)};
+    InterleavedAddrGenFast<true> src_addr_gen = {
+        .bank_base_address = src_addr, .page_size = 1024, .data_format = get_dataformat(cb_print)};
 
     // noc address given by address generator
-    uint64_t noc_addr1 = get_noc_addr(0, dst_addr_gen);
-    DPRINT << HEX();
-    DPRINT << "noc_addr1 - 0x" << noc_addr1 << ENDL();
-    // noc address with physical noc_xy of worker cores on (0, 1)
-    uint64_t noc_addr2 = get_noc_addr(noc_x, noc_y, dst_addr, noc_index);
-    DPRINT << "noc_addr2 - 0x" << noc_addr2 << ENDL();
+    uint64_t noc_addr1 = get_noc_addr(0, src_addr_gen);
 
-    // value to write
-    uint32_t val = 0x0BADF00D;
+    cb_reserve_back(cb_print, 1);
+    auto l1_write_addr = get_write_ptr(cb_print);
+    noc_async_read(noc_addr1, l1_write_addr, 10, noc_index);  // read one row in face0 (4-byte)
+    noc_async_read_barrier();
+    cb_push_back(cb_print, 1);
 
-    // 1. noc_inline_dw_write with noc_addr1
-    DPRINT << "Case 1 - noc_inline_dw_write on noc address to dram" << ENDL();
-    DPRINT << "Before-write : " << ENDL();
-    check_dram_status(noc_addr1, cb_print);
+    cb_wait_front(cb_print, 1);
+    cb_reserve_back(cb_output, 1);
+    auto read_addr = get_read_ptr(cb_print);
+    auto write_ptr = get_write_ptr(cb_output);
+    auto write_noc_addr = get_noc_addr(write_ptr);
+    noc_async_write(read_addr, write_noc_addr, 8);
+    noc_async_write_barrier();
+    cb_push_back(cb_output, 1);
+    cb_pop_front(cb_print, 1);
 
-    noc_inline_dw_write(noc_addr1, val, 0xF, noc_index);
-    noc_async_write_barrier(noc_index);
+    DPRINT << "here" << ENDL();
+    
+    cb_wait_front(cb_output, 1);
+    // DPRINT only first row of tile
+    for (int32_t r = 0; r < 1; ++r) {
+        SliceRange sr = SliceRange{.h0 = (uint8_t)r, .h1 = (uint8_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+        DPRINT_DATA0({
+            DPRINT << HEX() << (uint)r << " --READ--cin1-- "
+                   << TileSlice(cb_output, 0, sr, TSLICE_INPUT_CB, TSLICE_RD_PTR, true, false) << ENDL();
+        });
+    }
+    DPRINT << "\n";
+    cb_pop_front(cb_output, 1);
 
-    DPRINT << "After-write : " << ENDL();
-    check_dram_status(noc_addr1, cb_print);
-
-    // 2. noc_inline_dw_write with noc_addr2
-    DPRINT << "Case 2 - noc_inline_dw_write on noc address to worker core (SRAM)" << ENDL();
-    DPRINT << "Before-write print with noc_addr2 : " << ENDL();
-    check_dram_status(noc_addr2, cb_print);
-
-    noc_inline_dw_write(noc_addr2, val, 0xF, noc_index);
-    noc_async_write_barrier(noc_index);
-
-    DPRINT << "After-write print with noc_addr2: " << ENDL();
-    check_dram_status(noc_addr2, cb_print);
-
-    // 3. test with custom noc_inline_dw_write defined in this file.
-    DPRINT << "Case 3 - custom noc_inline_dw_write on noc address to dram with full be mask" << ENDL();
-    DPRINT << "Before-write : " << ENDL();
-    check_dram_status(noc_addr1, cb_print);
-
-    uint32_t be32 = 0xFFFFFFFF;  // 32 bytes enabled
-    noc_fast_write_dw_inline_moreh(
-        noc_index,
-        write_at_cmd_buf,
-        val,
-        noc_addr1,
-        be32,
-        NOC_UNICAST_WRITE_VC,
-        /*mcast*/ false,
-        /*posted*/ false);
-    noc_async_write_barrier(noc_index);
-
-    DPRINT << "After-write : " << ENDL();
-    check_dram_status(noc_addr1, cb_print);
-
+    
     DPRINT << "----- Kernel End ----" << ENDL();
 }

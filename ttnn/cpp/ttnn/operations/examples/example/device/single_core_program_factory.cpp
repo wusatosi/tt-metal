@@ -67,7 +67,7 @@ NocInlineDeviceOperation::SingleCore::cached_program_t NocInlineDeviceOperation:
     CoreCoord receiver_core = {0, 1};
     CoreCoord virtual_receiver = device->worker_core_from_logical_core(receiver_core);
     tt::tt_metal::SetRuntimeArgs(
-        program, unary_writer_kernel_id, writer_core, {virtual_receiver.x, virtual_receiver.y, dst_buffer->address()});
+        program, unary_writer_kernel_id, writer_core, {virtual_receiver.x, virtual_receiver.y, src_buffer->address(), dst_buffer->address()});
     return {std::move(program), {.unary_writer_kernel_id = unary_writer_kernel_id}};
 }
 
