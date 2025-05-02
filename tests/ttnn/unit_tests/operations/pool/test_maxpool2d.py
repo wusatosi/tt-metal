@@ -467,3 +467,54 @@ def test_run_max_pool_mem_config(device, dtype, input_spec, memory_config):
         ceil_mode=ceil_mode,
         memory_config=memory_config,
     )
+
+
+yolov5x_maxpool_parameters = {
+    "test_run_max_pool": {
+        "dtype": [ttnn.bfloat16, ttnn.bfloat8_b],
+        "input_specs": [
+            # Contains following parameters
+            # [batch_size, input_channels, input_height, input_width, kernel_height, kernel_width, stride_h, strid_w, pad_h, pad_w, dilation_h, dilation_w, ceil_mode]
+            [1, 640, 20, 20, 5, 5, 1, 1, 2, 2, 1, 1, False],  # yolo
+        ],
+    },
+}
+
+
+@pytest.mark.parametrize("input_spec", yolov5x_maxpool_parameters["test_run_max_pool"]["input_specs"])
+@pytest.mark.parametrize("dtype", yolov5x_maxpool_parameters["test_run_max_pool"]["dtype"])
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+def test_run_max_pool_yolov5x(device, dtype, input_spec):
+    (
+        batch_size,
+        input_channels,
+        input_height,
+        input_width,
+        kernel_height,
+        kernel_width,
+        stride_h,
+        strid_w,
+        pad_h,
+        pad_w,
+        dilation_h,
+        dilation_w,
+        ceil_mode,
+    ) = input_spec
+    run_max_pool2d(
+        batch_size,
+        input_channels,
+        input_height,
+        input_width,
+        kernel_height,
+        kernel_width,
+        stride_h,
+        strid_w,
+        pad_h,
+        pad_w,
+        dilation_h,
+        dilation_w,
+        dtype,
+        device,
+        sharding=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        ceil_mode=ceil_mode,
+    )
