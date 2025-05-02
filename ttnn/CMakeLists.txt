@@ -179,6 +179,7 @@ set(TTNN_BASE_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/ccl/sharding_addrgen_helper.cpp
 )
 
+#[[
 set(TENSOR_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/tensor/tensor_attributes.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/tensor/tensor_impl.cpp
@@ -199,6 +200,7 @@ set(TENSOR_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/tensor/flatbuffer/tensor_types_to_flatbuffer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/tensor/flatbuffer/tensor_types_from_flatbuffer.cpp
 )
+#]]
 
 set(CCL_SRC
     # Common
@@ -825,6 +827,7 @@ set(TTNN_PUBLIC_LINK_LIBRARIES
     xtensor-blas
     xtl
     FlatBuffers::FlatBuffers
+    TT::NN::Tensor
 )
 
 set(TTNN_PRECOMPILED_HEADERS
@@ -1127,3 +1130,5 @@ if(WITH_PYTHON_BINDINGS)
             "${TARGET_LINK_LIBRARIES_PYBIND}"
     )
 endif()
+
+add_subdirectory(cpp/ttnn/tensor)
