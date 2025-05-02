@@ -8,7 +8,7 @@
 
 #include "ttnn/operations/moreh/moreh_helper_functions.hpp"
 #include "ttnn/operations/core/compute_kernel/compute_kernel_config.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn::operations::moreh::moreh_linear_backward {
 

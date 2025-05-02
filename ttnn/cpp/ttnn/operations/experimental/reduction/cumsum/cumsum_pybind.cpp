@@ -9,8 +9,8 @@
 #include "ttnn/common/queue_id.hpp"
 #include "ttnn/operations/experimental/reduction/cumsum/device/cumsum_device_operation.hpp"
 #include "ttnn/operations/experimental/reduction/cumsum/cumsum.hpp"
-#include "ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/types.hpp"
 
 namespace ttnn::operations::experimental::reduction::detail {
 namespace py = pybind11;

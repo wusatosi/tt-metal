@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #pragma once
-#include "ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/types.hpp"
 #include <tt-metalium/constants.hpp>
 #include "ttnn/operation.hpp"
 

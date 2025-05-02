@@ -7,7 +7,7 @@
 #include <optional>
 
 #include "ttnn/run_operation.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 using namespace tt::constants;
 

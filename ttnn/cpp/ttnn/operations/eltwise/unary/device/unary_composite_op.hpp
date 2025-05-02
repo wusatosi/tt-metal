@@ -5,7 +5,7 @@
 #pragma once
 #include <functional>
 #include <optional>
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include <magic_enum/magic_enum.hpp>
 #include "cpp/ttnn/operations/eltwise/ternary/where.hpp"
 #include "ttnn/operations/eltwise/unary/unary.hpp"

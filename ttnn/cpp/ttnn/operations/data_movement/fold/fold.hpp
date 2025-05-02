@@ -8,8 +8,8 @@
 #include "ttnn/types.hpp"
 #include "ttnn/run_operation.hpp"
 #include "ttnn/operations/core/core.hpp"
-#include "ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/tensor_utils.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/tensor_utils.hpp"
 #include "ttnn/tensor/host_buffer/functions.hpp"
 
 #include "device/fold_device_op.hpp"

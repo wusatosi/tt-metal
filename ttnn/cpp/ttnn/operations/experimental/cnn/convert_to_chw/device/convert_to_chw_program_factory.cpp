@@ -4,7 +4,7 @@
 
 #include "convert_to_chw_program_factory.hpp"
 #include "tt-metalium/tt_backend_api_types.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 
 namespace ttnn::operations::experimental::cnn::detail {
 

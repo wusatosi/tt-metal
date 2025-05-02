@@ -10,7 +10,7 @@
 #include <variant>
 
 #include <tt-metalium/host_api.hpp>
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn {
 namespace operations {

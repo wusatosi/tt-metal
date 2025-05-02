@@ -11,7 +11,7 @@
 #include <tuple>
 #include <type_traits>
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include <nlohmann/json.hpp>
 #include <magic_enum/magic_enum.hpp>
 #include <tt-metalium/kernel.hpp>

@@ -7,7 +7,7 @@
 #include "ttnn/common/queue_id.hpp"
 #include "ttnn/decorators.hpp"
 #include "ttnn/operations/functions.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn::operations::experimental::reduction {
 

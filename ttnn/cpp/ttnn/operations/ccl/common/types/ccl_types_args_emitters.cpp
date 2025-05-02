@@ -4,8 +4,8 @@
 
 #include "cpp/ttnn/operations/ccl/common/types/ccl_types_args_emitters.hpp"
 #include <tt-metalium/buffer_types.hpp>
-#include "cpp/ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/types.hpp"
 #include <tt-metalium/device.hpp>
 #include "cpp/ttnn/operations/ccl/sharding_addrgen_helper.hpp"
 

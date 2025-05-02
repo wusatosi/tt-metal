@@ -8,7 +8,7 @@
 #include <optional>
 #include <variant>
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "gelu_backward_program_factory.hpp"
 
 #include "ttnn/device_operation.hpp"

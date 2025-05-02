@@ -6,7 +6,7 @@
 
 #include <core/ttnn_all_includes.hpp>
 #include <cstdint>
-#include <ttnn/tensor/types.hpp>
+#include <tensor/types.hpp>
 
 #include "autograd/auto_context.hpp"
 #include "autograd/module_base.hpp"

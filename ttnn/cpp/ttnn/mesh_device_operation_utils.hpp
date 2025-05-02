@@ -14,7 +14,7 @@
 
 #include "ttnn/core.hpp"
 #include "ttnn/distributed/types.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/operation_concepts.hpp"
 
 namespace ttnn::device_operation::mesh_device_operation_utils {

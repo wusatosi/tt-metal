@@ -22,7 +22,7 @@
 #include <signal.h>
 #include <setjmp.h>
 
-#include "ttnn/tensor/xtensor/partition.hpp"
+#include "tensor/xtensor/partition.hpp"
 
 namespace tt {
 namespace tt_metal {

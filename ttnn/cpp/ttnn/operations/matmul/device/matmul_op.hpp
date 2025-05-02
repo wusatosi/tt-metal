@@ -9,8 +9,8 @@
 #include "ttnn/operations/core/compute_kernel/compute_kernel_config.hpp"
 #include "ttnn/operations/eltwise/unary/common/unary_op_types.hpp"
 #include "ttnn/run_operation.hpp"
-#include "ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/tensor_utils.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/tensor_utils.hpp"
 #include "ttnn/types.hpp"
 
 namespace ttnn {

@@ -5,7 +5,7 @@
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/constants.hpp>
 #include <tt-metalium/util.hpp>
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn::operations::experimental::transformer::detail {
 

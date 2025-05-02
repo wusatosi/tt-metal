@@ -7,7 +7,7 @@
 #include <core/ttnn_all_includes.hpp>
 #include <csignal>
 #include <cstdint>
-#include <ttnn/tensor/tensor.hpp>
+#include <tensor/tensor.hpp>
 #include <wandbcpp.hpp>
 
 #include "autograd/tensor.hpp"

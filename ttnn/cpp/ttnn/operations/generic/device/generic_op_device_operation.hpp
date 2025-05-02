@@ -8,7 +8,7 @@
 #include <tt-metalium/program_descriptors.hpp>
 
 #include "ttnn/decorators.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/device_operation.hpp"
 
 namespace ttnn::operations::generic {

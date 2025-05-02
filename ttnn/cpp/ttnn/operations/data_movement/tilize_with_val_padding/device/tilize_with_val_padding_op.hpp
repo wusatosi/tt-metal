@@ -6,7 +6,7 @@
 
 #include <optional>
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/operation.hpp"
 #include "ttnn/operations/data_movement/tilize_with_val_padding/tilize_with_val_padding_common.hpp"
 

@@ -5,7 +5,7 @@
 #include "moreh_layer_norm_backward_input_grad_device_operation.hpp"
 
 #include "ttnn/operations/moreh/moreh_helper_functions.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn::operations::moreh::moreh_layer_norm_backward_input_grad {
 void MorehLayerNormBackwardInputGradOperation::validate_inputs(

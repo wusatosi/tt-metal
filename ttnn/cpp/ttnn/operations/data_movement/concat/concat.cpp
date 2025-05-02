@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "ttnn/common/queue_id.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 #include "ttnn/operations/core/core.hpp"
 #include <tt-metalium/math.hpp>
 

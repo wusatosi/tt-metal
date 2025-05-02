@@ -5,7 +5,7 @@
 #include "reshape_op.hpp"
 #include <tt-metalium/constants.hpp>
 
-#include "ttnn/tensor/tensor_utils.hpp"
+#include "tensor/tensor_utils.hpp"
 #include "reshape_program_factory.hpp"
 using namespace tt::constants;
 using namespace tt::tt_metal;

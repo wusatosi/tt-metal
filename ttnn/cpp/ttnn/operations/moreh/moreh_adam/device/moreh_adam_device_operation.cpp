@@ -8,7 +8,7 @@
 
 #include "ttnn/operation.hpp"
 #include "ttnn/operations/moreh/moreh_helper_functions.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn::operations::moreh::moreh_adam {
 void MorehAdamOperation::validate_inputs(

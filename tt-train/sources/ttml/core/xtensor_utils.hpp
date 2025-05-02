@@ -6,9 +6,9 @@
 
 #include <core/ttnn_all_includes.hpp>
 #include <span>
+#include <tensor/xtensor/conversion_utils.hpp>
+#include <tensor/xtensor/partition.hpp>
 #include <ttnn/tensor/shape/shape.hpp>
-#include <ttnn/tensor/xtensor/conversion_utils.hpp>
-#include <ttnn/tensor/xtensor/partition.hpp>
 
 // TODO: decide if we want to use xarray everwhere or xtensor is ok
 /*

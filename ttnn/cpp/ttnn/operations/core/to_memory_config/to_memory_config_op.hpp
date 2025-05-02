@@ -7,7 +7,7 @@
 #include <optional>
 
 #include "ttnn/core.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/run_operation.hpp"
 #include "cpp/ttnn/operations/data_movement/sharded/reshard/device/reshard_op.hpp"
 #include "cpp/ttnn/operations/data_movement/sharded/interleaved_to_sharded/device/interleaved_to_sharded_op.hpp"

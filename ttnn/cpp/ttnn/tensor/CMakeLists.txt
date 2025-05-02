@@ -3,6 +3,7 @@ add_library(TT::NN::Tensor ALIAS ttnn_tensor)
 
 TT_ENABLE_UNITY_BUILD(ttnn_tensor)
 
+GENERATE_FBS_HEADER(${CMAKE_CURRENT_SOURCE_DIR}/flatbuffer/tensor_types.fbs)
 target_sources(
     ttnn_tensor
     PRIVATE
@@ -24,9 +25,27 @@ target_sources(
         xtensor/partition.cpp
         flatbuffer/tensor_types_to_flatbuffer.cpp
         flatbuffer/tensor_types_from_flatbuffer.cpp
+        ${FBS_GENERATED_HEADER_FILE}
 )
 
-target_include_directories(ttnn_tensor PUBLIC api)
+target_include_directories(
+    ttnn_tensor
+    PUBLIC
+        api
+    PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR}/flatbuffers
+        ${PROJECT_SOURCE_DIR}/ttnn/cpp # FIXME: BAD BAD BAD; Remove after making a module for ttnn/distributed
+        ${PROJECT_SOURCE_DIR}/ttnn # FIXME: BAD BAD BAD; Remove after making a module for ttnn/distributed
+)
+
+target_link_libraries(
+    ttnn_tensor
+    PUBLIC
+        TT::Metalium
+    PRIVATE
+        FlatBuffers::FlatBuffers
+        xtensor
+)
 
 install(TARGETS ttnn_tensor LIBRARY)
 

@@ -8,7 +8,7 @@
 #include <tt-metalium/hal.hpp>
 #include <tt-metalium/mesh_coord.hpp>
 
-#include "ttnn/tensor/tensor_utils.hpp"
+#include "tensor/tensor_utils.hpp"
 
 #include "cpp/ttnn/operations/data_movement/pad/pad.hpp"
 #include "cpp/ttnn/operations/copy.hpp"

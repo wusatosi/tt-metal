@@ -7,7 +7,7 @@
 #include <tt-metalium/assert.hpp>
 #include "ttnn/distributed/distributed_tensor_config.hpp"
 #include "ttnn/distributed/types.hpp"
-#include "ttnn/tensor/xtensor/partition.hpp"
+#include "tensor/xtensor/partition.hpp"
 
 namespace ttnn::distributed {
 namespace {

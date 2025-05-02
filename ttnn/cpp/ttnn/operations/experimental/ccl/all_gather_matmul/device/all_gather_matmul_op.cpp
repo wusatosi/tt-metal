@@ -5,7 +5,7 @@
 #include <tt-metalium/core_coord.hpp>
 #include "ttnn/operations/ccl/all_gather/device/all_gather_op.hpp"
 #include "ttnn/operations/math.hpp"
-#include "ttnn/tensor/tensor_utils.hpp"
+#include "tensor/tensor_utils.hpp"
 #include "ttnn/operations/experimental/ccl/all_gather_matmul/device/all_gather_matmul_op.hpp"
 #include "ttnn/operations/ccl/ccl_common.hpp"
 #include "ttnn/operations/ccl/sharding_addrgen_helper.hpp"

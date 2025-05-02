@@ -5,7 +5,7 @@
 #pragma once
 
 #include "tensor_types_generated.h"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 #include "ttnn/tensor/tensor_spec.hpp"
 
 namespace ttnn {

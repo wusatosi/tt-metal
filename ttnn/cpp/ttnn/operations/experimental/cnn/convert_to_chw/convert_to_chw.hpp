@@ -5,7 +5,7 @@
 #pragma once
 
 #include <ttnn/decorators.hpp>
-#include <ttnn/tensor/tensor.hpp>
+#include <tensor/tensor.hpp>
 
 namespace ttnn::operations::experimental::cnn {
 

@@ -11,14 +11,14 @@
 #include <tt-metalium/shape.hpp>
 #include "tt_metal/tt_metal/common/multi_device_fixture.hpp"
 #include "ttnn/cpp/ttnn/operations/creation.hpp"
-#include "ttnn/cpp/ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 #include "ttnn/decorators.hpp"
 #include "ttnn/distributed/api.hpp"
 #include "ttnn/distributed/distributed_tensor_config.hpp"
 #include "ttnn/operations/functions.hpp"
 #include "ttnn/tensor/shape/shape.hpp"
 #include "ttnn/tensor/storage.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/tensor/tensor_spec.hpp"
 
 namespace ttnn::distributed::test {

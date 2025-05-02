@@ -9,7 +9,7 @@
 #include "cpp/ttnn/global_semaphore.hpp"
 #include <tt-metalium/work_split.hpp>
 
-#include "ttnn/tensor/tensor_utils.hpp"
+#include "tensor/tensor_utils.hpp"
 
 namespace ttnn {
 

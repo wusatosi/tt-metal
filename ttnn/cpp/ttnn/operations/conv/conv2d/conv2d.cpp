@@ -14,8 +14,8 @@
 #include "tt-metalium/logger.hpp"
 #include "tt-metalium/math.hpp"
 #include "ttnn/operations/data_movement/slice/slice.hpp"
-#include "ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/types.hpp"
 
 #include "ttnn/operations/core/compute_kernel/compute_kernel_config.hpp"
 #include "ttnn/operations/conv/conv2d/conv2d.hpp"

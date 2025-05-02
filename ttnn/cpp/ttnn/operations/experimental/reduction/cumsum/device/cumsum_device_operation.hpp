@@ -6,10 +6,10 @@
 
 #include <variant>
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/device_operation.hpp"
 #include "ttnn/decorators.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 #include "ttnn/types.hpp"
 
 namespace ttnn::operations::experimental::reduction {

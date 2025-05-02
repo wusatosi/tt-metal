@@ -5,8 +5,8 @@
 #include "moreh_mean_backward_device_operation.hpp"
 
 #include "ttnn/operations/moreh/moreh_helper_functions.hpp"
-#include "ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/types.hpp"
 
 namespace ttnn::operations::moreh::moreh_mean_backward {
 void MorehMeanBackwardOperation::validate_tensors(

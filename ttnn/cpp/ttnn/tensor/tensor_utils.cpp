@@ -2,13 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "ttnn/tensor/tensor_utils.hpp"
+#include "tensor/tensor_utils.hpp"
 
 #include <tt_stl/overloaded.hpp>
 
 #include "ttnn/distributed/api.hpp"
 #include "ttnn/tensor/host_buffer/functions.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 
 #include <tracy/Tracy.hpp>
 

@@ -4,7 +4,7 @@
 
 #include "moreh_layer_norm_backward_gamma_beta_grad_device_operation.hpp"
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn::operations::moreh::moreh_layer_norm_backward_gamma_beta_grad {
 void MorehLayerNormBackwardGammaBetaGradOperation::validate_inputs(

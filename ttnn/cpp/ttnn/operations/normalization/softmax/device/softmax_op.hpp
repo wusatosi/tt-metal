@@ -7,8 +7,8 @@
 #include <cmath>
 #include <tt-metalium/base_types.hpp>
 #include <tt-metalium/core_coord.hpp>
-#include "ttnn/tensor/types.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/types.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/operation.hpp"
 #include "ttnn/run_operation.hpp"
 #include "ttnn/operations/core/compute_kernel/compute_kernel_config.hpp"

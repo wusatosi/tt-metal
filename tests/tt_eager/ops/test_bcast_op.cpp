@@ -26,8 +26,8 @@
 #include "ttnn/operations/data_movement/bcast/bcast_types.hpp"
 #include "ttnn/tensor/enum_types.hpp"
 #include "ttnn/tensor/shape/shape.hpp"
-#include "ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/types.hpp"
 
 using namespace tt;
 using namespace tt_metal;

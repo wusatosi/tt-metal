@@ -8,7 +8,7 @@
 #include <numeric>
 
 #include "cpp/ttnn/operations/data_movement/concat/device/concat_device_operation.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 #include <tt-metalium/tt_align.hpp>
 

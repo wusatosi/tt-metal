@@ -11,19 +11,19 @@
 
 #include "small_vector_caster.hpp"  // NOLINT - for pybind11 SmallVector binding support.
 #include "ttnn/tensor/host_buffer/host_buffer.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include <tt-metalium/graph_tracking.hpp>
 #include <tt_stl/overloaded.hpp>
 #include <tt_stl/span.hpp>
 #include "ttnn/core.hpp"
 #include "ttnn/run_operation.hpp"
 #include "ttnn/tensor/tensor_impl.hpp"
-#include "ttnn/tensor/tensor_ops.hpp"
+#include "tensor/tensor_ops.hpp"
 #include "tools/profiler/op_profiler.hpp"
 
 #include "ttnn/common/queue_id.hpp"
 #include "ttnn/operations/core/core.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 
 #include <tracy/Tracy.hpp>
 

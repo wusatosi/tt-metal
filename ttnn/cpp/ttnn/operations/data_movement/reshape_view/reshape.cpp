@@ -21,7 +21,7 @@
 #include "ttnn/operations/experimental/reshape/view.hpp"
 #include "ttnn/operations/functions.hpp"
 #include "ttnn/run_operation.hpp"
-#include "ttnn/tensor/tensor_utils.hpp"
+#include "tensor/tensor_utils.hpp"
 
 #include "reshape.hpp"
 #include "reshape_common.hpp"

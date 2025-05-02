@@ -7,7 +7,7 @@
 
 #include <tt-metalium/assert.hpp>
 
-#include "cpp/ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 #include <ranges>
 #include <vector>

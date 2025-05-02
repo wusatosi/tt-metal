@@ -5,7 +5,7 @@
 #include <tt-metalium/constants.hpp>
 #include <tt-metalium/kernel_types.hpp>
 #include <tt-metalium/work_split.hpp>
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 
 namespace ttnn::operations::bernoulli {
 

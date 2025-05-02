@@ -7,7 +7,7 @@
 #include <optional>
 
 #include "ttnn/common/queue_id.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/run_operation.hpp"
 
 namespace ttnn::operations::experimental::transformer {

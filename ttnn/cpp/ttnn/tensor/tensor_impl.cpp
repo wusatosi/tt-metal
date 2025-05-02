@@ -18,7 +18,7 @@
 #include "ttnn/tensor/storage.hpp"
 #include "ttnn/tensor/tensor_impl_wrapper.hpp"
 #include "ttnn/tensor/layout/tensor_layout.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 #include "ttnn/operations/core/core.hpp"
 #include "ttnn/distributed/api.hpp"
 

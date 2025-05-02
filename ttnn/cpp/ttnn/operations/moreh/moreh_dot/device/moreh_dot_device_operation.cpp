@@ -5,7 +5,7 @@
 #include "moreh_dot_device_operation.hpp"
 
 #include "ttnn/operations/moreh/moreh_helper_functions.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn::operations::moreh::moreh_dot {
 MorehDotOperation::program_factory_t MorehDotOperation::select_program_factory(

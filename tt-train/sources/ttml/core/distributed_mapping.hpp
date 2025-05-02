@@ -7,7 +7,7 @@
 #include <unordered_map>
 
 #include "core/xtensor_utils.hpp"
-#include "ttnn/tensor/xtensor/partition.hpp"
+#include "tensor/xtensor/partition.hpp"
 
 namespace ttml::core {
 

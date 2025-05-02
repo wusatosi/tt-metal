@@ -5,7 +5,7 @@
 #pragma once
 
 #include <optional>
-#include <ttnn/tensor/tensor.hpp>
+#include <tensor/tensor.hpp>
 
 #include "ttnn/operations/experimental/auto_format/auto_format.hpp"
 #include "ttnn/operation.hpp"

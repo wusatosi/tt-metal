@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "index_fill_device_operation.hpp"
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn::operations::index_fill {
 IndexFillOperation::program_factory_t IndexFillOperation::select_program_factory(

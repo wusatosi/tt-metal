@@ -6,7 +6,7 @@
 
 #include "ttnn/core.hpp"
 #include "ttnn/types.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/run_operation.hpp"
 #include "ttnn/tensor/host_buffer/functions.hpp"
 

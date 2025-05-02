@@ -9,7 +9,7 @@
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/circular_buffer_types.hpp>
 #include <tt-metalium/work_split.hpp>
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 
 namespace ttnn::operations::full_like {
 

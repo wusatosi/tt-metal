@@ -5,9 +5,9 @@
 #include <tt_stl/span.hpp>
 #include "ttnn/operations/functions.hpp"
 #include "ttnn/tensor/layout/tensor_layout.hpp"
-#include "ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/types.hpp"
-#include "ttnn/tensor/xtensor/conversion_utils.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/types.hpp"
+#include "tensor/xtensor/conversion_utils.hpp"
 #include <type_traits>
 #include <xtensor/xadapt.hpp>
 #include <xtensor/xdynamic_view.hpp>

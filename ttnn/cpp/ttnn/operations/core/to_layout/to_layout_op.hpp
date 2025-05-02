@@ -7,10 +7,10 @@
 #include <functional>
 #include <optional>
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include <magic_enum/magic_enum.hpp>
 #include "ttnn/tensor/host_buffer/functions.hpp"
-#include "ttnn/tensor/tensor_utils.hpp"
+#include "tensor/tensor_utils.hpp"
 #include "ttnn/operations/core/compute_kernel/compute_kernel_config.hpp"
 #include "ttnn/run_operation.hpp"
 #include <tt-metalium/command_queue.hpp>

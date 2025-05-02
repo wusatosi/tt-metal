@@ -14,7 +14,7 @@
 #include <tt-metalium/constants.hpp>
 #include <tt-metalium/util.hpp>
 #include <tt-metalium/math.hpp>
-// #include "ttnn/tensor/tensor_utils.hpp"
+// #include "tensor/tensor_utils.hpp"
 #include "ttnn/operations/reduction/generic/device/reduce_op.hpp"  // for reduce_op_utils
 
 #include <tt_stl/reflection.hpp>

@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/run_operation.hpp"
 
 #include <tt-metalium/core_coord.hpp>

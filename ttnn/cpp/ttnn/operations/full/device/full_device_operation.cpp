@@ -4,7 +4,7 @@
 
 #include "full_device_operation.hpp"
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn::operations::full {
 void FullOperation::validate_inputs(

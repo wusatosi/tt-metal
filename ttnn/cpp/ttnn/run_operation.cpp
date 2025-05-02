@@ -4,8 +4,8 @@
 
 #include "ttnn/run_operation.hpp"
 
-#include <ttnn/tensor/tensor.hpp>
-#include <ttnn/tensor/tensor_utils.hpp>
+#include <tensor/tensor.hpp>
+#include <tensor/tensor_utils.hpp>
 
 #include "ttnn/old_infra_device_operation.hpp"
 #include "ttnn/operations/experimental/auto_format/auto_format.hpp"

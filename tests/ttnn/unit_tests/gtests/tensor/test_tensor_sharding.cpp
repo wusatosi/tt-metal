@@ -34,8 +34,8 @@
 #include "ttnn/tensor/layout/tensor_layout.hpp"
 #include "ttnn/tensor/tensor_impl.hpp"
 #include "ttnn/tensor/tensor_spec.hpp"
-#include "ttnn/tensor/tensor_utils.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/tensor_utils.hpp"
+#include "tensor/types.hpp"
 #include "ttnn_test_fixtures.hpp"
 
 namespace {

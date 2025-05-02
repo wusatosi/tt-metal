@@ -5,8 +5,8 @@
 #pragma once
 
 #include <nlohmann/json_fwd.hpp>
-#include "ttnn/tensor/types.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/types.hpp"
+#include "tensor/tensor.hpp"
 
 #include <vector>
 

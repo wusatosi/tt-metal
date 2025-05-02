@@ -9,7 +9,7 @@
 #include "ttnn/distributed/types.hpp"
 #include "ttnn/operations/core/compute_kernel/compute_kernel_config.hpp"
 #include "ttnn/run_operation.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/operations/core/core.hpp"
 #include "ttnn/operations/ccl/ccl_common.hpp"
 

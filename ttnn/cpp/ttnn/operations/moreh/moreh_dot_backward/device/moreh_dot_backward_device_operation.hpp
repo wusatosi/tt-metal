@@ -9,7 +9,7 @@
 
 #include "ttnn/decorators.hpp"
 #include "ttnn/device_operation.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/types.hpp"
 
 namespace ttnn::operations::moreh::moreh_dot_backward {

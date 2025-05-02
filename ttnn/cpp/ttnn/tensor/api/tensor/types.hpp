@@ -4,71 +4,103 @@
 
 #pragma once
 
-#include <tt-metalium/tt_metal.hpp>
-#include <tt-metalium/allocator.hpp>
-#include <tt-metalium/global_circular_buffer_impl.hpp>
-#include <tt-metalium/global_semaphore.hpp>
-#include <tt-metalium/sub_device.hpp>
-#include <tt-metalium/buffer_types.hpp>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <variant>
+#include <vector>
+#include <algorithm>
 
-#include "ttnn/distributed/types.hpp"
-#include "tensor/tensor.hpp"
-#include "ttnn/tensor/types.hpp"
+#include <tt-metalium/bfloat16.hpp>
+#include <tt-metalium/core_coord.hpp>
+#include <tt-metalium/buffer.hpp>
+#include <tt-metalium/mesh_buffer.hpp>
+#include <tt-metalium/device.hpp>
+#include <tt-metalium/device_impl.hpp>
+#include <tt_stl/reflection.hpp>
+#include <tt_stl/span.hpp>
+#include "ttnn/distributed/distributed_tensor_config.hpp"
+#include "cpp/ttnn/tensor/enum_types.hpp"
 
-namespace ttnn {
-namespace types {
+#include "ttnn/tensor/shape/shape.hpp"
 
-using IDevice = tt::tt_metal::IDevice;
-using Program = tt::tt_metal::Program;
+namespace tt {
 
-constexpr auto TILE_SIZE = 32;
+namespace tt_metal {
 
-using tt::tt_metal::BufferType;
-using tt::tt_metal::DataType;
-using tt::tt_metal::MemoryConfig;
-using tt::tt_metal::ShardMode;
-using tt::tt_metal::ShardOrientation;
-using tt::tt_metal::TensorMemoryLayout;
+static constexpr std::uint8_t VERSION_ID = 5;
 
-static const auto DRAM_MEMORY_CONFIG = MemoryConfig{TensorMemoryLayout::INTERLEAVED, BufferType::DRAM};
-static const auto L1_MEMORY_CONFIG = MemoryConfig{TensorMemoryLayout::INTERLEAVED, BufferType::L1};
-static const auto L1_BLOCK_SHARDED_MEMORY_CONFIG = MemoryConfig{TensorMemoryLayout::BLOCK_SHARDED, BufferType::L1};
-static const auto L1_HEIGHT_SHARDED_MEMORY_CONFIG = MemoryConfig{TensorMemoryLayout::HEIGHT_SHARDED, BufferType::L1};
-static const auto L1_WIDTH_SHARDED_MEMORY_CONFIG = MemoryConfig{TensorMemoryLayout::WIDTH_SHARDED, BufferType::L1};
-
-using tt::tt_metal::Layout;
-static constexpr auto ROW_MAJOR_LAYOUT = Layout::ROW_MAJOR;
-static constexpr auto TILE_LAYOUT = Layout::TILE;
-
-using tt::tt_metal::StorageType;
-static constexpr auto DEVICE_STORAGE_TYPE = StorageType::DEVICE;
-
-using tt::tt_metal::CoreCoord;
-using tt::tt_metal::CoreRange;
-using tt::tt_metal::CoreRangeSet;
-
-struct CoreGrid {
-    std::size_t x;
-    std::size_t y;
-
-    CoreGrid(std::size_t x, std::size_t y) : x(x), y(y) {}
-    CoreCoord to_CoreCoord() { return CoreCoord(int(x), int(y)); }
+enum class DataType {
+    BFLOAT16 = 0,
+    FLOAT32 = 1,
+    UINT32 = 2,
+    BFLOAT8_B = 3,
+    BFLOAT4_B = 4,
+    UINT8 = 5,
+    UINT16 = 6,
+    INT32 = 7,
+    INVALID = 8,
 };
 
-using Buffer = tt::tt_metal::Buffer;
+std::ostream& operator<<(std::ostream& os, const tt::tt_metal::DataType& data_type);
 
-static std::ostream& operator<<(std::ostream& os, const CoreGrid& core_grid) {
-    os << "ttnn.CoreGrid(x=" << core_grid.x << ", y=" << core_grid.y << ")";
-    return os;
+template <typename T>
+consteval inline DataType convert_to_data_type() {
+    if constexpr (std::is_same_v<T, uint8_t>) {
+        return DataType::UINT8;
+    } else if constexpr (std::is_same_v<T, uint16_t>) {
+        return DataType::UINT16;
+    } else if constexpr (std::is_same_v<T, int32_t>) {
+        return DataType::INT32;
+    } else if constexpr (std::is_same_v<T, uint32_t>) {
+        return DataType::UINT32;
+    } else if constexpr (std::is_same_v<T, float>) {
+        return DataType::FLOAT32;
+    } else if constexpr (std::is_same_v<T, ::bfloat16>) {
+        return DataType::BFLOAT16;
+    } else {
+        static_assert(tt::stl::concepts::always_false_v<T>, "Unsupported DataType!");
+    }
 }
 
-using tt::tt_metal::GlobalSemaphore;
-using tt::tt_metal::SubDevice;
-using tt::tt_metal::SubDeviceManagerId;
-using tt::tt_metal::experimental::GlobalCircularBuffer;
+bool is_floating_point(DataType dtype);
 
-}  // namespace types
+bool is_block_float(DataType dtype);
 
-using namespace types;
+// Enums are explicitly enumerated due to serialization dependency
+// TODO: #16067 - This shouldn't be needed. Serialize this enum to flatbuffer.
+enum class StorageType {
+    HOST = 0,
+    DEVICE = 1,
+    MULTI_DEVICE_HOST = 4,  // host storage for multi-device context
+};
 
-}  // namespace ttnn
+tt::DataFormat datatype_to_dataformat_converter(DataType datatype);
+
+static constexpr std::size_t MAX_NUM_DIMENSIONS = 8;
+
+using Array1D = std::array<uint32_t, 1>;
+using Array2D = std::array<uint32_t, 2>;
+using Array3D = std::array<uint32_t, 3>;
+using Array4D = std::array<uint32_t, 4>;
+using Array5D = std::array<uint32_t, 5>;
+using Array6D = std::array<uint32_t, 6>;
+using Array7D = std::array<uint32_t, 7>;
+using Array8D = std::array<uint32_t, 8>;
+
+struct MemoryConfig {
+    TensorMemoryLayout memory_layout = TensorMemoryLayout::INTERLEAVED;  // Interleave the data across multiple banks
+    BufferType buffer_type = BufferType::DRAM;                           // Can be either DRAM or L1
+    std::optional<ShardSpec> shard_spec = std::nullopt;
+    bool is_sharded() const;
+    bool is_l1() const;
+    bool is_dram() const;
+};
+
+std::ostream& operator<<(std::ostream& os, const MemoryConfig& config);
+
+bool operator==(const MemoryConfig& config_a, const MemoryConfig& config_b);
+bool operator!=(const MemoryConfig& config_a, const MemoryConfig& config_b);
+
+}  // namespace tt_metal
+}  // namespace tt

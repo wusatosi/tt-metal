@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 #include "ttnn/tensor/layout/tensor_layout.hpp"
 
 namespace tt::tt_metal {

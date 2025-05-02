@@ -7,8 +7,8 @@
 #include <cstdint>
 
 #include "tt-metalium/assert.hpp"
-#include "ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/types.hpp"
 
 namespace ttnn::operations::experimental::broadcast_to {
 SubtileBroadcastType get_subtile_broadcast_type(uint32_t a_h, uint32_t a_w, uint32_t b_h, uint32_t b_w) {

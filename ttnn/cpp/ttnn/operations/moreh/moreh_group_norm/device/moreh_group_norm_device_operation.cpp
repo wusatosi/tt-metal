@@ -5,7 +5,7 @@
 #include "moreh_group_norm_device_operation.hpp"
 
 #include "ttnn/operations/moreh/moreh_helper_functions.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn::operations::moreh::moreh_group_norm {
 void MorehGroupNormOperation::validate_tensors(

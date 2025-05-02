@@ -7,7 +7,7 @@
 #include <optional>
 #include "ttnn/operations/conv/conv2d/conv2d_utils.hpp"
 #include "ttnn/types.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn::operations::sliding_window {
 struct ParallelConfig;

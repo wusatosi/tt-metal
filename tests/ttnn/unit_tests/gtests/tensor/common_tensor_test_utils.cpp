@@ -14,7 +14,7 @@
 #include "ttnn/async_runtime.hpp"
 #include "ttnn/common/queue_id.hpp"
 #include "ttnn/tensor/layout/tensor_layout.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/tensor/tensor_spec.hpp"
 
 namespace tt {

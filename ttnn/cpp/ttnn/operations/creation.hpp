@@ -15,9 +15,9 @@
 #include "ttnn/operations/eltwise/unary/unary.hpp"
 #include "ttnn/operations/functions.hpp"
 #include "ttnn/any_device.hpp"
-#include "ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/tensor_utils.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/tensor_utils.hpp"
+#include "tensor/types.hpp"
 #include "ttnn/types.hpp"
 
 namespace ttnn {

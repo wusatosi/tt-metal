@@ -6,7 +6,7 @@
 
 #include <memory>
 #include "tt-metalium/mesh_coord.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 #include "ttnn/tensor/tensor_spec.hpp"
 #include "ttnn/tensor/host_buffer/host_buffer.hpp"
 

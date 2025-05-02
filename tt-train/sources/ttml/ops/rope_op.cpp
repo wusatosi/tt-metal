@@ -15,7 +15,7 @@
 #include "core/tt_tensor_utils.hpp"
 #include "core/ttnn_all_includes.hpp"
 #include "core/xtensor_utils.hpp"
-#include "ttnn/tensor/xtensor/xtensor_all_includes.hpp"
+#include "tensor/xtensor/xtensor_all_includes.hpp"
 #include "ttnn_fixed/trivial_ttnn_ops.hpp"
 
 namespace ttml::ops {

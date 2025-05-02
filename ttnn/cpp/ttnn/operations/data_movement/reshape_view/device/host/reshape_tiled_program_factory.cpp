@@ -14,7 +14,7 @@
 #include <tt-metalium/work_split.hpp>
 #include "ttnn/operations/data_movement/reshape_view/reshape_common.hpp"
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/core.hpp"
 #include "ttnn/device_operation.hpp"
 #include "ttnn/types.hpp"

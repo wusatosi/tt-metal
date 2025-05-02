@@ -20,7 +20,7 @@
 // This is required for automatic conversions, as in the creation of mesh devices
 // https://github.com/tenstorrent/tt-metal/issues/18082
 #include "pybind11/stl.h"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 
 using namespace tt::tt_metal;
 

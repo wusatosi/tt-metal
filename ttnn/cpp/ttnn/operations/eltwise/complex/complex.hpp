@@ -7,7 +7,7 @@
 #include <functional>
 #include <array>
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/decorators.hpp"
 #include <tt_stl/reflection.hpp>
 

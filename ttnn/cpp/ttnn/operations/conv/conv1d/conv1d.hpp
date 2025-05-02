@@ -9,7 +9,7 @@
 #include <tuple>
 
 #include "ttnn/types.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/decorators.hpp"
 #include "ttnn/operations/conv/conv2d/conv2d_utils.hpp"
 

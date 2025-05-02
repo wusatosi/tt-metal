@@ -5,7 +5,7 @@
 #pragma once
 
 #include <experimental/type_traits>
-#include <ttnn/tensor/tensor.hpp>
+#include <tensor/tensor.hpp>
 
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/program.hpp>

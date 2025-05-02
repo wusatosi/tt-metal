@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 #include <ranges>
 #include "ttnn/decorators.hpp"
 #include "ttnn/common/queue_id.hpp"

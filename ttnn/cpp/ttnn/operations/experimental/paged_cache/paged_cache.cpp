@@ -5,7 +5,7 @@
 #include "device/paged_cache_operation.hpp"  // TODO: not right!
 #include "ttnn/run_operation.hpp"
 #include "ttnn/operations/core/compute_kernel/compute_kernel_config.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/operations/core/core.hpp"
 #include "ttnn/operations/experimental/paged_cache/paged_cache.hpp"
 

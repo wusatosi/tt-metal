@@ -7,8 +7,8 @@
 #include <span>
 #include <tt-metalium/small_vector.hpp>
 
-#include "ttnn/tensor/tensor.hpp"
-#include <ttnn/tensor/xtensor/xtensor_all_includes.hpp>
+#include "tensor/tensor.hpp"
+#include <tensor/xtensor/xtensor_all_includes.hpp>
 
 namespace ttnn::experimental::xtensor {
 

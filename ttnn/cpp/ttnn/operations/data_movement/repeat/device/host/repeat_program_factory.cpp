@@ -16,7 +16,7 @@
 #include "ttnn/operations/math.hpp"
 #include "ttnn/operation.hpp"
 #include "ttnn/operations/core/work_split/work_split_tilize.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/types.hpp"
 
 constexpr uint32_t READ_ALIGNMENT = 64;

@@ -8,7 +8,7 @@
 
 #include "ttnn/operations/matmul/device/matmul_op.hpp"
 #include "ttnn/operations/conv/conv2d/device/conv2d_op.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/operations/sliding_window/sliding_window.hpp"
 
 namespace ttnn {

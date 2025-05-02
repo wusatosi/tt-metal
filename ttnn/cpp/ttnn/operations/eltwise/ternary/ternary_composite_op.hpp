@@ -8,7 +8,7 @@
 #include <optional>
 
 #include <magic_enum/magic_enum.hpp>
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/operations/core/core.hpp"
 #include "ttnn/run_operation.hpp"
 #include "ttnn/types.hpp"

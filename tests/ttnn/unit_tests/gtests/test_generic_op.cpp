@@ -11,8 +11,8 @@
 
 #include "logger.hpp"
 #include "ttnn_test_fixtures.hpp"
-#include "ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/types.hpp"
 #include "ttnn/operations/functions.hpp"
 #include "ttnn/operations/generic/generic_op.hpp"
 #include "ttnn/operations/eltwise/unary/unary.hpp"

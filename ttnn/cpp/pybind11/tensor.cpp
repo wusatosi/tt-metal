@@ -15,8 +15,8 @@
 #include "ttnn/tensor/host_buffer/host_buffer.hpp"
 #include "ttnn/tensor/serialization.hpp"
 #include "ttnn/tensor/tensor_impl.hpp"
-#include "ttnn/tensor/tensor_utils.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor_utils.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/distributed/types.hpp"
 
 using namespace tt::tt_metal;

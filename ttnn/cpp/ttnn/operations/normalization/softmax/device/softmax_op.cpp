@@ -6,7 +6,7 @@
 #include <tt-metalium/assert.hpp>
 #include <tt-metalium/base_types.hpp>
 #include "ttnn/tensor/storage.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 #include "ttnn/operations/math.hpp"
 #include <tt-metalium/work_split.hpp>
 #include "ttnn/run_operation.hpp"

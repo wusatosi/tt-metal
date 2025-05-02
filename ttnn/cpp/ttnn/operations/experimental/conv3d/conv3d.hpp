@@ -9,7 +9,7 @@
 #include <optional>
 #include <string>
 // #include <tt-metalium/operation.hpp>
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/decorators.hpp"
 #include "device/conv3d_device_operation.hpp"
 

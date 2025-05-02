@@ -25,9 +25,9 @@
 #include "ttnn/tensor/enum_types.hpp"
 #include "ttnn/tensor/layout/tensor_layout.hpp"
 #include "ttnn/tensor/shape/shape.hpp"
-#include "ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/types.hpp"
-#include "ttnn/tensor/xtensor/conversion_utils.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/types.hpp"
+#include "tensor/xtensor/conversion_utils.hpp"
 
 namespace ttnn {
 namespace {

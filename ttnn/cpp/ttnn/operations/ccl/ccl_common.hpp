@@ -14,7 +14,7 @@
 #include "ttnn/operations/ccl/common/types/ccl_types.hpp"
 #include "ttnn/operations/ccl/shared_with_host/hetergeneous_data_structs.hpp"
 #include <tt-metalium/program.hpp>
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 #include <tt-metalium/erisc_datamover_builder.hpp>
 #include "erisc_datamover_builder_helper.hpp"
 #include "cpp/ttnn/operations/ccl/common/host/ccl_command_stream_builders.hpp"

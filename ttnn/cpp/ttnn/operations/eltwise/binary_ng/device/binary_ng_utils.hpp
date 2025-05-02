@@ -6,7 +6,7 @@
 
 #include "binary_ng_device_operation.hpp"
 #include "ttnn/operations/eltwise/binary_ng/types.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 
 #include <optional>
 #include <string>

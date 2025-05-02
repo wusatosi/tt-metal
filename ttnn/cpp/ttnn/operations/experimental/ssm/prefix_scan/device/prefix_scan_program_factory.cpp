@@ -4,7 +4,7 @@
 
 #include "prefix_scan_program_factory.hpp"
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 using namespace tt::tt_metal;
 

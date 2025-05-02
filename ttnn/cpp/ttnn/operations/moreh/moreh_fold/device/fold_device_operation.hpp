@@ -6,7 +6,7 @@
 
 #include "ttnn/decorators.hpp"
 #include "ttnn/device_operation.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 
 namespace ttnn::operations::moreh::moreh_fold {
 

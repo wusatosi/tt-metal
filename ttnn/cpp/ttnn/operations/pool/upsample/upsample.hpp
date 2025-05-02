@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 #include "ttnn/operations/core/core.hpp"
 #include "ttnn/decorators.hpp"
 

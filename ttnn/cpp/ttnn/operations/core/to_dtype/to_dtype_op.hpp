@@ -7,7 +7,7 @@
 #include <functional>
 #include <optional>
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/operations/core/core.hpp"
 #include "ttnn/types.hpp"
 #include "ttnn/distributed/api.hpp"

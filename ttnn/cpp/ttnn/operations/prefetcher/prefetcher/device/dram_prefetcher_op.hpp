@@ -7,7 +7,7 @@
 #include <optional>
 
 #include "ttnn/run_operation.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/operations/core/core.hpp"
 
 #include <tt-metalium/global_circular_buffer_impl.hpp>

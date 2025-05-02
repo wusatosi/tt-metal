@@ -6,7 +6,7 @@
 #include <tt-metalium/circular_buffer_types.hpp>
 #include "index_fill_device_operation.hpp"
 #include <tt-metalium/work_split.hpp>
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 
 using namespace tt;
 using namespace tt::tt_metal;

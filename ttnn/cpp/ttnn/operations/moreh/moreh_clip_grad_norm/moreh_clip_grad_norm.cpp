@@ -15,7 +15,7 @@
 #include "cpp/ttnn/operations/eltwise/binary/binary_composite.hpp"
 #include "ttnn/operations/creation.hpp"
 #include "ttnn/tensor/shape/shape.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn::operations::moreh::moreh_clip_grad_norm {
 

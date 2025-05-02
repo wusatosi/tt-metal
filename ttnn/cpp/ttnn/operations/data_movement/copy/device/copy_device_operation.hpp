@@ -5,7 +5,7 @@
 #pragma once
 
 #include <optional>
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include <tt-metalium/constants.hpp>
 #include <tt-metalium/util.hpp>
 

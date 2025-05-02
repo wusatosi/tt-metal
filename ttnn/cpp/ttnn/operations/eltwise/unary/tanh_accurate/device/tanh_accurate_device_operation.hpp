@@ -10,7 +10,7 @@
 #include "tanh_accurate_pgm_factory.hpp"
 #include "tanh_accurate_sharded_pgm_factory.hpp"
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/device_operation.hpp"
 #include "ttnn/decorators.hpp"
 #include "ttnn/operations/eltwise/unary/device/unary_device_operation_types.hpp"

@@ -15,8 +15,8 @@
 
 #include "ttnn/tensor/host_buffer/functions.hpp"
 #include "ttnn/tensor/storage.hpp"
-#include "ttnn/tensor/tensor_utils.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/tensor_utils.hpp"
+#include "tensor/types.hpp"
 #include "ttnn/distributed/types.hpp"
 #include "ttnn/tensor/flatbuffer/tensor_types_from_flatbuffer.hpp"
 #include "ttnn/tensor/flatbuffer/tensor_types_to_flatbuffer.hpp"

@@ -13,7 +13,7 @@
 
 #include "export_enum.hpp"
 #include "ttnn/common/queue_id.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/types.hpp"
 #include "ttnn/operations/data_movement/bcast/bcast_types.hpp"
 

@@ -11,7 +11,7 @@
 #include "ttnn/operations/data_movement/split/device/split_op.hpp"
 #include "ttnn/operations/data_movement/view/view.hpp"
 #include "ttnn/run_operation.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 
 namespace ttnn::operations::data_movement {
 

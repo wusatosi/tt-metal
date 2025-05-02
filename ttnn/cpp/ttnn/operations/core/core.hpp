@@ -9,9 +9,9 @@
 #include "ttnn/operations/core/to_dtype/to_dtype_op.hpp"
 #include "ttnn/operations/core/to_layout/to_layout_op.hpp"
 #include "ttnn/operations/core/to_memory_config/to_memory_config_op.hpp"
-#include "ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/tensor_utils.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/tensor_utils.hpp"
+#include "tensor/types.hpp"
 #include "ttnn/types.hpp"
 #include "cpp/ttnn/operations/data_movement/reshape_view/reshape.hpp"
 

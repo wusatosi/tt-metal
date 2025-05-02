@@ -18,7 +18,7 @@
 
 #include "ttnn/device.hpp"
 #include "ttnn/types.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/tensor/tensor_impl.hpp"
 #include "hostdevcommon/common_values.hpp"
 

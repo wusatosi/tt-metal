@@ -11,7 +11,7 @@
 #include <tt_stl/reflection.hpp>
 
 #include "ttnn/tensor/storage.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace tt::tt_metal {
 namespace host_buffer {

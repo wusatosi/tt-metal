@@ -7,7 +7,7 @@
 #include "ttnn/async_runtime.hpp"
 #include "tt_metal/test_utils/env_vars.hpp"
 #include <tt-metalium/mesh_device.hpp>
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/operations/functions.hpp"
 #include "ttnn/operations/ccl/erisc_datamover_builder_helper.hpp"
 #include "ttnn/operations/experimental/ccl/all_gather_async/all_gather_async.hpp"

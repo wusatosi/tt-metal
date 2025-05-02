@@ -35,8 +35,8 @@
 #include "ttnn/operations/normalization/softmax/softmax.hpp"
 #include "ttnn/tensor/enum_types.hpp"
 #include "ttnn/tensor/shape/shape.hpp"
-#include "ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/types.hpp"
 
 using Parameters = std::map<std::string, ttnn::Tensor>;
 using ttnn::operations::unary::UnaryOpType;

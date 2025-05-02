@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 #include <tt-metalium/core_coord.hpp>
 
 namespace ttnn {

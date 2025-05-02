@@ -8,7 +8,7 @@
 
 #include "dropout_device_operation_types.hpp"
 #include "tt-metalium/mesh_workload.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include <tt-metalium/work_split.hpp>
 #include <tt-metalium/constants.hpp>
 #include <tt-metalium/util.hpp>

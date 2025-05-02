@@ -5,7 +5,7 @@
 #pragma once
 
 #include <optional>
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn::operations::experimental::gelu_backward {
 

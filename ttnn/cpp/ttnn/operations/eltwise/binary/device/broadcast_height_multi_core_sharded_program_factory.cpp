@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "binary_device_operation.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/operations/data_movement/bcast/bcast.hpp"
 // #include <tt-metalium/work_split.hpp>
 #include <tt-metalium/constants.hpp>

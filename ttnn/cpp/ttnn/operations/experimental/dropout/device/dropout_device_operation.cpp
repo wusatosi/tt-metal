@@ -6,7 +6,7 @@
 
 #include <magic_enum/magic_enum.hpp>
 #include <tt-metalium/constants.hpp>
-#include "ttnn/tensor/tensor_utils.hpp"
+#include "tensor/tensor_utils.hpp"
 
 using namespace tt::tt_metal;
 

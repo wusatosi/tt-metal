@@ -5,8 +5,8 @@
 #include "ttnn/operations/data_movement/squeeze/squeeze.hpp"
 #include "ttnn/operations/data_movement/pad/pad.hpp"
 
-#include "cpp/ttnn/tensor/types.hpp"
-#include "cpp/ttnn/tensor/tensor.hpp"
+#include "tensor/types.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn {
 namespace operations {

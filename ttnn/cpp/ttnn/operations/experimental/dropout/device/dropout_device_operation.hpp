@@ -7,7 +7,7 @@
 #include <functional>
 #include <optional>
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "dropout_program_factory.hpp"
 
 #include "ttnn/device_operation.hpp"

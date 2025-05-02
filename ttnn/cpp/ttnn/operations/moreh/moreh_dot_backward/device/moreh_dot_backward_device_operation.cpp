@@ -5,7 +5,7 @@
 #include "moreh_dot_backward_device_operation.hpp"
 
 #include "ttnn/operations/moreh/moreh_helper_functions.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 namespace ttnn::operations::moreh::moreh_dot_backward {
 MorehDotBackwardOperation::program_factory_t MorehDotBackwardOperation::select_program_factory(

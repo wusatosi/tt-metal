@@ -12,7 +12,7 @@
 #include "gtest/gtest.h"
 #include <tt_stl/reflection.hpp>
 #include "ttnn/operations/matmul/device/matmul_op.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 #include "ttnn/types.hpp"
 
 struct TestMemoryConfigParams {

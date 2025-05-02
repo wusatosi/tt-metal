@@ -6,7 +6,7 @@
 
 #include <tt-metalium/graph_tracking.hpp>
 #include <nlohmann/json.hpp>
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 #include <mutex>
 #include <stack>

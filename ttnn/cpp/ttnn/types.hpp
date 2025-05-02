@@ -12,8 +12,8 @@
 #include <tt-metalium/buffer_types.hpp>
 
 #include "ttnn/distributed/types.hpp"
-#include "ttnn/tensor/tensor.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/tensor.hpp"
+#include "tensor/types.hpp"
 
 namespace ttnn {
 namespace types {

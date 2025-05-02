@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <tt-metalium/constants.hpp>
 #include <tt-metalium/work_split.hpp>
-#include "ttnn/tensor/types.hpp"
+#include "tensor/types.hpp"
 #include "uniform_device_operation.hpp"
 
 namespace ttnn::operations::uniform {

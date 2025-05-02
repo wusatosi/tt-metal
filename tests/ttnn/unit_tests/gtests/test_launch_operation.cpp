@@ -12,7 +12,7 @@
 #include "ttnn/old_infra_device_operation.hpp"
 #include "ttnn/operation_concepts.hpp"
 #include "ttnn/operations/examples/example/device/example_device_operation.hpp"
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/operation.hpp"
 #include "ttnn/operations/eltwise/binary/binary.hpp"
 

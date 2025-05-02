@@ -2,9 +2,9 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "tensor_ops.hpp"
+#include "tensor/tensor_ops.hpp"
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -12,8 +12,8 @@
 #include <tt-metalium/bfloat16.hpp>
 #include "ttnn/tensor/tensor_impl.hpp"
 #include "ttnn/tensor/tensor_impl_wrapper.hpp"
-#include "ttnn/tensor/tensor_utils.hpp"
-#include "ttnn/tensor/types.hpp"
+#include "tensor/tensor_utils.hpp"
+#include "tensor/types.hpp"
 #include <tt-metalium/constants.hpp>
 #include <tt-metalium/math.hpp>
 #include <tracy/Tracy.hpp>

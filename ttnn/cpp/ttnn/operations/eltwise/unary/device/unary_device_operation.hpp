@@ -7,7 +7,7 @@
 #include <functional>
 #include <optional>
 
-#include "ttnn/tensor/tensor.hpp"
+#include "tensor/tensor.hpp"
 #include "ttnn/operations/eltwise/unary/common/unary_op_types.hpp"
 #include "unary_program_factory.hpp"
 #include "unary_sharded_program_factory.hpp"
