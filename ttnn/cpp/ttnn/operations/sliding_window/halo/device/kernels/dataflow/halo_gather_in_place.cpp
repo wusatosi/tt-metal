@@ -298,9 +298,7 @@ void kernel_main() {
             is_width_sharded,
             is_col_major>(config_data, my_noc_x, my_noc_y, in_base_l1_addr, temp_base_l1_addr, out_base_l1_addr);
 
-        noc_async_read_barrier();
         noc_async_write_barrier();
-        cb_reserve_back(sync_cb_id, 1);
         cb_push_back(sync_cb_id, 1);
     }
 
@@ -316,9 +314,7 @@ void kernel_main() {
             out_base_l1_addr,
             in_out_buffer_start_delta);
 
-        noc_async_read_barrier();
         noc_async_write_barrier();
-        cb_reserve_back(sync_cb_id, 1);
         cb_push_back(sync_cb_id, 1);
     }
 
@@ -337,10 +333,9 @@ void kernel_main() {
             in_base_l1_addr,
             out_base_l1_addr,
             in_out_buffer_start_delta);
-    }
 
-    noc_async_read_barrier();
-    noc_async_write_barrier();
+        noc_async_write_barrier();
+    }
 
     // incremement the semaphore
     uint32_t semaphore_addr = get_semaphore(semaphore_id);
@@ -402,7 +397,6 @@ void kernel_main() {
             is_col_major>(config_data, my_noc_x, my_noc_y, temp_base_l1_addr, out_base_l1_addr);
     }
 
-    noc_async_read_barrier();
     noc_async_write_barrier();
     noc_async_atomic_barrier();
 }
