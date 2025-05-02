@@ -152,6 +152,7 @@ def run_multi_core_matmul_1d(
     hop_grid=None,
     in1_is_dram_interleaved=False,
     in1_is_in_dram=False,
+    N_chunks=1,
 ):
     assert not has_bias, "Bias not supported for gather_in0 mode."
     if not isinstance(grid, tuple) and not use_arbitrary_cores:
@@ -161,7 +162,7 @@ def run_multi_core_matmul_1d(
         output_dtype = in0_dtype
 
     in0_shape = [1, B, M, K]
-    in1_shape = [1, 1, K, N]
+    in1_shape = [1, N_chunks, K, N]
     num_cores = grid[0] * grid[1] if isinstance(grid, tuple) else len(grid)
 
     storage_grid = num_cores_to_rectangle_grid(num_cores, device)
@@ -270,7 +271,7 @@ def run_multi_core_matmul_1d(
                 ttnn.BufferType.DRAM,
                 ttnn.ShardSpec(
                     in1_shard_grid,
-                    [K, N_per_shard_in_dram],
+                    [N_chunks * K, N_per_shard_in_dram],
                     ttnn.ShardOrientation.ROW_MAJOR,
                 ),
             )
@@ -280,7 +281,7 @@ def run_multi_core_matmul_1d(
             ttnn.BufferType.L1,
             ttnn.ShardSpec(
                 core_range_set,
-                [K, N_per_shard],
+                [N_chunks * K, N_per_shard],
                 ttnn.ShardOrientation.ROW_MAJOR,
             ),
         )
@@ -296,6 +297,15 @@ def run_multi_core_matmul_1d(
     )
 
     output_sharded_mem_config = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        ttnn.BufferType.L1,
+        ttnn.ShardSpec(
+            dram_sharded_output_core_range_set if (in1_is_in_dram and not in1_is_dram_interleaved) else core_range_set,
+            [N_chunks * M, N_per_shard],
+            ttnn.ShardOrientation.ROW_MAJOR,
+        ),
+    )
+    output_sharded_mem_config_slice = ttnn.MemoryConfig(
         ttnn.TensorMemoryLayout.WIDTH_SHARDED,
         ttnn.BufferType.L1,
         ttnn.ShardSpec(
@@ -377,6 +387,107 @@ def run_multi_core_matmul_1d(
 
     # Check program cache
     assert device.num_program_cache_entries() == 1  # Only 1 op
+
+
+@pytest.mark.parametrize("has_bias", [False], ids=["no_bias"])
+@pytest.mark.parametrize(
+    "B, M, K, N, N_chunks, in0_dtype, in1_dtype, output_dtype, fidelity, packer_l1_acc, fp32_acc_mode, grid, in1_is_dram_interleaved",
+    [
+        (
+            1,
+            32,
+            2048,
+            3584,
+            2,
+            ttnn.bfloat16,
+            ttnn.bfloat4_b,
+            ttnn.bfloat8_b,
+            ttnn.MathFidelity.LoFi,
+            True,
+            False,
+            PREFETCHER_NOC1_GRID,
+            False,
+        ),
+        (
+            1,
+            32,
+            64,
+            64 * 11,
+            3,
+            ttnn.bfloat16,
+            ttnn.bfloat4_b,
+            ttnn.bfloat8_b,
+            ttnn.MathFidelity.LoFi,
+            True,
+            True,
+            PREFETCHER_NOC1_GRID[:2],
+            False,
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "num_iters",
+    [3],
+)
+@pytest.mark.parametrize(
+    "device_params",
+    [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL}],
+    indirect=True,
+)
+def test_matmul_1d_ring_batch(
+    device,
+    in0_dtype,
+    in1_dtype,
+    output_dtype,
+    fidelity,
+    has_bias,
+    fp32_acc_mode,
+    packer_l1_acc,
+    B,
+    M,
+    K,
+    N,
+    N_chunks,
+    grid,
+    in1_is_dram_interleaved,
+    num_iters,
+    use_program_cache,
+    function_level_defaults,
+):
+    # Only run these tests on unharvested TG
+    device_grid = (device.compute_with_storage_grid_size().x, device.compute_with_storage_grid_size().y)
+    if device_grid != (7, 10):
+        pytest.skip("Skipping test_run_prefetcher because it only works with a 7x10 grid")
+
+    if in1_is_dram_interleaved:
+        hop_grid = None
+    else:
+        hop_grid = [
+            (3, 6),
+        ]
+
+    run_multi_core_matmul_1d(
+        device,
+        in0_dtype,
+        in1_dtype,
+        fidelity,
+        has_bias,
+        fp32_acc_mode,
+        packer_l1_acc,
+        B,
+        M,
+        K,
+        N,
+        None,  # activation,
+        grid,
+        True,
+        num_iters,
+        output_dtype=output_dtype,
+        use_physical_to_logical_mapping=False,
+        hop_grid=hop_grid,
+        in1_is_dram_interleaved=in1_is_dram_interleaved,
+        N_chunks=N_chunks,
+    )
 
 
 @pytest.mark.skipif(is_grayskull(), reason="GS does not support fp32")

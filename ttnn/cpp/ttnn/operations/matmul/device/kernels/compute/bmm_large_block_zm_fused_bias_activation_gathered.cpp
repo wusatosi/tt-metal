@@ -144,16 +144,17 @@ void MAIN {
         get_compile_time_arg_val(5);                                  // out_subblock_w*in0_block_w* in1_num_subblocks;
     constexpr uint32_t in1_block_size_bytes = get_compile_time_arg_val(6);
     constexpr uint32_t in1_tensor_size_bytes = get_compile_time_arg_val(7);
-    constexpr uint32_t in1_per_core_w = get_compile_time_arg_val(8);           // out_subblock_w*in1_num_subblocks
-    constexpr uint32_t num_blocks = get_compile_time_arg_val(9);               // outer inner dim (in inner dim blocks)
-    constexpr uint32_t out_subblock_h = get_compile_time_arg_val(10);          // inner row block size in tiles
-    constexpr uint32_t out_subblock_w = get_compile_time_arg_val(11);          // inner column block size in tiles
-    constexpr uint32_t out_subblock_num_tiles = get_compile_time_arg_val(12);  // out_subblock_h * out_subblock_w;
-    constexpr uint32_t batch = get_compile_time_arg_val(13);                   // batch dim
-    constexpr uint32_t out_block_num_tiles = get_compile_time_arg_val(14);     // number of tiles in out_block
-    constexpr bool untilize_out = get_compile_time_arg_val(15);                // untilize output
-    constexpr bool in1_is_dram_interleaved = get_compile_time_arg_val(16);     // in1 is in dram
-    constexpr bool in1_is_dram_sharded = get_compile_time_arg_val(17);
+    constexpr uint32_t in1_tensor_size_in_tiles_per_core = get_compile_time_arg_val(8);  // shape in tiles
+    constexpr uint32_t in1_per_core_w = get_compile_time_arg_val(9);           // out_subblock_w*in1_num_subblocks
+    constexpr uint32_t num_blocks = get_compile_time_arg_val(10);              // outer inner dim (in inner dim blocks)
+    constexpr uint32_t out_subblock_h = get_compile_time_arg_val(11);          // inner row block size in tiles
+    constexpr uint32_t out_subblock_w = get_compile_time_arg_val(12);          // inner column block size in tiles
+    constexpr uint32_t out_subblock_num_tiles = get_compile_time_arg_val(13);  // out_subblock_h * out_subblock_w;
+    constexpr uint32_t batch = get_compile_time_arg_val(14);                   // batch dim
+    constexpr uint32_t out_block_num_tiles = get_compile_time_arg_val(15);     // number of tiles in out_block
+    constexpr bool untilize_out = get_compile_time_arg_val(16);                // untilize output
+    constexpr bool in1_is_dram_interleaved = get_compile_time_arg_val(17);     // in1 is in dram
+    constexpr bool in1_is_dram_sharded = get_compile_time_arg_val(18);         // in1 is in dram
     constexpr uint32_t ring_size = num_blocks;
     constexpr bool in1_is_dram = in1_is_dram_interleaved || in1_is_dram_sharded;
 
@@ -227,6 +228,15 @@ void MAIN {
         // Wait to receive in1
         cb_wait_front(sync_cb2, 1);
         cb_pop_front(sync_cb2, 1);
+
+#ifndef ENABLE_GLOBAL_CB
+        if constexpr (!in1_is_dram) {
+            // Reserve space for full in1 (due to ring selection of blocks)
+            cb_reserve_back(in1_cb_id, in1_tensor_size_in_tiles_per_core);
+            cb_push_back(in1_cb_id, in1_tensor_size_in_tiles_per_core);
+            cb_wait_front(in1_cb_id, in1_tensor_size_in_tiles_per_core);
+        }
+#endif
 
         for (uint32_t block = 0; block < num_blocks; block++) {
             const uint32_t curr_ring_idx = (ring_idx + block) % ring_size;
@@ -406,6 +416,10 @@ void MAIN {
         cb_reserve_back(sync_cb, 1);
         cb_push_back(sync_cb, 1);
         cb_pop_front(in1_cb_id, in1_block_num_tiles * num_blocks);
+#else
+        if constexpr (!in1_is_dram) {
+            cb_pop_front(in1_cb_id, in1_tensor_size_in_tiles_per_core);
+        }
 #endif
 
         if constexpr (batch > 1) {

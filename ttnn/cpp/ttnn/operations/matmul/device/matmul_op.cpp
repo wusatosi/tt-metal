@@ -1267,50 +1267,40 @@ ttnn::Shape compute_matmul_output_shape(const Tensor& input_tensor_a, const Tens
     const auto a_rank = input_shape_a.rank();
     const auto b_rank = input_shape_b.rank();
 
-    // Rank difference will be used to align batch dimensions
-    const int32_t out_rank = std::max<int32_t>(a_rank, b_rank) - (a_rank == 1 || b_rank == 1);
-    const int32_t rank_difference = std::max<int32_t>(0, out_rank - a_rank);
+    const auto max_rank = std::max(a_rank, b_rank);
+    const auto a_ndims_to_pad = max_rank - a_rank;
+    const auto b_ndims_to_pad = max_rank - b_rank;
 
-    // Initialize output shape based on the tensor with higher rank
-    ttnn::Shape output_shape = (b_rank > a_rank) ? input_shape_b : input_shape_a;
+    // Pad front of shapes to make them same rank
+    ttnn::SmallVector<uint32_t> padded_a_shape(max_rank, 1);
+    ttnn::SmallVector<uint32_t> padded_b_shape(max_rank, 1);
 
-    // Handle batch dimensions for the case where b_rank > a_rank
-    for (auto index = 0; index < rank_difference; ++index) {
-        TT_FATAL(input_shape_b[index] == 1, "When in1 rank greater than in0 rank front dimensions need to be 1");
-        output_shape[index] = input_shape_b[index];
+    for (int i = 0; i < a_rank; ++i) {
+        padded_a_shape[a_ndims_to_pad + i] = input_shape_a[i];
+    }
+    for (int i = 0; i < b_rank; ++i) {
+        padded_b_shape[b_ndims_to_pad + i] = input_shape_b[i];
     }
 
-    // Copy dimensions from input_shape_a except the last one
-    for (auto index = 0; index < a_rank - 1; ++index) {
-        output_shape[rank_difference + index] = input_shape_a[index];
+    ttnn::SmallVector<uint32_t> output_shape(max_rank);
+
+    for (int i = 0; i < max_rank - 2; ++i) {
+        // Broadcast batch dimensions
+        TT_FATAL(
+            (padded_a_shape[i] == padded_b_shape[i]) || (padded_a_shape[i] == 1) || (padded_b_shape[i] == 1),
+            "Incompatible batch dimensions for matmul");
+        output_shape[i] = std::max(padded_a_shape[i], padded_b_shape[i]);
     }
 
-    // The last dimension comes from input_tensor_b
-    output_shape[-1] = input_shape_b[-1];
+    // Matrix multiplication: (..., M, K) @ (..., K, N) = (..., M, N)
+    TT_FATAL(padded_a_shape[max_rank - 1] == padded_b_shape[max_rank - 2], "Matmul dimension mismatch");
 
-    // Handle the vector matmul case: if a_rank == 1, remove the second-to-last dimension
-    if (a_rank == 1 && output_shape.rank() > 1) [[unlikely]] {
-        ttnn::SmallVector<uint32_t> new_shape(output_shape.rank() - 1);
-        // Copy all elements except the second-to-last dimension
-        size_t dst_idx = 0;
-        for (size_t src_idx = 0; src_idx < output_shape.rank(); ++src_idx) {
-            if (src_idx != output_shape.rank() - 2) {
-                new_shape[dst_idx++] = output_shape[src_idx];
-            }
-        }
-        output_shape = ttnn::Shape(new_shape);
-    }
+    output_shape[max_rank - 2] = padded_a_shape[max_rank - 2];  // M
+    output_shape[max_rank - 1] = padded_b_shape[max_rank - 1];  // N
 
-    // Handle the case where b_rank == 1, remove the last dimension
-    if (b_rank == 1) [[unlikely]] {
-        ttnn::SmallVector<uint32_t> new_shape(output_shape.rank() - 1);
-        for (auto index = 0; index < output_shape.rank() - 1; ++index) {
-            new_shape[index] = output_shape[index];
-        }
-        output_shape = ttnn::Shape(new_shape);
-    }
+    auto result_shape = ttnn::Shape(output_shape);
 
-    return output_shape;
+    return result_shape;
 }
 
 Matmul create_matmul_struct(
@@ -1514,26 +1504,6 @@ void Matmul::validate(
         }
     }
 
-    TT_FATAL(this->bcast_batch.has_value(), "Error: bcast_batch field should have been automatically populated");
-    TT_FATAL(this->output_tile.has_value(), "Error: output_tile field should have been automatically populated");
-    if (this->bcast_batch.value()) {
-        TT_FATAL(
-            get_batch_size(b_shape) == 1,
-            "matmul (batch bcast variant) expects input tensors of shapes "
-            "BCMK*11KN=BCMN or equivalent");
-    } else {
-        // same condition as above, different message
-        TT_FATAL(
-            a_shape.rank() == b_shape.rank() && "bmm (non-bcast matmul) expects input tensors of the same rank",
-            "Error");
-        for (auto i = 0; i < a_shape.rank() - 2; i++) {
-            TT_FATAL(
-                a_shape[i] == b_shape[i],
-                "bmm (non-bcast matmul) expects input tensors of shapes "
-                "BCMK*BCKN=BCMN or equivalent");
-        }
-    }
-
     TT_FATAL(is_floating_point(input_tensor_a.get_dtype()), "Unsupported data format");
     TT_FATAL(
         input_tensor_a.storage_type() == StorageType::DEVICE and input_tensor_b.storage_type() == StorageType::DEVICE,
@@ -1551,6 +1521,38 @@ void Matmul::validate(
     }
     MatmulProgramConfig chosen_program_config =
         get_program_config(input_tensor_a, input_tensor_b, bias_single_tile_size, this);
+
+    TT_FATAL(this->bcast_batch.has_value(), "Error: bcast_batch field should have been automatically populated");
+    TT_FATAL(this->output_tile.has_value(), "Error: output_tile field should have been automatically populated");
+    if (this->bcast_batch.value()) {
+        TT_FATAL(
+            get_batch_size(b_shape) == 1,
+            "matmul (batch bcast variant) expects input tensors of shapes "
+            "BCMK*11KN=BCMN or equivalent");
+    } else {
+        // same condition as above, different message
+        std::visit(
+            [a_shape, b_shape](const auto& program_config) {
+                using ProgramConfigType = std::decay_t<decltype(program_config)>;
+                bool check_bcast = true;
+                if constexpr (std::is_same_v<ProgramConfigType, MatmulMultiCoreReuseMultiCast1DProgramConfig>) {
+                    check_bcast = !program_config.gather_in0;
+                }
+                if (check_bcast) {
+                    TT_FATAL(
+                        a_shape.rank() == b_shape.rank() &&
+                            "bmm (non-bcast matmul) expects input tensors of the same rank",
+                        "Error");
+                    for (auto i = 0; i < a_shape.rank() - 2; i++) {
+                        TT_FATAL(
+                            a_shape[i] == b_shape[i],
+                            "bmm (non-bcast matmul) expects input tensors of shapes "
+                            "BCMK*BCKN=BCMN or equivalent");
+                    }
+                }
+            },
+            chosen_program_config);
+    }
 
     if (optional_bias.has_value()) {
         const auto& bias = optional_bias.value();

@@ -47,15 +47,24 @@ void kernel_main() {
     constexpr uint32_t shard_size_in_tiles = shard_width_in_tiles * shard_height_in_tiles;
     constexpr uint32_t shard_size_bytes = shard_size_in_tiles * in0_single_tile_size_bytes;
 
-    // Reserving/pushing the local shard is done in compute
-    cb_reserve_back(cb_id_in2, batch * (ring_size - 1) * shard_size_in_tiles);
-
     uint32_t local_shard_read_addr = get_read_ptr(cb_id_in0);
     uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in2);
 
     uint32_t hop_core_offset = static_cast<uint32_t>(is_hop_core);
 
     for (uint32_t b = 0; b < batch; ++b) {
+        if (is_hop_core && b > 0) {
+            continue;
+        }
+
+        // Reserve space for the shards for the entire ring
+        // Reserving/pushing the local shard is done in compute
+        cb_reserve_back(cb_id_in2, (ring_size - 1) * shard_size_in_tiles);
+        if (b > 0) {
+            // Gathering is completed from batch 0, so shards are already available
+            cb_push_back(cb_id_in2, (ring_size - 1) * shard_size_in_tiles);
+            continue;
+        }
         for (uint32_t shard_cnt = hop_core_offset; shard_cnt < ring_size; shard_cnt++) {
             uint32_t curr_ring_idx = (ring_idx + shard_cnt) % ring_size;
             bool skip_send = unpadded_in0_shard_widths_in_tiles[curr_ring_idx] == 0 && !is_hop_core;

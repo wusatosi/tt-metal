@@ -66,7 +66,7 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
 @pytest.mark.parametrize(
     "input_dtype",
     [
-        ttnn.bfloat16,
+        ttnn.bfloat8_b,
     ],
 )
 @pytest.mark.parametrize(

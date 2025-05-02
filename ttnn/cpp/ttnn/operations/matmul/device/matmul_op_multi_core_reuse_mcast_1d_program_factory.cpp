@@ -1722,6 +1722,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
     bool dst_full_sync_en,
     CoreCoord compute_with_storage_grid_size,
     uint32_t B,
+    uint32_t N_chunks,
     uint32_t M,
     uint32_t N,
     uint32_t K,
@@ -1749,6 +1750,8 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
     const bool in1_is_dram_interleaved = in1_buffer->is_dram() && !b.is_sharded();
     const bool in1_is_dram_sharded =
         in1_buffer->is_dram() && b.is_sharded() && !global_cb.has_value();  // read from DRAM directly
+
+    B *= N_chunks;
 
     /* Core setup */
     constexpr bool row_major = true;
@@ -1807,6 +1810,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
     uint32_t in1_shard_width_in_tiles = 0;
     uint32_t in1_CB_tiles = 0;
     uint32_t in1_tensor_width_in_tiles = b.get_padded_shape()[-1] / in1_tile.get_tile_shape()[1];
+    uint32_t in1_tensor_size_in_tiles_per_core = 0;
 
     if (in1_is_dram_sharded || in1_is_dram_interleaved) {
         in1_CB_tiles = 2 * in0_shard_width_in_tiles * per_core_N;  // Double buffered
@@ -1815,6 +1819,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         in1_shard_width_in_tiles =
             in1_buffer->shard_spec().shape()[1] / in1_tile.get_tile_shape()[1] / num_global_cb_receivers;
         in1_CB_tiles = in1_shard_height_in_tiles * in1_shard_width_in_tiles;
+        in1_tensor_size_in_tiles_per_core = in1_CB_tiles / N_chunks;
     }
     uint32_t in1_CB_size = in1_CB_tiles * in1_single_tile_size;
 
@@ -1837,9 +1842,9 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
 
     /* out */
     uint32_t out_block_tiles = per_core_M * per_core_N;
-    uint32_t out_CB_tiles = out_block_tiles;  // No double buffer
+    uint32_t out_CB_tiles = out_block_tiles * N_chunks;  // No double buffer
     uint32_t out_CB_size = out_CB_tiles * output_single_tile_size;
-    uint32_t interm0_CB_size = out_CB_tiles * interm0_single_tile_size;
+    uint32_t interm0_CB_size = out_CB_tiles * interm0_single_tile_size / N_chunks;
 
     uint32_t K_ = K;
     std::vector<uint32_t> unpadded_in0_shard_widths_in_tiles(num_cores, 0);
@@ -1891,11 +1896,12 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_gather_in0(
         in0_block_num_tiles,     // in0_block_num_tiles
         in0_subblock_num_tiles,  // in0_subblock_num_tiles
 
-        in1_num_subblocks,      // in1_num_subblocks
-        in1_block_num_tiles,    // in1_block_num_tiles
-        in1_block_size_bytes,   // in1_block_size_bytes
-        in1_tensor_size_bytes,  // in1_tensor_size_bytes
-        in1_per_core_w,         // in1_per_core_w
+        in1_num_subblocks,                  // in1_num_subblocks
+        in1_block_num_tiles,                // in1_block_num_tiles
+        in1_block_size_bytes,               // in1_block_size_bytes
+        in1_tensor_size_bytes,              // in1_tensor_size_bytes
+        in1_tensor_size_in_tiles_per_core,  // in1_tensor_size_in_tiles_per_core
+        in1_per_core_w,                     // in1_per_core_w
 
         num_blocks,  // num_blocks
 
@@ -2375,6 +2381,7 @@ tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_1d_o
     uint32_t Mt = ashape[-2] / in0_tile_shape[0];
     uint32_t Kt = ashape[-1] / in0_tile_shape[1];
     uint32_t Nt = bshape[-1] / in1_tile_shape[1];
+    uint32_t N_chunks = bshape[-3];  // TODO: Add validation
 
     if (fuse_batch) {
         Mt = B * Mt;
@@ -2427,6 +2434,7 @@ tt::tt_metal::operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_1d_o
             dst_full_sync_en,
             compute_with_storage_grid_size,
             B,
+            N_chunks,
             Mt,
             Nt,
             Kt,
