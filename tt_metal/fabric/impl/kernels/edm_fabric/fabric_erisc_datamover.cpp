@@ -447,6 +447,63 @@ FORCE_INLINE bool can_forward_packet_completely(
     return deliver_locally_only || downstream_edm_interface.edm_has_space_for_packet();
 }
 
+template <uint8_t SENDER_NUM_BUFFERS>
+FORCE_INLINE __attribute__((optimize("jump-tables"))) bool can_forward_packet_completely(
+    uint32_t hop_cmd,
+    std::array<tt::tt_fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>, NUM_USED_RECEIVER_CHANNELS>&
+        downstream_edm_interface) {
+    bool ret_val = false;
+    switch (hop_cmd) {
+        case 0x0: break;
+        case LowLatencyMeshRoutingFields::FORWARD_EAST:
+            if constexpr (my_direction == eth_chan_directions::EAST) {  // packet dest
+                ret_val = true;
+            } else {  // W/N/S forward East
+                ret_val = downstream_edm_interface[eth_chan_directions::EAST].edm_has_space_for_packet();
+            }
+            break;
+        case LowLatencyMeshRoutingFields::FORWARD_WEST:
+            if constexpr (my_direction == eth_chan_directions::WEST) {  // packet dest
+                ret_val = true;
+            } else {  // E/N/S forward West
+                ret_val = downstream_edm_interface[eth_chan_directions::WEST].edm_has_space_for_packet();
+            }
+            break;
+        case LowLatencyMeshRoutingFields::WRITE_AND_FORWARD_EW:
+            // Line Mcast East<->West
+            if constexpr (my_direction == eth_chan_directions::WEST) {  // packet dest + forward East
+                ret_val = downstream_edm_interface[eth_chan_directions::EAST].edm_has_space_for_packet();
+            } else {  // packet dest + forward West
+                ret_val = downstream_edm_interface[eth_chan_directions::WEST].edm_has_space_for_packet();
+            }
+            break;
+        case LowLatencyMeshRoutingFields::FORWARD_NORTH:
+            if constexpr (my_direction == eth_chan_directions::NORTH) {  // packet dest
+                ret_val = true;
+            } else {  // E/W/S forward North
+                ret_val = downstream_edm_interface[eth_chan_directions::NORTH].edm_has_space_for_packet();
+            }
+            break;
+        case LowLatencyMeshRoutingFields::FORWARD_SOUTH:
+            if constexpr (my_direction == eth_chan_directions::SOUTH) {  // packet dest
+                ret_val = true;
+            } else {  // E/W/N forward South
+                ret_val = downstream_edm_interface[eth_chan_directions::SOUTH].edm_has_space_for_packet();
+            }
+            break;
+        case LowLatencyMeshRoutingFields::WRITE_AND_FORWARD_NS:
+            // Line Mcast North<->South
+            if constexpr (my_direction == eth_chan_directions::SOUTH) {  // packet dest + forward North
+                ret_val = downstream_edm_interface[eth_chan_directions::NORTH].edm_has_space_for_packet();
+            } else {  // packet dest + forward South
+                ret_val = downstream_edm_interface[eth_chan_directions::SOUTH].edm_has_space_for_packet();
+            }
+            break;
+        default: __builtin_unreachable();
+    }
+    return ret_val;
+}
+
 // !!!WARNING!!! - MAKE SURE CONSUMER HAS SPACE BEFORE CALLING
 template <uint8_t SENDER_NUM_BUFFERS>
 FORCE_INLINE void receiver_forward_packet(
@@ -488,6 +545,107 @@ FORCE_INLINE void receiver_forward_packet(
                 break;
             default: ASSERT(false);
         }
+    }
+}
+
+// !!!WARNING!!! - MAKE SURE CONSUMER HAS SPACE BEFORE CALLING
+template <uint8_t SENDER_NUM_BUFFERS>
+FORCE_INLINE __attribute__((optimize("jump-tables"))) void receiver_forward_packet(
+    tt_l1_ptr PACKET_HEADER_TYPE* packet_start,
+    ROUTING_FIELDS_TYPE cached_routing_fields,
+    std::array<tt::tt_fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>, NUM_USED_RECEIVER_CHANNELS>& downstream_edm_interface,
+    uint8_t transaction_id,
+    uint8_t rx_channel_id,
+    uint32_t hop_cmd) {
+    uint16_t payload_size_bytes = packet_start->payload_size_bytes;
+
+    switch (hop_cmd) {
+        case 0x0: break;
+        case LowLatencyMeshRoutingFields::FORWARD_EAST:
+            if constexpr (my_direction == eth_chan_directions::EAST) {
+                execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id, rx_channel_id);
+            } else {
+                forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
+                    packet_start,
+                    payload_size_bytes,
+                    cached_routing_fields,
+                    downstream_edm_interface[eth_chan_directions::EAST],
+                    transaction_id);
+            }
+            break;
+        case LowLatencyMeshRoutingFields::FORWARD_WEST:
+            if constexpr (my_direction == eth_chan_directions::WEST) {
+                execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id, rx_channel_id);
+            } else {
+                forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
+                    packet_start,
+                    payload_size_bytes,
+                    cached_routing_fields,
+                    downstream_edm_interface[eth_chan_directions::WEST],
+                    transaction_id);
+            }
+            break;
+        case LowLatencyMeshRoutingFields::WRITE_AND_FORWARD_EW:
+            if constexpr (my_direction == eth_chan_directions::WEST) {
+                forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
+                    packet_start,
+                    payload_size_bytes,
+                    cached_routing_fields,
+                    downstream_edm_interface[eth_chan_directions::EAST],
+                    transaction_id);
+            } else {
+                forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
+                    packet_start,
+                    payload_size_bytes,
+                    cached_routing_fields,
+                    downstream_edm_interface[eth_chan_directions::WEST],
+                    transaction_id);
+            }
+            execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id, rx_channel_id);
+            break;
+        case LowLatencyMeshRoutingFields::FORWARD_NORTH:
+            if constexpr (my_direction == eth_chan_directions::NORTH) {
+                execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id, rx_channel_id);
+            } else {
+                forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
+                    packet_start,
+                    payload_size_bytes,
+                    cached_routing_fields,
+                    downstream_edm_interface[eth_chan_directions::NORTH],
+                    transaction_id);
+            }
+            break;
+        case LowLatencyMeshRoutingFields::FORWARD_SOUTH:
+            if constexpr (my_direction == eth_chan_directions::SOUTH) {
+                execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id, rx_channel_id);
+            } else {
+                forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
+                    packet_start,
+                    payload_size_bytes,
+                    cached_routing_fields,
+                    downstream_edm_interface[eth_chan_directions::SOUTH],
+                    transaction_id);
+            }
+            break;
+        case LowLatencyMeshRoutingFields::WRITE_AND_FORWARD_NS:
+            if constexpr (my_direction == eth_chan_directions::SOUTH) {
+                forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
+                    packet_start,
+                    payload_size_bytes,
+                    cached_routing_fields,
+                    downstream_edm_interface[eth_chan_directions::NORTH],
+                    transaction_id);
+            } else {
+                forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support>(
+                    packet_start,
+                    payload_size_bytes,
+                    cached_routing_fields,
+                    downstream_edm_interface[eth_chan_directions::SOUTH],
+                    transaction_id);
+            }
+            execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id, rx_channel_id);
+            break;
+        default: __builtin_unreachable();
     }
 }
 
@@ -650,7 +808,11 @@ template <
 void run_receiver_channel_step(
     tt::tt_fabric::EthChannelBuffer<RECEIVER_NUM_BUFFERS>& local_receiver_channel,
     std::array<tt::tt_fabric::EthChannelBuffer<SENDER_NUM_BUFFERS>, NUM_SENDER_CHANNELS>& remote_sender_channels,
+#ifdef FABRIC_2D
+    std::array<tt::tt_fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>, NUM_USED_RECEIVER_CHANNELS>& downstream_edm_interface,
+#else
     tt::tt_fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>& downstream_edm_interface,
+#endif
     volatile tt::tt_fabric::EdmFabricReceiverChannelCounters* receiver_channel_counters_ptr,
     ReceiverChannelPointers<RECEIVER_NUM_BUFFERS>& receiver_channel_pointers,
     PacketHeaderRecorder& packet_header_recorder,
@@ -681,15 +843,38 @@ void run_receiver_channel_step(
 
         ROUTING_FIELDS_TYPE cached_routing_fields = packet_header->routing_fields;
         receiver_channel_pointers.set_src_chan_id(receiver_buffer_index, packet_header->src_ch_id);
+#ifdef FABRIC_2D
+        // read in the hop command from route buffer.
+        // Hop command is 4 bits. Each of the 4 bits signal one of the 4 possible outcomes for a packet.
+        // [0]->Forward East
+        // [1]->Forward West
+        // [2]->Forward North
+        // [3]->Forward South
+        // The hop command (4-bits) gets decoded as a local write and/or forward to the "other" 3 directions.
+        // Other 3 directions depend on the direction of fabric router.
+        // For example, a router that is connected West can write locally or forard East, North or South.
+        // A local write is encoded by setting the bit corresponding to fabric router's own direction to 1.
+        // For a West facing fabric router:
+        //  - Hop command of [0010] instructs fabric router to write the packet locally.
+        //  - Hop command of [0011] instructs fabric router to write the packet locally AND forward East (a line mcast)
+        uint32_t hop_cmd = packet_header->route_buffer[cached_routing_fields.value];
+        bool can_send_to_all_local_chip_receivers = can_forward_packet_completely(hop_cmd, downstream_edm_interface);
+#else
         bool can_send_to_all_local_chip_receivers =
             can_forward_packet_completely(cached_routing_fields, downstream_edm_interface);
+#endif
         bool trid_flushed = receiver_channel_trid_tracker.transaction_flushed(receiver_buffer_index);
         if (can_send_to_all_local_chip_receivers && trid_flushed) {
             did_something = true;
             uint8_t trid = receiver_channel_trid_tracker.update_buffer_slot_to_next_trid_and_advance_trid_counter(
                 receiver_buffer_index);
+#ifdef FABRIC_2D
+            receiver_forward_packet(
+                packet_header, cached_routing_fields, downstream_edm_interface, trid, rx_channel_id, hop_cmd);
+#else
             receiver_forward_packet(
                 packet_header, cached_routing_fields, downstream_edm_interface, trid, rx_channel_id);
+#endif
             wr_sent_counter.increment();
         }
     }
@@ -902,7 +1087,11 @@ void run_fabric_edm_main_loop(
                     to_receiver_packets_sent_streams[0]>(
                     local_receiver_channels[0],
                     remote_sender_channels,
-                    downstream_edm_noc_interfaces[ds_index],
+#ifdef FABRIC_2D
+                    downstream_edm_noc_interfaces,
+#else
+                    downstream_edm_noc_interfaces[0],
+#endif
                     receiver_channel_counters_ptrs[0],
                     receiver_channel_pointers[0],
                     receiver_channel_packet_recorders[0],
@@ -919,7 +1108,11 @@ void run_fabric_edm_main_loop(
                     to_receiver_packets_sent_streams[1]>(
                     local_receiver_channels[1],
                     remote_sender_channels,
+#ifdef FABRIC_2D
+                    downstream_edm_noc_interfaces,
+#else
                     downstream_edm_noc_interfaces[1],
+#endif
                     receiver_channel_counters_ptrs[1],
                     receiver_channel_pointers[1],
                     receiver_channel_packet_recorders[1],

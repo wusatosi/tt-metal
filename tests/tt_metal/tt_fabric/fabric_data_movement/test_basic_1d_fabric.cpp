@@ -94,6 +94,7 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
         tt::tt_metal::MetalContext::instance().hal().noc_xy_encoding(receiver_virtual_core.x, receiver_virtual_core.y);
 
     const auto edm_config = get_tt_fabric_config();
+    uint32_t is_2d_fabric = edm_config.topology == Topology::Mesh;
 
     // test parameters
     uint32_t packet_header_address = 0x25000;
@@ -107,8 +108,16 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
 
     // common compile time args for sender and receiver
     std::vector<uint32_t> compile_time_args = {
-        test_results_address, test_results_size_bytes, target_address, 0 /* mcast_mode */
-    };
+        test_results_address,
+        test_results_size_bytes,
+        target_address,
+        0 /* mcast_mode */,
+        edm_config.topology == Topology::Mesh};
+
+    std::map<string, string> defines = {};
+    if (is_2d_fabric) {
+        defines["FABRIC_2D"] = "";
+    }
 
     // Create the sender program
     auto sender_program = tt_metal::CreateProgram();
@@ -119,7 +128,13 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
         tt_metal::DataMovementConfig{
             .processor = tt_metal::DataMovementProcessor::RISCV_0,
             .noc = tt_metal::NOC::RISCV_0_default,
-            .compile_args = compile_time_args});
+            .compile_args = compile_time_args,
+            .defines = defines});
+
+    auto mesh_shape = control_plane->get_physical_mesh_shape(src_mesh_chip_id.first);
+    tt::log_info(tt::LogTest, "mesh dimensions {:x}", mesh_shape.dims());
+    tt::log_info(tt::LogTest, "mesh dimension 0 stride {:x}", mesh_shape.get_stride(0));
+    tt::log_info(tt::LogTest, "mesh dimension 1 stride {:x}", mesh_shape.get_stride(1));
 
     std::vector<uint32_t> sender_runtime_args = {
         packet_header_address,
@@ -128,6 +143,10 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
         num_packets,
         receiver_noc_encoding,
         time_seed,
+        edm_direction,
+        src_mesh_chip_id.second,
+        dst_mesh_chip_id.second,
+        mesh_shape.get_stride(0),
         num_hops};
 
     // append the EDM connection rt args

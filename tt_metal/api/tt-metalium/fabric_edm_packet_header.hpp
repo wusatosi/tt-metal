@@ -523,13 +523,12 @@ struct LowLatencyMeshRoutingFields {
     static constexpr uint32_t FORWARD_SOUTH = 0b1000;
     static constexpr uint32_t WRITE_AND_FORWARD_EW = 0b0011;
     static constexpr uint32_t WRITE_AND_FORWARD_NS = 0b1100;
-    uint32_t hop_index;
-    uint8_t value[32];
+    uint32_t value;
 };
 
 struct LowLatencyMeshPacketHeader : public PacketHeaderBase<LowLatencyMeshPacketHeader> {
     LowLatencyMeshRoutingFields routing_fields;
-
+    uint8_t route_buffer[32];
     inline void to_chip_unicast_impl(uint8_t distance_in_hops) {}
     inline void to_chip_multicast_impl(const MulticastRoutingCommandHeader& chip_multicast_command_header) {}
 
@@ -547,7 +546,7 @@ static_assert(sizeof(LowLatencyMeshPacketHeader) == 64, "sizeof(LowLatencyPacket
 // TODO: Should be piped from host to determine which packet header to use
 #define FABRIC_LOW_LATENCY_MODE 1
 
-#ifdef FABRIC_2D_XX
+#ifdef FABRIC_2D
 static constexpr size_t header_size_bytes = sizeof(LowLatencyMeshPacketHeader);
 #define PACKET_HEADER_TYPE tt::tt_fabric::LowLatencyMeshPacketHeader
 #define ROUTING_FIELDS_TYPE tt::tt_fabric::LowLatencyMeshRoutingFields
