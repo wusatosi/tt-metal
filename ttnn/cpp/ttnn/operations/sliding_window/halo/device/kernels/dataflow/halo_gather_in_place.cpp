@@ -156,13 +156,18 @@ void copy_sticks_async_local(
         const uint64_t base_addr = get_noc_addr(my_noc_x, my_noc_y, out_base_l1_addr);
         const uint64_t base_addr_src = get_noc_addr(my_noc_x, my_noc_y, in_base_l1_addr);
         for (uint16_t j = 0; j < length; j += 4) {
+            uint16_t no_wait = config_data[i + j + 3];
+            if (no_wait != no_wait_pass) {  // only copy sticks matching the no_wait condition
+                if constexpr (no_wait_pass) {  // no wait copies must be contiguous in beginning of config so we are
+                                               // done if we hit an non-no_wait copy on a no_wait_pass
+                    break;
+                } else {
+                    continue;
+                }
+            }
             uint16_t src_local_idx = config_data[i + j + 0];
             uint16_t dst_local_idx = config_data[i + j + 1];
             uint16_t nsticks = config_data[i + j + 2];
-            uint16_t no_wait = config_data[i + j + 3];
-            if (no_wait != no_wait_pass) {  // only copy sticks matching the no_wait condition
-                continue;
-            }
 
             uint32_t size = nsticks * stick_nbytes;
             uint32_t dst_offset = dst_local_idx * stick_nbytes;
