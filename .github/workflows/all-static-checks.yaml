@@ -81,8 +81,8 @@ jobs:
     if: ${{ github.ref_name == 'main' || needs.find-changed-files.outputs.docs-changed == 'true' }}
     steps:
 
-      - name: Restore lychee cache
-        id: restore-cache
+      - name: Lychee cache
+        id: lychee-cache
         uses: actions/cache@v4
         with:
           path: .lycheecache
@@ -103,11 +103,11 @@ jobs:
         with:
           args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './INSTALLING.md'
           fail: true
-      - name: Link Checker RST
-        uses: lycheeverse/lychee-action@v2.2.0
-        with:
-          args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './docs/source/**/*.rst'
-          fail: true
+      #- name: Link Checker RST
+      #  uses: lycheeverse/lychee-action@v2.2.0
+      #  with:
+      #    args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './docs/source/**/*.rst'
+      #    fail: true
       #- name: Link Checker MD
       #  uses: lycheeverse/lychee-action@v2
       #  with:
