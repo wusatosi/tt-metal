@@ -406,6 +406,9 @@ BinaryDeviceOperation::invoke(
         for (const auto& sub_device_id : device->get_sub_device_ids()) {
             const auto& sub_device_workers = device->worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
             worker_grid = worker_grid.merge(sub_device_workers);
+            if (!sub_device_workers.empty()) {
+                break;
+            }
         }
     }
 
