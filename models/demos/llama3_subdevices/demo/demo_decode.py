@@ -475,7 +475,8 @@ def run_llama3_demo(
         # Print out generated outputs for each user at the end of every iteration
         if not is_ci_env:
             # if len(user_input) == 1:
-            logger.info("[User 0] {}".format("".join(tokenizer.decode(all_outputs))))
+            if iteration % 20000 == 0:
+                logger.info("[User 0] {}".format("".join(tokenizer.decode(all_outputs))))
             # else:
             #     for user in range(batch_size):
             #         text = "".join(tokenizer.decode(all_outputs[user]))
@@ -484,11 +485,12 @@ def run_llama3_demo(
             #         text = text.replace("\n", " ")
             #         logger.info("[User {}] {}".format(user, text))
 
-        if not is_ci_env or iteration % 1000 == 0:
-            # Always print perf at every iteration if not in CI
-            logger.info(
-                f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
-            )
+        if not is_ci_env:
+            if iteration % 1000 == 0:
+                # Always print perf at every iteration if not in CI
+                logger.info(
+                    f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
+                )
 
         if is_ci_env and iteration == 127:
             tokens_per_second_per_user_token127 = tokens_per_second_per_user
@@ -636,7 +638,7 @@ def run_llama3_demo(
             1,  # repeat_batches
             1024,  # max_seq_len
             32,  # batch_size
-            20000,  # experimentally established as large enough to catch ND hangs
+            200000,  # experimentally established as large enough to catch ND hangs
             True,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
             {"top_k": 32, "top_p": 0.08, "seed": 42},  # sampling_params (argmax)
