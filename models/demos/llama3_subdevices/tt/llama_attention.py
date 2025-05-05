@@ -336,31 +336,31 @@ class TtLlamaAttention(LightweightModule):
         # Which leads to slightly different outputs from attention (due to accumulated errors)
         sdpa_out_mem_cfg = self.model_config["SCORES_BATCHED_MM_OUTPUT_MEMCFG"](self.batch_size_per_device_group)
 
-        if page_table:
-            attn_output_1G4D_sharded = ttnn.transformer.paged_scaled_dot_product_attention_decode(
-                q_heads_1BQD,
-                keys,
-                values,
-                cur_pos_tensor=current_pos,
-                page_table_tensor=page_table,
-                scale=self.scale,
-                program_config=self.model_config["PAGED_SDPA_DECODE_PROGCFG"],
-                compute_kernel_config=self.model_config["SDPA_DECODE_COMPUTE_PROGCFG"],
-                memory_config=sdpa_out_mem_cfg,
-            )
-        else:
-            attn_output_1G4D_sharded = ttnn.transformer.scaled_dot_product_attention_decode(
-                q_heads_1BQD,
-                keys,
-                values,
-                cur_pos_tensor=current_pos,
-                scale=self.scale,
-                program_config=self.model_config["SDPA_DECODE_PROGCFG"],
-                compute_kernel_config=self.model_config["SDPA_DECODE_COMPUTE_PROGCFG"],
-                memory_config=sdpa_out_mem_cfg,  # FIXME: why not L1 height sharded e.g. SCORES_BATCHED_MM_OUTPUT_MEMCFG?
-            )
+        # if page_table:
+        #     attn_output_1G4D_sharded = ttnn.transformer.paged_scaled_dot_product_attention_decode(
+        #         q_heads_1BQD,
+        #         keys,
+        #         values,
+        #         cur_pos_tensor=current_pos,
+        #         page_table_tensor=page_table,
+        #         scale=self.scale,
+        #         program_config=self.model_config["PAGED_SDPA_DECODE_PROGCFG"],
+        #         compute_kernel_config=self.model_config["SDPA_DECODE_COMPUTE_PROGCFG"],
+        #         memory_config=sdpa_out_mem_cfg,
+        #     )
+        # else:
+        #     attn_output_1G4D_sharded = ttnn.transformer.scaled_dot_product_attention_decode(
+        #         q_heads_1BQD,
+        #         keys,
+        #         values,
+        #         cur_pos_tensor=current_pos,
+        #         scale=self.scale,
+        #         program_config=self.model_config["SDPA_DECODE_PROGCFG"],
+        #         compute_kernel_config=self.model_config["SDPA_DECODE_COMPUTE_PROGCFG"],
+        #         memory_config=sdpa_out_mem_cfg,  # FIXME: why not L1 height sharded e.g. SCORES_BATCHED_MM_OUTPUT_MEMCFG?
+        #     )
 
-        ttnn.deallocate(q_heads_1BQD)
+        # ttnn.deallocate(q_heads_1BQD)
 
         # print("done attention")
 
@@ -376,9 +376,9 @@ class TtLlamaAttention(LightweightModule):
         # )
         # ttnn.deallocate(attn_output_gathered)
         attn_output_1G4D_sharded_rm = ttnn.untilize(
-            attn_output_1G4D_sharded,
+            q_heads_1BQD,
         )
-        ttnn.deallocate(attn_output_1G4D_sharded)
+        ttnn.deallocate(q_heads_1BQD)
         attn_output_cat = self.tt_ccl.all_gather_concat(
             attn_output_1G4D_sharded_rm,
             dim=1,
