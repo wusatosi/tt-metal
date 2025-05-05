@@ -170,6 +170,7 @@ def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, 
     ],
     indirect=True,
 )
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_asymm_dit_joint_prepare(mesh_device, use_program_cache, reset_seeds):
     """Test that prepare() function produces identical outputs to reference implementation."""
 
@@ -233,6 +234,7 @@ def test_tt_asymm_dit_joint_prepare(mesh_device, use_program_cache, reset_seeds)
     indirect=True,
 )
 @pytest.mark.parametrize("n_layers", [1], ids=["L1"])
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_asymm_dit_joint_model_fn(mesh_device, use_program_cache, reset_seeds, n_layers):
     """Test the model with real inputs processed just like in the pipeline."""
     dtype = ttnn.bfloat16
@@ -455,6 +457,7 @@ def test_tt_asymm_dit_joint_model_fn(mesh_device, use_program_cache, reset_seeds
     ],
     indirect=True,
 )
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_asymm_dit_joint_preprocess(mesh_device, use_program_cache, reset_seeds):
     """Test that we can reverse the preprocessing of input"""
     B, C, T, H, W = 1, 12, 28, 60, 106

@@ -66,6 +66,9 @@ class AsymmDiTJoint(LightweightModule):
         self.t5_feat_dim = t5_feat_dim
         self.rope_theta = rope_theta
 
+        self.setup_ccl()
+        self.persistent_buffers = None
+
         # Create PyTorch embedders (these run on CPU) and load their weights
         self.x_embedder = PatchEmbed(
             mesh_device=mesh_device,
@@ -137,6 +140,95 @@ class AsymmDiTJoint(LightweightModule):
         for block in self.blocks:
             block.dealloc()
         self.final_layer.dealloc()
+
+    def setup_ccl(self):
+        # Fabric setup
+        compute_grid_size = self.mesh_device.compute_with_storage_grid_size()
+        self.ccl_sub_device_crs = ttnn.CoreRangeSet(
+            {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
+        )
+        worker_sub_device = ttnn.SubDevice(
+            [
+                self.ccl_sub_device_crs,
+            ]
+        )
+        self.worker_sub_device_id = ttnn.SubDeviceId(0)
+        sub_device_manager = self.mesh_device.create_sub_device_manager([worker_sub_device], 0)
+        self.mesh_device.load_sub_device_manager(sub_device_manager)
+
+        self.topology = ttnn.Topology.Ring
+
+        self.setup_global_semaphores()
+
+    def maybe_setup_persistent_buffers(self, x: ttnn.Tensor):
+        # If persistent buffers are not set or if they are the wrong size, set them.
+        N_padded_shard = x.shape[2]
+        seq_parallel_shape = [1, 1, N_padded_shard, self.hidden_size_x]
+        col_parallel_shape = [1, 1, N_padded_shard * self.num_devices, 3 * self.hidden_size_x // self.num_devices]
+
+        if (
+            self.persistent_buffers is None
+            or list(self.persistent_buffers["seq_to_col_output"].shape) != col_parallel_shape
+            or list(self.persistent_buffers["col_to_seq_output"].shape) != seq_parallel_shape
+        ):
+            print("Setting up persistent buffers")
+            self.persistent_buffers = {
+                "seq_to_col_intermediate": ttnn.from_torch(
+                    torch.zeros(col_parallel_shape),
+                    device=self.mesh_device,
+                    layout=ttnn.TILE_LAYOUT,
+                    dtype=ttnn.bfloat16,
+                    memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                    mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
+                ),
+                "seq_to_col_output": ttnn.from_torch(
+                    torch.zeros(col_parallel_shape),
+                    device=self.mesh_device,
+                    layout=ttnn.TILE_LAYOUT,
+                    dtype=ttnn.bfloat16,
+                    memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                    mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
+                ),
+                "col_to_seq_intermediate": ttnn.from_torch(
+                    torch.zeros(seq_parallel_shape),
+                    device=self.mesh_device,
+                    layout=ttnn.TILE_LAYOUT,
+                    dtype=ttnn.bfloat16,
+                    memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                    mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
+                ),
+                "col_to_seq_output": ttnn.from_torch(
+                    torch.zeros(seq_parallel_shape),
+                    device=self.mesh_device,
+                    layout=ttnn.TILE_LAYOUT,
+                    dtype=ttnn.bfloat16,
+                    memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                    mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
+                ),
+            }
+
+    def setup_global_semaphores(self):
+        # TODO: rename the keys
+        self.ccl_semaphore_handles = {
+            s: ttnn.create_global_semaphore(self.mesh_device, self.ccl_sub_device_crs, 0)
+            for s in [
+                "ff_block_y",
+                "mod_x",
+                "mod_y",
+                "y_attn",
+                "seq_to_col",
+                "col_to_seq",
+                "qkv_x",
+                "proj_x",
+                "out_joint",
+                "w1",
+                "w2",
+                "w3",
+                "w2_in",
+                "final_layer_mod",
+                "postprocess_output",
+            ]
+        }
 
     def prepare_text_features(self, t5_feat, t5_mask):
         """
@@ -290,6 +382,7 @@ class AsymmDiTJoint(LightweightModule):
         x = x.permute(0, 2, 3, 5, 1, 4, 6).reshape(1, B, N, C * self.patch_size * self.patch_size)
         x = pad_vision_seq_parallel(x, self.num_devices)
         x = to_tt_tensor(x, self.mesh_device, shard_dim=-2)
+        self.maybe_setup_persistent_buffers(x)
         return x, N
 
     def reverse_preprocess(self, x, T, H, W, N):
@@ -301,10 +394,20 @@ class AsymmDiTJoint(LightweightModule):
         assert len(x.shape) == 4
         assert x.shape[0] == 1
         B = x.shape[1]
+        C = x.shape[3]
         pH, pW = H // self.patch_size, W // self.patch_size
-        x = ttnn.all_gather(x, dim=2)  # Gather sequence-parallel output
+
+        x = ttnn.experimental.all_gather_async(
+            x,
+            dim=2,
+            multi_device_global_semaphore=self.ccl_semaphore_handles["postprocess_output"],
+            num_links=1,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            topology=self.topology,
+            subdevice_id=self.worker_sub_device_id,
+        )
         x = ttnn.to_torch(ttnn.get_device_tensors(x)[0]).squeeze(0)
-        x = x[:, :N]  # Slice out sequence-parallel padding tokens
+        x = x[:, :N, :C]  # Slice out sequence-parallel padding tokens
         x = x.reshape(B, T, pH, pW, self.out_channels, self.patch_size, self.patch_size)
         x = x.permute(0, 4, 1, 2, 5, 3, 6).reshape(B, self.out_channels, T, H, W)
         return x
@@ -364,10 +467,20 @@ class AsymmDiTJoint(LightweightModule):
                 trans_mat=trans_mat,
                 N=N,
                 uncond=uncond,
+                ccl_semaphore_handles=self.ccl_semaphore_handles,
+                worker_sub_device_id=self.worker_sub_device_id,
+                topology=self.topology,
+                persistent_buffers=self.persistent_buffers,
             )
 
         # Run final layer
-        x_1BNI = self.final_layer(x_1BNX, c_11BX)
+        x_1BNI = self.final_layer(
+            x_1BNX,
+            c_11BX,
+            ccl_semaphore_handles=self.ccl_semaphore_handles,
+            worker_sub_device_id=self.worker_sub_device_id,
+            topology=self.topology,
+        )
 
         return x_1BNI
 
@@ -391,6 +504,7 @@ class AsymmDiTJoint(LightweightModule):
         # TODO: c shape should be broadcastable to x shape, with batch dim matching. It currently doesn't.
         # Pre-applied SILU expected in block
         # Note that on-device SILU is less accurate than on host
+        self.maybe_setup_persistent_buffers(x)
         c_11BX = ttnn.silu(c_11BX)
 
         # Run blocks
@@ -404,10 +518,20 @@ class AsymmDiTJoint(LightweightModule):
                 trans_mat=trans_mat,
                 N=N,
                 uncond=uncond,
+                ccl_semaphore_handles=self.ccl_semaphore_handles,
+                worker_sub_device_id=self.worker_sub_device_id,
+                topology=self.topology,
+                persistent_buffers=self.persistent_buffers,
             )
 
         # Run final layer
-        x_1BND = self.final_layer(x_1BNX, c_11BX)
+        x_1BND = self.final_layer(
+            x_1BNX,
+            c_11BX,
+            ccl_semaphore_handles=self.ccl_semaphore_handles,
+            worker_sub_device_id=self.worker_sub_device_id,
+            topology=self.topology,
+        )
 
         # Converts output back to torch and expected shape
         x_BCTHW = self.reverse_preprocess(x_1BND, T, H, W, N)

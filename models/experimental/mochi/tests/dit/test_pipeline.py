@@ -30,6 +30,7 @@ from models.experimental.mochi.tests.dit.test_model import create_models
     indirect=True,
 )
 @pytest.mark.parametrize("n_layers", [1, 2, 4, 48], ids=["L1", "L2", "L4", "L48"])
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_sample_model(mesh_device, use_program_cache, reset_seeds, n_layers):
     """Test TensorTorch sample_model against reference implementation."""
     device = torch.device("cpu")
@@ -114,6 +115,7 @@ def test_sample_model(mesh_device, use_program_cache, reset_seeds, n_layers):
 )
 @pytest.mark.parametrize("dump_performance", [True, False], ids=["intermediate_dump", "no_dump"])
 @pytest.mark.parametrize("n_layers", [1, 2, 4, 48], ids=["L1", "L2", "L4", "L48"])
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_sample_model_perf(mesh_device, use_program_cache, reset_seeds, n_layers, dump_performance):
     from genmo.lib.progress import get_new_progress_bar
     from genmo.mochi_preview.vae.vae_stats import dit_latents_to_vae_latents

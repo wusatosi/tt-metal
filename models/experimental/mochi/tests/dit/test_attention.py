@@ -187,10 +187,8 @@ def test_tt_attn_prepare_qkv(
         ]
     )
     worker_sub_device_id = ttnn.SubDeviceId(0)
-    sub_device_stall_group = [worker_sub_device_id]
     sub_device_manager = mesh_device.create_sub_device_manager([worker_sub_device], 0)
     mesh_device.load_sub_device_manager(sub_device_manager)
-    mesh_device.set_sub_device_stall_group(sub_device_stall_group)
     # create global semaphore handles
     ccl_semaphore_handles = {
         s: ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0) for s in ["seq_to_col", "qkv_x"]
@@ -279,7 +277,6 @@ def test_tt_attn_prepare_qkv(
     tt_k_y_torch = to_torch_tensor(tt_k_y, mesh_device, dim=-3)
     tt_v_y_torch = to_torch_tensor(tt_v_y, mesh_device, dim=-3)
 
-    mesh_device.reset_sub_device_stall_group()
     mesh_device.clear_loaded_sub_device_manager()
 
     # Concat for comparison
@@ -450,10 +447,8 @@ def test_tt_attn_post_attention(
         ]
     )
     worker_sub_device_id = ttnn.SubDeviceId(0)
-    sub_device_stall_group = [worker_sub_device_id]
     sub_device_manager = mesh_device.create_sub_device_manager([worker_sub_device], 0)
     mesh_device.load_sub_device_manager(sub_device_manager)
-    mesh_device.set_sub_device_stall_group(sub_device_stall_group)
     # create global semaphore handles
     ccl_semaphore_handles = {
         s: ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0)
@@ -515,7 +510,6 @@ def test_tt_attn_post_attention(
     tt_x_torch = to_torch_tensor(tt_x, mesh_device, dim=-2)[:, :, :vision_seq_len, :]
     tt_y_torch = to_torch_tensor(tt_y, mesh_device, dim=-1)
 
-    mesh_device.reset_sub_device_stall_group()
     mesh_device.clear_loaded_sub_device_manager()
 
     # Get reference outputs
@@ -594,10 +588,8 @@ def test_tt_attn_forward(
         ]
     )
     worker_sub_device_id = ttnn.SubDeviceId(0)
-    sub_device_stall_group = [worker_sub_device_id]
     sub_device_manager = mesh_device.create_sub_device_manager([worker_sub_device], 0)
     mesh_device.load_sub_device_manager(sub_device_manager)
-    mesh_device.set_sub_device_stall_group(sub_device_stall_group)
     # create global semaphore handles
     ccl_semaphore_handles = {
         s: ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0)
@@ -706,7 +698,6 @@ def test_tt_attn_forward(
     tt_x_torch = to_torch_tensor(tt_x_out, mesh_device, dim=-2)
     tt_y_torch = to_torch_tensor(tt_y_out, mesh_device, dim=-1)
 
-    mesh_device.reset_sub_device_stall_group()
     mesh_device.clear_loaded_sub_device_manager()
     # unpad TT
     tt_x_torch = tt_x_torch[:, :, :vision_seq_len, :]
