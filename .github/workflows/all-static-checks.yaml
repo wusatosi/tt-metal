@@ -96,12 +96,12 @@ jobs:
       - name: Link Checker README
         uses: lycheeverse/lychee-action@v2.2.0
         with:
-          args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './README.md'
+          args: --cache --verbose --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './README.md'
           fail: true
       - name: Link Checker INSTALLING
         uses: lycheeverse/lychee-action@v2.2.0
         with:
-          args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './INSTALLING.md'
+          args: --cache --verbose --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './INSTALLING.md'
           fail: true
       #- name: Link Checker RST
       #  uses: lycheeverse/lychee-action@v2.2.0
