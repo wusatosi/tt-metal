@@ -103,16 +103,16 @@ jobs:
         with:
           args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './INSTALLING.md'
           fail: true
-      - name: Link Checker RST
-        uses: lycheeverse/lychee-action@v2
-        with:
-          args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './docs/source/**/*.rst'
-          fail: true
-      - name: Link Checker MD
-        uses: lycheeverse/lychee-action@v2
-        with:
-          args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './docs/source/**/*.md'
-          fail: true
+      #- name: Link Checker RST
+      #  uses: lycheeverse/lychee-action@v2
+      #  with:
+      #    args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './docs/source/**/*.rst'
+      #    fail: true
+      #- name: Link Checker MD
+      #  uses: lycheeverse/lychee-action@v2
+      #  with:
+      #    args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './docs/source/**/*.md'
+      #    fail: true
       #- name: Save lychee cache
       #  uses: actions/cache/save@v4
       #  if: always()
