@@ -30,4 +30,11 @@ To run the demo for the DEIT model, follow these instructions:
   pytest --disable-warnings models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_cifar10_inference.py
   ```
 
+- For running the prediction on images, use the following command:
+
+  ```sh
+  pytest --disable-warnings models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_predict.py
+  ```
+
+  > **Note:** Ensure that the images to be used for predictions are stored in the `images` folder. When the `demo_deit_ttnn_predict.py` script is run, the predictions will be saved in the `results` folder.
 
