@@ -11,36 +11,37 @@
 #include "compute_kernel_api/pack_untilize.h"
 #include "tt_metal/hw/inc/circular_buffer.h"
 
+#define dump_unpack(a)                                              \
+    do {                                                            \
+        DPRINT_UNPACK(DPRINT << "UP: " << #a " = " << a << ENDL()); \
+    } while (false)
+#define dump_pack(a)                                             \
+    do {                                                         \
+        DPRINT_PACK(DPRINT << "P: " << #a " = " << a << ENDL()); \
+    } while (false)
+#define dump_math(a)                                             \
+    do {                                                         \
+        DPRINT_MATH(DPRINT << "M: " << #a " = " << a << ENDL()); \
+    } while (false)
 namespace NAMESPACE {
 
 void MAIN {
-    // X = output width
-    // Y = output height
-    // input shape = (..., H, W)
-    // output shape = (..., Y, X)
-
-    /**
-     * This kernel takes in the contiguous XW block read in in the reader kernel and transposes is to a WX block, ready
-     * to be written out The transpose LLK does not support transposing a tile without faces/subtiles, so we need to
-     * rearrange it into its faces, transpose, and then pack it back such that it's de-faced (WX, where X is contiguous
-     * and isn't divided into subtiles)
-     */
     uint32_t start_block = get_arg_val<uint32_t>(0);
     uint32_t end_block = get_arg_val<uint32_t>(1);
 
-    constexpr auto cb_in = tt::CBIndex::c_0;
-    constexpr auto cb_tilize = tt::CBIndex::c_2;
-    constexpr auto cb_out = tt::CBIndex::c_1;
+    constexpr auto cb_in = 0;
+    constexpr auto cb_out = 1;
 
     untilize_init(cb_in, cb_out);
-
+    dump_unpack(start_block);
+    dump_unpack(end_block);
     for (uint32_t block = start_block; block < end_block; block++) {
-        // tilize input via unpack and then pack
         cb_wait_front(cb_in, 1);
         cb_reserve_back(cb_out, 1);
-        untilize_block<1>(cb_in, 1, cb_out);
+        untilize_block(cb_in, 1, cb_out);
         cb_push_back(cb_out, 1);
         cb_pop_front(cb_in, 1);
     }
+    untilize_uninit(cb_in);
 }
 }  // namespace NAMESPACE

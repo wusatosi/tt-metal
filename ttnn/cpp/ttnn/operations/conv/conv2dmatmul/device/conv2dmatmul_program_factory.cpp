@@ -48,39 +48,38 @@ tt::tt_metal::operation::ProgramWithCallbacks conv2dmatmul_tile_reader_writer(
     tt::log_info("single_tile_size: {}", single_tile_size);
     tt::log_info("input_tensor_shape: {}", input_padded_shape);
     tt::log_info("output_tensor_shape: {}", output_padded_shape);
-    auto stick_nbytes = input_padded_shape[3] * 2;
+    auto stick_nbytes = output_padded_shape[3] * 2;
+    uint32_t ntiles_per_row = tt::div_up(input_padded_shape[-1], TILE_WIDTH);
+    std::cout << "ntiles_per_row: " << ntiles_per_row << std::endl;
     uint32_t src0_cb_index = 0;
-    uint32_t num_input_tiles = 1;
+    uint32_t num_input_tiles = ntiles_per_row;
     tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(num_input_tiles * stick_nbytes, {{src0_cb_index, cb_data_format}})
-            .set_page_size(src0_cb_index, stick_nbytes);
+        tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{src0_cb_index, cb_data_format}})
+            .set_page_size(src0_cb_index, single_tile_size);
     auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, core, cb_src0_config);
 
     uint32_t src1_cb_index = 1;  // For output buffer
-    uint32_t num_pad_tiles = 1;
     tt::tt_metal::CircularBufferConfig cb_src1_config =
-        tt::tt_metal::CircularBufferConfig(num_pad_tiles * stick_nbytes, {{src1_cb_index, cb_data_format}})
-            .set_page_size(src1_cb_index, stick_nbytes);
+        tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{src1_cb_index, cb_data_format}})
+            .set_page_size(src1_cb_index, single_tile_size);
     auto cb_src1 = tt::tt_metal::CreateCircularBuffer(program, core, cb_src1_config);
 
-    uint32_t src2_cb_index = 2;  // For output buffer
-    tt::tt_metal::CircularBufferConfig cb_src2_config =
-        tt::tt_metal::CircularBufferConfig(num_pad_tiles * stick_nbytes, {{src2_cb_index, cb_data_format}})
-            .set_page_size(src2_cb_index, stick_nbytes);
-    auto cb_src2 = tt::tt_metal::CreateCircularBuffer(program, core, cb_src2_config);
-
-    uint32_t num_unpadded_tiles = input_tensor.volume() / TILE_HW;
+    uint32_t num_unpadded_tiles = (input_tensor.volume() / TILE_HW) / ntiles_per_row;
+    std::cout << "num_unpadded_tiles: " << num_unpadded_tiles << std::endl;
+    std::cout << "input_tensor.volume(): " << input_tensor.volume() << std::endl;
 
     const std::array reader_kernel_args = {
         src0_buffer->address(),
         dst_buffer->address(),
         batch_size,
-        input_width,
         input_height,
+        input_width,
         kernel_size[0],
         kernel_size[1],
         stick_nbytes,
         std::uint32_t{0},
+        num_unpadded_tiles,
+        ntiles_per_row,
     };
     const std::array writer_kernel_args = {
         dst_buffer->address(),
@@ -91,8 +90,10 @@ tt::tt_metal::operation::ProgramWithCallbacks conv2dmatmul_tile_reader_writer(
     };
 
     const std::array compute_kernel_args = {
-        std::uint32_t{0},
         num_unpadded_tiles,
+        ntiles_per_row,
+        src0_cb_index,
+        src1_cb_index,
     };
     // Reader compile-time args
     // Data is 32 byte aligned
@@ -119,46 +120,53 @@ tt::tt_metal::operation::ProgramWithCallbacks conv2dmatmul_tile_reader_writer(
         core,
         tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args));
 
-    std::vector<uint32_t> compute_compile_time_args = {};
+    std::vector<uint32_t> compute_compile_time_args = {
+        num_unpadded_tiles,
+        ntiles_per_row,
+        src0_cb_index,
+        src1_cb_index,
+    };
+
     bool fp32_dest_acc_en = cb_data_format == tt::DataFormat::Float32;
-    // auto compute_kernel_id = tt::tt_metal::CreateKernel(
-    //     program,
-    //     "ttnn/cpp/ttnn/operations/conv/conv2dmatmul/device/kernels/compute/compute_conv2dmatmul_single_core.cpp",
-    //     core,
-    //     tt::tt_metal::ComputeConfig{
-    //         .fp32_dest_acc_en = fp32_dest_acc_en,
-    //         .compile_args = compute_compile_time_args,
-    //     });
+    auto compute_kernel_id = tt::tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/data_movement/untilize/device/kernels/compute/pack_untilize.cpp",
+        core,
+        tt::tt_metal::ComputeConfig{
+            .fp32_dest_acc_en = fp32_dest_acc_en,
+            .compile_args = compute_compile_time_args,
+        });
 
     tt::tt_metal::SetRuntimeArgs(program, unary_reader_kernel_id, core, reader_kernel_args);
 
     tt::tt_metal::SetRuntimeArgs(program, unary_writer_kernel_id, core, writer_kernel_args);
 
-    // tt::tt_metal::SetRuntimeArgs(program, compute_kernel_id, core, compute_kernel_args);
+    tt::tt_metal::SetRuntimeArgs(program, compute_kernel_id, core, compute_kernel_args);
 
-    // auto override_runtime_args_callback = [unary_reader_kernel_id, unary_writer_kernel_id, compute_kernel_id](
-    auto override_runtime_args_callback = [unary_reader_kernel_id, unary_writer_kernel_id](
-                                              const void* operation,
-                                              Program& program,
-                                              const std::vector<Tensor>& input_tensors,
-                                              const std::vector<std::optional<const Tensor>>& optional_tensors,
-                                              const std::vector<Tensor>& output_tensors) {
-        auto src_dram_buffer = input_tensors.at(0).buffer();
+    auto override_runtime_args_callback =
+        [unary_reader_kernel_id, unary_writer_kernel_id, compute_kernel_id](
+            // auto override_runtime_args_callback = [unary_reader_kernel_id, unary_writer_kernel_id](
+            const void* operation,
+            Program& program,
+            const std::vector<Tensor>& input_tensors,
+            const std::vector<std::optional<const Tensor>>& optional_tensors,
+            const std::vector<Tensor>& output_tensors) {
+            auto src_dram_buffer = input_tensors.at(0).buffer();
 
-        auto dst_dram_buffer = output_tensors.at(0).buffer();
+            auto dst_dram_buffer = output_tensors.at(0).buffer();
 
-        CoreCoord core = {0, 0};
+            CoreCoord core = {0, 0};
 
-        {
-            auto& runtime_args = tt::tt_metal::GetRuntimeArgs(program, unary_reader_kernel_id, core);
-            runtime_args[0] = src_dram_buffer->address();
-        }
+            {
+                auto& runtime_args = tt::tt_metal::GetRuntimeArgs(program, unary_reader_kernel_id, core);
+                runtime_args[0] = src_dram_buffer->address();
+            }
 
-        {
-            auto& runtime_args = tt::tt_metal::GetRuntimeArgs(program, unary_writer_kernel_id, core);
-            runtime_args[0] = dst_dram_buffer->address();
-        }
-    };
+            {
+                auto& runtime_args = tt::tt_metal::GetRuntimeArgs(program, unary_writer_kernel_id, core);
+                runtime_args[0] = dst_dram_buffer->address();
+            }
+        };
 
     return {std::move(program), {}};
 }
