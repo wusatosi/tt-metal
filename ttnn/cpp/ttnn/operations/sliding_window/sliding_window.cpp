@@ -880,12 +880,12 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
         std::vector<std::vector<std::vector<uint16_t>>> flattened_config(2);
         int core = 0;
         for (const auto& data : config) {
-            printf("    core: %d\n", core);
+            // printf("    core: %d\n", core);
             std::vector<std::vector<uint16_t>> flat_data(2, std::vector<uint16_t>(max_len, 0));
             uint32_t idx1 = 0, idx2 = 0;
             for (size_t i = 0; i < data.size(); ++i) {
                 auto [dst_start, length] = data[i];
-                printf("        dst: %d, size: %d\n", dst_start, length);
+                // printf("        dst: %d, size: %d\n", dst_start, length);
                 if (i % 2 == 0 || in_place) {
                     flat_data[0][idx1++] = dst_start;
                     flat_data[0][idx1++] = length;
@@ -924,13 +924,15 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
 
         std::vector<std::vector<std::vector<uint16_t>>> flattened_config(2);
 
-        printf("in_nsticks_per_core: %d\n", in_nsticks_per_core);
-        printf("max_out_nsticks_per_core: %d\n", max_out_nsticks_per_core);
-        printf("in_out_shard_size_delta: %d\n", in_out_shard_size_delta);
-        printf("---LOCAL CONFIG---\n");
+        if (in_place) {
+            printf("in_nsticks_per_core: %d\n", in_nsticks_per_core);
+            printf("max_out_nsticks_per_core: %d\n", max_out_nsticks_per_core);
+            printf("in_out_shard_size_delta: %d\n", in_out_shard_size_delta);
+        }
+        // printf("---LOCAL CONFIG---\n");
         int core = 0;
         for (const auto& [key, data] : config) {
-            printf("    core: %d\n", core);
+            // printf("    core: %d\n", core);
             auto [nocx, nocy, len] = key;
             std::vector<std::vector<uint16_t>> flat_data(2, std::vector<uint16_t>(max_len, 0));
             flat_data[0][0] = nocx;
@@ -964,11 +966,11 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                         rev_i_end = i;
                         break;
                     }
-                    printf(
+                    /* printf(
                         "        dst_rel_src: %d, dst: %d, size: %d\n",
                         src_start + in_out_shard_size_delta,
                         dst_start,
-                        length);
+                        length); */
                     flat_data[0][idx1++] = src_start;
                     flat_data[0][idx1++] = dst_start;
                     flat_data[0][idx1++] = length;
@@ -979,11 +981,11 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                      --i) {  // reverse direction local config in region where input / output shards overlap (for in
                              // place operation)
                     auto [src_start, dst_start, length] = data[i];
-                    printf(
+                    /* printf(
                         "        dst_rel_src: %d, dst: %d, size: %d\n",
                         src_start + in_out_shard_size_delta,
                         dst_start,
-                        length);
+                        length); */
                     flat_data[0][idx1++] = src_start;
                     flat_data[0][idx1++] = dst_start;
                     flat_data[0][idx1++] = length;
@@ -1025,9 +1027,13 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
         CoreCoord noc_00 = core_id_to_noc_coords(0);
         int max_ref_size = 0;  // track the max remote ref size for sizing the remote temp tensor
         int core = 0;
-        printf("---REMOTE CONFIG---\n");
+        if (in_place) {
+            printf("---REMOTE CONFIG---\n");
+        }
         for (const auto& core_config : config) {
-            printf("    core: %d\n", core);
+            if (in_place) {
+                printf("    core: %d\n", core);
+            }
             std::vector<std::vector<uint16_t>> flat_data(2, std::vector<uint16_t>(max_len, 0));
             uint32_t idx1 = 0, idx2 = 0;
             uint32_t len_idx1 = 0, len_idx2 = 0;
@@ -1045,14 +1051,11 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                 len_idx2 = idx2;
                 flat_data[1][idx2++] = 0;
                 int ref_ind = nocx - noc_00.x + (nocy - noc_00.y) * num_cores_x;
-                printf("        ref ind: %d\n", ref_ind);
+                if (in_place) {
+                    printf("        ref ind: %d\n", ref_ind);
+                }
                 int local_ref_count = flattened_local_config[0][ref_ind][2] / 4;
                 int local_core_count = flattened_local_config[0][core][2] / 4;
-                // for (int i = 0; i < local_ref_count; ++i) {
-                //     printf("        src: %d, dst: %d, size: %d\n", flattened_local_config[0][ref_ind][3 + 3 * i],
-                //         flattened_local_config[0][ref_ind][4 + 3 * i],
-                //         flattened_local_config[0][ref_ind][5 + 3 * i]);
-                // }
                 int first_local_dst_relative_src = flattened_local_config[0][ref_ind][3] + in_out_shard_size_delta;
                 int last_local_dst_relative_src =
                     flattened_local_config[0][ref_ind][3 + 4 * (local_ref_count - 1)] + in_out_shard_size_delta;
@@ -1106,9 +1109,12 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                                 no_wait_possible = false;
                             }
                             if (!no_wait_possible) {
+                                // printf("no wait not possible for core %d, at index %d, local core count %d\n", core,
+                                // j, local_core_count);
                                 for (int k = j; k < local_core_count; ++k) {
                                     flattened_local_config[0][core][6 + 4 * k] = 0;
                                 }
+                                break;
                             }
                         }
                     } else {
@@ -1134,6 +1140,23 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
             flattened_config[1].emplace_back(std::move(flat_data[1]));
             core++;
             max_ref_size = std::max(max_ref_size, ref_size);
+        }
+
+        // print the local config with updated no wait conditions
+        if (in_place) {
+            printf("---LOCAL CONFIG---\n");
+            for (int core_id = 0; core_id < flattened_local_config[0].size(); ++core_id) {
+                printf("    core: %d\n", core_id);
+                int local_core_count = flattened_local_config[0][core_id][2] / 4;
+                for (int j = 0; j < local_core_count; ++j) {
+                    int local_src = flattened_local_config[0][core_id][3 + 4 * j];
+                    int local_dst = flattened_local_config[0][core_id][4 + 4 * j];
+                    int local_size = flattened_local_config[0][core_id][5 + 4 * j];
+                    int no_wait = flattened_local_config[0][core_id][6 + 4 * j];
+                    printf(
+                        "        src: %d, dst: %d, size: %d, no_wait: %d\n", local_src, local_dst, local_size, no_wait);
+                }
+            }
         }
 
         return std::make_tuple(flattened_config, max_ref_size);
