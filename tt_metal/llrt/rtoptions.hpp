@@ -156,6 +156,8 @@ class RunTimeOptions {
     // Setting this downgrades performance but can avoid bugs that come from fwding and dependency checking
     bool disable_register_fwding = false;
 
+    bool enable_response_order_fifo = false;
+
 public:
     RunTimeOptions();
     RunTimeOptions(const RunTimeOptions&) = delete;
@@ -343,6 +345,8 @@ public:
     inline bool get_relaxed_memory_ordering_disabled() const { return this->disable_relaxed_memory_ordering; }
 
     inline bool get_register_forwarding_disabled() const { return this->disable_register_fwding; }
+
+    inline bool get_enable_response_order_fifo() const { return this->enable_response_order_fifo; }
 
     tt_metal::DispatchCoreConfig get_dispatch_core_config() const;
 

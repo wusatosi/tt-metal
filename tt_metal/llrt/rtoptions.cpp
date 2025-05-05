@@ -194,6 +194,10 @@ RunTimeOptions::RunTimeOptions() {
     if (getenv("TT_METAL_DISABLE_REGISTER_FWDING")) {
         this->disable_register_fwding = true;
     }
+
+    if (getenv("TT_METAL_ENABLE_RESPONSE_ORDER_FIFO")) {
+        this->enable_response_order_fifo = true;
+    }
 }
 
 const std::string& RunTimeOptions::get_root_dir() const {

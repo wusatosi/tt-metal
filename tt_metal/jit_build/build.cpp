@@ -249,6 +249,10 @@ void JitBuildEnv::init(
         this->defines_ += "-DDISABLE_REGISTER_FORWARDING ";
     }
 
+    if (rtoptions.get_enable_response_order_fifo()) {
+        this->defines_ += "-DENABLE_RESPONSE_ORDER_FIFO ";
+    }
+
     if (tt::tt_metal::MetalContext::instance().get_cluster().is_base_routing_fw_enabled()) {
         this->defines_ += "-DROUTING_FW_ENABLED ";
     }

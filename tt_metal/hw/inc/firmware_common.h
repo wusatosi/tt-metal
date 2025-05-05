@@ -202,9 +202,21 @@ inline __attribute__((always_inline)) void disable_register_fwding() {
 #endif
 }
 
+inline __attribute__((always_inline)) void enable_response_order_fifo() {
+#if defined(ARCH_BLACKHOLE) && defined(ENABLE_RESPONSE_ORDER_FIFO)
+    asm(R"ASM(
+        li t1, 0x1
+        slli t1, t1, 28
+        csrrs zero, 0x7c0, t1
+            )ASM" ::
+            : "t1");
+#endif
+}
+
 inline __attribute__((always_inline)) void configure_csr() {
     disable_gathering();
     configure_l1_data_cache();
     disable_relaxed_memory_ordering();
     disable_register_fwding();
+    enable_response_order_fifo();
 }
