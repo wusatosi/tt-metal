@@ -4,6 +4,7 @@ if [ $# -ge 1 ];
 then
     INTERACTIVE_MODE=1
 fi
+#Hello
 
 pushd `pwd`
 if [[ -z $TT_METAL_HOME ]];
