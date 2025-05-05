@@ -144,17 +144,31 @@ class AsymmDiTJoint(LightweightModule):
     def setup_ccl(self):
         # Fabric setup
         compute_grid_size = self.mesh_device.compute_with_storage_grid_size()
-        self.ccl_sub_device_crs = ttnn.CoreRangeSet(
-            {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
+        self.worker_sub_device_crs = ttnn.CoreRangeSet(
+            {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 2))}
         )
         worker_sub_device = ttnn.SubDevice(
+            [
+                self.worker_sub_device_crs,
+            ]
+        )
+        self.ccl_sub_device_crs = ttnn.CoreRangeSet(
+            {
+                ttnn.CoreRange(
+                    ttnn.CoreCoord(0, compute_grid_size.y - 1),
+                    ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1),
+                )
+            }
+        )
+        ccl_sub_device = ttnn.SubDevice(
             [
                 self.ccl_sub_device_crs,
             ]
         )
-        self.worker_sub_device_id = ttnn.SubDeviceId(0)
-        sub_device_manager = self.mesh_device.create_sub_device_manager([worker_sub_device], 0)
+        sub_device_manager = self.mesh_device.create_sub_device_manager([worker_sub_device, ccl_sub_device], 0)
         self.mesh_device.load_sub_device_manager(sub_device_manager)
+        self.worker_sub_device_id = ttnn.SubDeviceId(0)
+        self.ccl_sub_device_id = ttnn.SubDeviceId(1)
 
         self.topology = ttnn.Topology.Ring
 
@@ -212,23 +226,30 @@ class AsymmDiTJoint(LightweightModule):
         self.ccl_semaphore_handles = {
             s: ttnn.create_global_semaphore(self.mesh_device, self.ccl_sub_device_crs, 0)
             for s in [
-                "ff_block_y",
-                "mod_x",
-                "mod_y",
-                "y_attn",
-                "seq_to_col",
-                "col_to_seq",
                 "qkv_x",
                 "proj_x",
-                "out_joint",
                 "w1",
                 "w2",
                 "w3",
-                "w2_in",
-                "final_layer_mod",
-                "postprocess_output",
             ]
         }
+        self.ccl_semaphore_handles.update(
+            {
+                s: ttnn.create_global_semaphore(self.mesh_device, self.worker_sub_device_crs, 0)
+                for s in [
+                    "seq_to_col",
+                    "col_to_seq",
+                    "out_joint",
+                    "w2_in",
+                    "final_layer_mod",
+                    "postprocess_output",
+                    "ff_block_y",
+                    "mod_x",
+                    "mod_y",
+                    "y_attn",
+                ]
+            }
+        )
 
     def prepare_text_features(self, t5_feat, t5_mask):
         """
@@ -457,8 +478,15 @@ class AsymmDiTJoint(LightweightModule):
         # tt_y_pool_11BX = to_tt_tensor(unsqueeze_to_4d(y_pool_11BX), self.mesh_device)
 
         # Run blocks
-        for block in self.blocks:
-            x_1BNX, y_feat_1BLY = block(
+        for i, block in enumerate(self.blocks):
+            if i == 0:
+                fsdp_weights = block.prefetch_weights(self.ccl_semaphore_handles, self.ccl_sub_device_id, self.topology)
+            if i == len(self.blocks) - 1:
+                prefetch_weights_fn = lambda *x: {}
+            else:
+                prefetch_weights_fn = self.blocks[i + 1].prefetch_weights
+
+            x_1BNX, y_feat_1BLY, fsdp_weights = block(
                 x_1BNX,
                 c_11BX,
                 y_feat_1BLY,
@@ -469,8 +497,11 @@ class AsymmDiTJoint(LightweightModule):
                 uncond=uncond,
                 ccl_semaphore_handles=self.ccl_semaphore_handles,
                 worker_sub_device_id=self.worker_sub_device_id,
+                ccl_sub_device_id=self.ccl_sub_device_id,
                 topology=self.topology,
                 persistent_buffers=self.persistent_buffers,
+                fsdp_weights=fsdp_weights,
+                prefetch_weights_fn=prefetch_weights_fn,
             )
 
         # Run final layer
@@ -508,7 +539,14 @@ class AsymmDiTJoint(LightweightModule):
         c_11BX = ttnn.silu(c_11BX)
 
         # Run blocks
-        for block in self.blocks:
+        for i, block in enumerate(self.blocks):
+            if i == 0:
+                fsdp_weights = block.prefetch_weights(self.ccl_semaphore_handles, self.ccl_sub_device_id, self.topology)
+            if i == len(self.blocks) - 1:
+                prefetch_weights_fn = lambda *x: {}
+            else:
+                prefetch_weights_fn = self.blocks[i + 1].prefetch_weights
+
             x_1BNX, y_feat_1BLY = block(
                 x_1BNX,
                 c_11BX,
@@ -522,6 +560,8 @@ class AsymmDiTJoint(LightweightModule):
                 worker_sub_device_id=self.worker_sub_device_id,
                 topology=self.topology,
                 persistent_buffers=self.persistent_buffers,
+                fsdp_weights=fsdp_weights,
+                prefetch_weights_fn=prefetch_weights_fn,
             )
 
         # Run final layer

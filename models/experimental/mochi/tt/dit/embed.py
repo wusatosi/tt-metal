@@ -67,7 +67,7 @@ class PatchEmbed(LightweightModule):
             packer_l1_acc=True,
         )
 
-        self.mm_config = partial(matmul_2d_config, n=embed_dim, grid_size=(8, 8))
+        self.mm_config = partial(matmul_2d_config, n=embed_dim, grid_size=(8, 7))
 
     def dealloc(self):
         ttnn.deallocate(self.weight)

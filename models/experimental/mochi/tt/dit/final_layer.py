@@ -159,7 +159,7 @@ class FinalLayer(LightweightModule):
             self.linear,
             bias=self.linear_bias,
             compute_kernel_config=compute_kernel_config,
-            core_grid=ttnn.CoreGrid(y=8, x=8),
+            core_grid=ttnn.CoreGrid(y=7, x=8),
             dtype=ttnn.bfloat16,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )

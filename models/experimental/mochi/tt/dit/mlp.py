@@ -141,8 +141,8 @@ class FeedForward(LightweightModule):
         x_1BSD: ttnn.Tensor,
         ccl_semaphore_handles: dict,
         worker_sub_device_id: ttnn.SubDeviceId,
-        ccl_sub_device_id: ttnn.SubDeviceId,
         topology: ttnn.Topology,
+        fsdp_weights: dict = None,
     ) -> ttnn.Tensor:
         B = x_1BSD.shape[1]
         S = x_1BSD.shape[2]
@@ -152,21 +152,21 @@ class FeedForward(LightweightModule):
         # W1 computation (includes both x and gate paths)
 
         if self.seq_shard:
-            w1 = ttnn.experimental.all_gather_async(
-                self.w1,
-                dim=3,
-                multi_device_global_semaphore=ccl_semaphore_handles["w1"],
-                num_links=1,
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,
-                topology=topology,
-                subdevice_id=ccl_sub_device_id,
-            )
-            w1_event = ttnn.record_event(self.mesh_device, 0, sub_device_ids=[ccl_sub_device_id])
-            ttnn.wait_for_event(0, w1_event)
+            # w1 = ttnn.experimental.all_gather_async(
+            #     self.w1,
+            #     dim=3,
+            #     multi_device_global_semaphore=ccl_semaphore_handles["w1"],
+            #     num_links=1,
+            #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            #     topology=topology,
+            #     subdevice_id=ccl_sub_device_id,
+            # )
+            # w1_event = ttnn.record_event(self.mesh_device, 0, sub_device_ids=[ccl_sub_device_id])
+            # ttnn.wait_for_event(0, w1_event)
 
             w1_out_1BSF = ttnn.linear(
                 x_1BSD,
-                w1,
+                fsdp_weights["w1"],
                 compute_kernel_config=self.compute_kernel_config_hifi2,
                 dtype=ttnn.bfloat16,
                 memory_config=x_1BSD.memory_config(),
@@ -176,21 +176,21 @@ class FeedForward(LightweightModule):
 
             # Run w3 all-gather in parallel with w1 linear
 
-            w3 = ttnn.experimental.all_gather_async(
-                self.w3,
-                dim=3,
-                multi_device_global_semaphore=ccl_semaphore_handles["w3"],
-                num_links=1,
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,
-                topology=topology,
-                subdevice_id=ccl_sub_device_id,
-            )
-            w3_event = ttnn.record_event(self.mesh_device, 0, sub_device_ids=[ccl_sub_device_id])
-            ttnn.wait_for_event(0, w3_event)
+            # w3 = ttnn.experimental.all_gather_async(
+            #     self.w3,
+            #     dim=3,
+            #     multi_device_global_semaphore=ccl_semaphore_handles["w3"],
+            #     num_links=1,
+            #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            #     topology=topology,
+            #     subdevice_id=ccl_sub_device_id,
+            # )
+            # w3_event = ttnn.record_event(self.mesh_device, 0, sub_device_ids=[ccl_sub_device_id])
+            # ttnn.wait_for_event(0, w3_event)
 
             w3_out_1BSF = ttnn.linear(
                 x_1BSD,
-                w3,
+                fsdp_weights["w3"],
                 compute_kernel_config=self.compute_kernel_config_hifi2,
                 dtype=ttnn.bfloat16,
                 memory_config=x_1BSD.memory_config(),
@@ -200,16 +200,16 @@ class FeedForward(LightweightModule):
 
             # Run w2 all-gather in parallel with w3 linear
 
-            w2 = ttnn.experimental.all_gather_async(
-                self.w2,
-                dim=3,
-                multi_device_global_semaphore=ccl_semaphore_handles["w2"],
-                num_links=1,
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,
-                topology=topology,
-                subdevice_id=ccl_sub_device_id,
-            )
-            w2_event = ttnn.record_event(self.mesh_device, 0, sub_device_ids=[ccl_sub_device_id])
+            # w2 = ttnn.experimental.all_gather_async(
+            #     self.w2,
+            #     dim=3,
+            #     multi_device_global_semaphore=ccl_semaphore_handles["w2"],
+            #     num_links=1,
+            #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            #     topology=topology,
+            #     subdevice_id=ccl_sub_device_id,
+            # )
+            # w2_event = ttnn.record_event(self.mesh_device, 0, sub_device_ids=[ccl_sub_device_id])
 
             # Apply SiLU and multiply with gate
             w2_in_1BSF = ttnn.multiply(
@@ -220,10 +220,10 @@ class FeedForward(LightweightModule):
                 memory_config=w1_out_1BSF.memory_config(),
             )
 
-            ttnn.wait_for_event(0, w2_event)
+            # ttnn.wait_for_event(0, w2_event)
             result_1BSD = ttnn.linear(
                 w2_in_1BSF,
-                w2,
+                fsdp_weights["w2"],
                 compute_kernel_config=self.compute_kernel_config_hifi2,
                 dtype=ttnn.bfloat16,
                 memory_config=w2_in_1BSF.memory_config(),
@@ -270,7 +270,7 @@ class FeedForward(LightweightModule):
                 num_links=1,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
                 topology=topology,
-                subdevice_id=ccl_sub_device_id,
+                subdevice_id=worker_sub_device_id,
             )
             result_1BSD = ttnn.linear(
                 w2_in_1BSF,

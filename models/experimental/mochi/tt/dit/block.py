@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Callable
 
 import ttnn
 from models.common.lightweightmodule import LightweightModule
@@ -120,6 +120,15 @@ class AsymmetricJointBlock(LightweightModule):
         if self.update_y:
             self.mlp_y.dealloc()
 
+    def prefetch_weights(self, ccl_semaphore_handles, ccl_sub_device_id, topology):
+        mlp_weights = self.mlp_x.prefetch_weights(ccl_semaphore_handles, ccl_sub_device_id, topology)
+        attn_weights = self.attn.prefetch_weights(ccl_semaphore_handles, ccl_sub_device_id, topology)
+
+        # Synchronize to ensure fabric is not in use when this function returns
+        fsdp_event = ttnn.record_event(self.mesh_device, 0, sub_device_ids=[ccl_sub_device_id])
+        ttnn.wait_for_event(0, fsdp_event)
+        return {**mlp_weights, **attn_weights}
+
     def ff_block_x(
         self,
         x_1BNX: ttnn.Tensor,
@@ -128,6 +137,7 @@ class AsymmetricJointBlock(LightweightModule):
         ccl_semaphore_handles: dict,
         worker_sub_device_id: ttnn.SubDeviceId,
         topology: ttnn.Topology,
+        fsdp_weights: dict,
     ) -> ttnn.Tensor:
         """Feed-forward block for visual features.
 
@@ -145,6 +155,7 @@ class AsymmetricJointBlock(LightweightModule):
             ccl_semaphore_handles=ccl_semaphore_handles,
             worker_sub_device_id=worker_sub_device_id,
             topology=topology,
+            fsdp_weights=fsdp_weights,
         )
         x_1BNX = residual_tanh_gated_rmsnorm(x_1BNX, x_res_shard_1BNX, gate_x_B11X)
         return x_1BNX
@@ -204,8 +215,11 @@ class AsymmetricJointBlock(LightweightModule):
         N: int,
         ccl_semaphore_handles: dict,
         worker_sub_device_id: ttnn.SubDeviceId,
+        ccl_sub_device_id: ttnn.SubDeviceId,
         topology: ttnn.Topology,
         persistent_buffers: dict,
+        fsdp_weights: dict,
+        prefetch_weights_fn: Callable,
         uncond: bool = False,
     ) -> Tuple[ttnn.Tensor, ttnn.Tensor]:
         """Forward pass of a block.
@@ -246,7 +260,7 @@ class AsymmetricJointBlock(LightweightModule):
             self.mod_x,
             bias=self.mod_x_bias,
             compute_kernel_config=compute_kernel_config,
-            core_grid=ttnn.CoreGrid(y=8, x=8),
+            core_grid=ttnn.CoreGrid(y=7, x=8),
             dtype=ttnn.bfloat16,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
@@ -273,7 +287,7 @@ class AsymmetricJointBlock(LightweightModule):
                 self.mod_y,
                 bias=self.mod_y_bias,
                 compute_kernel_config=compute_kernel_config,
-                core_grid=ttnn.CoreGrid(y=8, x=8),
+                core_grid=ttnn.CoreGrid(y=7, x=8),
                 dtype=ttnn.bfloat16,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
             )
@@ -302,7 +316,7 @@ class AsymmetricJointBlock(LightweightModule):
                 scale_msa_y_B11Y = mod_y_B11C
 
         # Self-attention block
-        x_attn_1BMX, y_attn_shard_1BLY = self.attn(
+        x_attn_1BMX, y_attn_shard_1BLY, next_fsdp_weights = self.attn(
             x_1BMX,
             y_1BLY,
             N=N,
@@ -314,8 +328,11 @@ class AsymmetricJointBlock(LightweightModule):
             uncond=uncond,
             ccl_semaphore_handles=ccl_semaphore_handles,
             worker_sub_device_id=worker_sub_device_id,
+            ccl_sub_device_id=ccl_sub_device_id,
             topology=topology,
             persistent_buffers=persistent_buffers,
+            fsdp_weights=fsdp_weights,
+            prefetch_weights_fn=prefetch_weights_fn,
         )
 
         assert x_attn_1BMX.shape[2] == M
@@ -328,6 +345,7 @@ class AsymmetricJointBlock(LightweightModule):
             ccl_semaphore_handles=ccl_semaphore_handles,
             worker_sub_device_id=worker_sub_device_id,
             topology=topology,
+            fsdp_weights=fsdp_weights,
         )
 
         if not uncond:
@@ -360,4 +378,4 @@ class AsymmetricJointBlock(LightweightModule):
             else:
                 y_1BLY = y_attn_1BLY
 
-        return x_1BMX, y_1BLY
+        return x_1BMX, y_1BLY, next_fsdp_weights

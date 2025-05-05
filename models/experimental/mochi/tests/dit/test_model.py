@@ -93,6 +93,7 @@ def create_models(mesh_device, n_layers: int = 48):
     ],
     indirect=True,
 )
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, reset_seeds):
     dtype = ttnn.bfloat16
 

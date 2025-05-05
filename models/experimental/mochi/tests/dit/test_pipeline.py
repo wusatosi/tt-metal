@@ -279,7 +279,7 @@ def test_sample_model_perf(mesh_device, use_program_cache, reset_seeds, n_layers
 
     warmup_output = sample_model_profile(device=device, dit=tt_dit, conditioning=conditioning, **sample_args)
 
-    num_bench_steps = 2
+    num_bench_steps = 10
     bench_sigma, bench_cfg = get_schedule(num_bench_steps)
     bench_args = {
         "width": width,

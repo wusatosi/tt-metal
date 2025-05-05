@@ -1,5 +1,5 @@
 import torch
-from typing import Tuple
+from typing import Tuple, Callable
 from functools import partial
 import math
 
@@ -102,10 +102,10 @@ class AsymmetricAttention(LightweightModule):
 
         # TODO: using qkv_x program config leads to worse PCC
         self.qkv_x_config = partial(
-            matmul_config, k=dim_x, n=3 * self.num_heads * self.head_dim, grid_size=(8, 8), fp32_dest_acc_en=True
+            matmul_config, k=dim_x, n=3 * self.num_heads * self.head_dim, grid_size=(8, 7), fp32_dest_acc_en=True
         )
         self.proj_x_config = partial(
-            matmul_config, k=dim_x, n=dim_x, in0_block_w=4, grid_size=(8, 8), fp32_dest_acc_en=True
+            matmul_config, k=dim_x, n=dim_x, in0_block_w=4, grid_size=(8, 7), fp32_dest_acc_en=True
         )
         self.mm_compute_kernel_config = ttnn.WormholeComputeKernelConfig(
             math_fidelity=ttnn.MathFidelity.HiFi2,
@@ -143,6 +143,29 @@ class AsymmetricAttention(LightweightModule):
             weight_dtype=ttnn.bfloat16,
             weight_key=key,
         )
+
+    def prefetch_weights(self, ccl_semaphore_handles, ccl_sub_device_id, topology):
+        qkv_x = ttnn.experimental.all_gather_async(
+            self.qkv_x,
+            dim=3,
+            multi_device_global_semaphore=ccl_semaphore_handles["qkv_x"],
+            num_links=1,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            topology=topology,
+            subdevice_id=ccl_sub_device_id,
+        )
+
+        proj_x = ttnn.experimental.all_gather_async(
+            self.proj_x,
+            dim=3,
+            multi_device_global_semaphore=ccl_semaphore_handles["proj_x"],
+            num_links=1,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            topology=topology,
+            subdevice_id=ccl_sub_device_id,
+        )
+
+        return {"qkv_x": qkv_x, "proj_x": proj_x}
 
     def _col_parallel_qkv(self, name, bias, weight_cache_path, state_dict, state_dict_prefix):
         """
@@ -270,7 +293,7 @@ class AsymmetricAttention(LightweightModule):
             self.qkv_y,
             bias=self.qkv_y_bias,
             compute_kernel_config=self.mm_compute_kernel_config,
-            core_grid=ttnn.CoreGrid(y=8, x=8),
+            core_grid=ttnn.CoreGrid(y=7, x=8),
             dtype=ttnn.bfloat16,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
@@ -302,6 +325,7 @@ class AsymmetricAttention(LightweightModule):
         worker_sub_device_id: ttnn.SubDeviceId,
         topology: ttnn.Topology,
         persistent_buffers: dict,
+        fsdp_weights: dict,
         uncond: bool = False,
     ):
         """Prepare QKV tensors for attention computation.
@@ -329,18 +353,18 @@ class AsymmetricAttention(LightweightModule):
         # ), f"Visual sequence length must be divisible by {self.X_MM_SEQ_LEN}, got {seq_x}"
         x_1BNX = modulated_rmsnorm(x_1BNX, scale_x)
 
-        qkv_x = ttnn.experimental.all_gather_async(
-            self.qkv_x,
-            dim=3,
-            multi_device_global_semaphore=ccl_semaphore_handles["qkv_x"],
-            num_links=1,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            topology=topology,
-            subdevice_id=worker_sub_device_id,
-        )
+        # qkv_x = ttnn.experimental.all_gather_async(
+        #     self.qkv_x,
+        #     dim=3,
+        #     multi_device_global_semaphore=ccl_semaphore_handles["qkv_x"],
+        #     num_links=1,
+        #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        #     topology=topology,
+        #     subdevice_id=worker_sub_device_id,
+        # )
         qkv_x_1BNE = ttnn.linear(
             x_1BNX,
-            qkv_x,
+            fsdp_weights["qkv_x"],
             bias=self.qkv_x_bias,
             compute_kernel_config=self.mm_compute_kernel_config,
             dtype=ttnn.bfloat16,
@@ -408,6 +432,11 @@ class AsymmetricAttention(LightweightModule):
         v_y_BHLD: ttnn.Tensor,
         *,
         B: int,
+        ccl_semaphore_handles: dict,
+        worker_sub_device_id: ttnn.SubDeviceId,
+        ccl_sub_device_id: ttnn.SubDeviceId,
+        topology: ttnn.Topology,
+        prefetch_weights_fn: Callable,
     ) -> ttnn.Tensor:
         """Run attention computation.
 
@@ -439,7 +468,7 @@ class AsymmetricAttention(LightweightModule):
         )
 
         program_config = ttnn.SDPAProgramConfig(
-            compute_with_storage_grid_size=self.mesh_device.compute_with_storage_grid_size(),
+            compute_with_storage_grid_size=[8, 7],  # TODO: Respect the grid of the worker_sub_device
             q_chunk_size=256,  # TODO: Make this dynamic
             k_chunk_size=512,
             exp_approx_mode=False,
@@ -457,7 +486,6 @@ class AsymmetricAttention(LightweightModule):
                 program_config=program_config,
                 compute_kernel_config=compute_kernel_config,
             )
-            out_joint_1BLX = ttnn.experimental.nlp_concat_heads(out_joint_BHLD, memory_config=ttnn.DRAM_MEMORY_CONFIG)
         else:
             out_BHND = ttnn.transformer.scaled_dot_product_attention(
                 q_x_BHND,
@@ -467,12 +495,19 @@ class AsymmetricAttention(LightweightModule):
                 program_config=program_config,
                 compute_kernel_config=compute_kernel_config,
             )
+
+        # Overlap FSDP weight prefetch with the longest op in the model, SDPA
+        next_fsdp_weights = prefetch_weights_fn(ccl_semaphore_handles, ccl_sub_device_id, topology)
+
+        if is_joint:
+            out_joint_1BLX = ttnn.experimental.nlp_concat_heads(out_joint_BHLD, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+        else:
             out_joint_1BLX = None
 
         # Reshape output
         out_1BNX = ttnn.experimental.nlp_concat_heads(out_BHND, memory_config=ttnn.DRAM_MEMORY_CONFIG)
 
-        return out_1BNX, out_joint_1BLX
+        return out_1BNX, out_joint_1BLX, next_fsdp_weights
 
     def post_attention(
         self,
@@ -485,6 +520,7 @@ class AsymmetricAttention(LightweightModule):
         worker_sub_device_id: ttnn.SubDeviceId,
         topology: ttnn.Topology,
         persistent_buffers: dict,
+        fsdp_weights: dict,
         uncond: bool = False,
     ) -> Tuple[ttnn.Tensor, ttnn.Tensor]:
         """Post attention processing to split and project visual and text features.
@@ -518,18 +554,18 @@ class AsymmetricAttention(LightweightModule):
         M = out_1BNX.shape[2]
 
         # BUG: This linear clobbers `out_joint_1BLX` if padded and certain program configs are used
-        proj_x = ttnn.experimental.all_gather_async(
-            self.proj_x,
-            dim=3,
-            multi_device_global_semaphore=ccl_semaphore_handles["proj_x"],
-            num_links=1,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            topology=topology,
-            subdevice_id=worker_sub_device_id,
-        )
+        # proj_x = ttnn.experimental.all_gather_async(
+        #     self.proj_x,
+        #     dim=3,
+        #     multi_device_global_semaphore=ccl_semaphore_handles["proj_x"],
+        #     num_links=1,
+        #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        #     topology=topology,
+        #     subdevice_id=worker_sub_device_id,
+        # )
         out_1BNX = ttnn.linear(
             out_1BNX,
-            proj_x,
+            fsdp_weights["proj_x"],
             bias=self.proj_x_bias,
             compute_kernel_config=self.mm_compute_kernel_config,
             dtype=ttnn.bfloat16,
@@ -561,7 +597,7 @@ class AsymmetricAttention(LightweightModule):
                     self.proj_y,
                     bias=self.proj_y_bias,
                     compute_kernel_config=self.mm_compute_kernel_config,
-                    core_grid=ttnn.CoreGrid(y=8, x=8),
+                    core_grid=ttnn.CoreGrid(y=7, x=8),
                     dtype=ttnn.bfloat16,
                     memory_config=ttnn.DRAM_MEMORY_CONFIG,
                 )
@@ -584,8 +620,11 @@ class AsymmetricAttention(LightweightModule):
         trans_mat: ttnn.Tensor,
         ccl_semaphore_handles: dict,
         worker_sub_device_id: ttnn.SubDeviceId,
+        ccl_sub_device_id: ttnn.SubDeviceId,
         topology: ttnn.Topology,
         persistent_buffers: dict,
+        fsdp_weights: dict,
+        prefetch_weights_fn: Callable,
         uncond: bool = False,
     ) -> ttnn.Tensor:
         # input is replicated
@@ -606,10 +645,11 @@ class AsymmetricAttention(LightweightModule):
             worker_sub_device_id=worker_sub_device_id,
             topology=topology,
             persistent_buffers=persistent_buffers,
+            fsdp_weights=fsdp_weights,
         )
 
         # output is col-sharded
-        out_1BNX, out_joint_1BLX = self.run_attention(
+        out_1BNX, out_joint_1BLX, next_fsdp_weights = self.run_attention(
             q_x_BHND,
             k_x_BHND,
             v_x_BHND,
@@ -617,6 +657,11 @@ class AsymmetricAttention(LightweightModule):
             k_y_BHLD,
             v_y_BHLD,
             B=B,
+            ccl_semaphore_handles=ccl_semaphore_handles,
+            worker_sub_device_id=worker_sub_device_id,
+            ccl_sub_device_id=ccl_sub_device_id,
+            topology=topology,
+            prefetch_weights_fn=prefetch_weights_fn,
         )
 
         # output is col-sharded x, y
@@ -631,6 +676,7 @@ class AsymmetricAttention(LightweightModule):
             worker_sub_device_id=worker_sub_device_id,
             topology=topology,
             persistent_buffers=persistent_buffers,
+            fsdp_weights=fsdp_weights,
         )
 
-        return x_1BNX, y_1BLY
+        return x_1BNX, y_1BLY, next_fsdp_weights
