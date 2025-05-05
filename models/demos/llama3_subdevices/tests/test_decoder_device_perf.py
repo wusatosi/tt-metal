@@ -475,7 +475,7 @@ def print_dict(input_dict, dict_name):
 
 
 def is_collective_op(op_code):
-    return "AllGather" in op_code or "ReduceScatter" in op_code or "AllReduce" in op_code
+    return any(x in op_code for x in ("AllGather", "ReduceScatter", "AllReduce"))
 
 
 @pytest.mark.models_device_performance_bare_metal
