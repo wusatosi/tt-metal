@@ -152,6 +152,10 @@ class RunTimeOptions {
     // This option will disable the relaxed ordering
     bool disable_relaxed_memory_ordering = false;
 
+    // Forwarding is used to wakeup instructions that has dependencies before the data is ready in register files.
+    // Setting this downgrades performance but can avoid bugs that come from fwding and dependency checking
+    bool disable_register_fwding = false;
+
 public:
     RunTimeOptions();
     RunTimeOptions(const RunTimeOptions&) = delete;
@@ -337,6 +341,8 @@ public:
     inline bool get_hw_cache_invalidation_enabled() const { return this->enable_hw_cache_invalidation; }
 
     inline bool get_relaxed_memory_ordering_disabled() const { return this->disable_relaxed_memory_ordering; }
+
+    inline bool get_register_forwarding_disabled() const { return this->disable_register_fwding; }
 
     tt_metal::DispatchCoreConfig get_dispatch_core_config() const;
 

@@ -189,8 +189,22 @@ inline __attribute__((always_inline)) void disable_relaxed_memory_ordering() {
 #endif
 }
 
+inline __attribute__((always_inline)) void disable_register_fwding() {
+#if defined(ARCH_BLACKHOLE) && defined(DISABLE_REGISTER_FORWARDING)
+    // Forwarding is used to wakeup instructions that has dependencies before the data is ready in register files.
+    // Setting this bit (bit 20) downgrades performance but can avoid bugs that come from fwding and dependency checking
+    asm(R"ASM(
+        li t1, 0x1
+        slli t1, t1, 20
+        csrrs zero, 0x7c0, t1
+            )ASM" ::
+            : "t1");
+#endif
+}
+
 inline __attribute__((always_inline)) void configure_csr() {
     disable_gathering();
     configure_l1_data_cache();
     disable_relaxed_memory_ordering();
+    disable_register_fwding();
 }

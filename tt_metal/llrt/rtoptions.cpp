@@ -190,6 +190,10 @@ RunTimeOptions::RunTimeOptions() {
     if (getenv("TT_METAL_DISABLE_RELAXED_MEM_ORDERING")) {
         this->disable_relaxed_memory_ordering = true;
     }
+
+    if (getenv("TT_METAL_DISABLE_REGISTER_FWDING")) {
+        this->disable_register_fwding = true;
+    }
 }
 
 const std::string& RunTimeOptions::get_root_dir() const {
