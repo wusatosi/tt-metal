@@ -93,17 +93,32 @@ jobs:
         with:
           submodules: recursive
           clean: false
-      - name: Link Checker
+      - name: Link Checker README
         uses: lycheeverse/lychee-action@v2
         with:
-          args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './README.md' './INSTALLING.md'  './docs/source/**/*.rst' './docs/source/**/*.md'
+          args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './README.md'
           fail: true
-      - name: Save lychee cache
-        uses: actions/cache/save@v4
-        if: always()
+      - name: Link Checker INSTALLING
+        uses: lycheeverse/lychee-action@v2
         with:
-          path: .lycheecache
-          key: ${{ steps.restore-cache.outputs.cache-primary-key }}
+          args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './INSTALLING.md'
+          fail: true
+      - name: Link Checker RST
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './docs/source/**/*.rst'
+          fail: true
+      - name: Link Checker MD
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './docs/source/**/*.md'
+          fail: true
+      #- name: Save lychee cache
+      #  uses: actions/cache/save@v4
+      #  if: always()
+      #  with:
+      #    path: .lycheecache
+      #    key: ${{ steps.restore-cache.outputs.cache-primary-key }}
 
   check-forbidden-imports:
     runs-on: ubuntu-latest
