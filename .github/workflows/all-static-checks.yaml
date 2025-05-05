@@ -81,13 +81,19 @@ jobs:
     if: ${{ github.ref_name == 'main' || needs.find-changed-files.outputs.docs-changed == 'true' }}
     steps:
 
-      - name: Lychee cache
-        id: lychee-cache
+      - name: Restore lychee cache
         uses: actions/cache@v4
         with:
           path: .lycheecache
           key: cache-lychee-${{ github.sha }}
           restore-keys: cache-lychee-
+      #- name: Lychee cache
+      #  id: lychee-cache
+      #  uses: actions/cache@v4
+      #  with:
+      #    path: .lycheecache
+      #    key: cache-lychee-${{ github.sha }}
+      #    restore-keys: cache-lychee-
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
