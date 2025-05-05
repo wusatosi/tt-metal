@@ -40,7 +40,7 @@ std::vector<ttnn::TensorSpec> Conv2dMatmulOp::compute_output_specs(const std::ve
         output_logical_shape,
         tt::tt_metal::TensorLayout(
             input_tensor.get_dtype(),
-            tt::tt_metal::PageConfig(input_tensor.get_layout()),
+            tt::tt_metal::PageConfig(tt::tt_metal::Layout::ROW_MAJOR),
             input_tensor.memory_config()))};
 }
 
@@ -78,6 +78,8 @@ Tensor conv2d_convert_tensor_for_matmul(
     tt::log_info("input_tensor shape = {} ", shape);
     std::vector<ttnn::Tensor> output_tensors = {
         ttnn::Tensor(tt::tt_metal::operation::get_workers_for_op_output({input_tensor}))};
+    tt::log_info("output tensor shape = {}", output_tensors.at(0).logical_shape());
+    tt::log_info("output tensor padded = {}", output_tensors.at(0).padded_shape());
     tt::tt_metal::operation::launch_op(
         [input_tensor, in_channels, out_channels, batch_size, input_height, input_width, kernel_size, stride](
             const std::vector<ttnn::Tensor>& input_tensors,
