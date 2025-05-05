@@ -157,7 +157,16 @@ operation::ProgramWithCallbacks slice_rm_multi_core(
 
     uint32_t num_unpadded_sticks = output.volume() / output.get_padded_shape()[-1];
 
-    auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    // auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    CoreRangeSet worker_grid;
+    for (const auto& sub_device_id : device->get_sub_device_ids()) {
+        const auto& sub_device_workers = device->worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
+        worker_grid = worker_grid.merge(sub_device_workers);
+        if (!sub_device_workers.empty()) {
+            break;
+        }
+    }
+    auto compute_with_storage_grid_size = worker_grid.bounding_box().end_coord;
     uint32_t num_cores_x = compute_with_storage_grid_size.x;
     uint32_t num_cores_y = compute_with_storage_grid_size.y;
 
@@ -635,7 +644,16 @@ operation::ProgramWithCallbacks slice_rm_multi_core_sharded(
     tt::tt_metal::Buffer* dst_buffer = output.buffer();
     TT_ASSERT(dst_buffer != nullptr, "Output buffer should be allocated on device!");
 
-    auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    // auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    CoreRangeSet worker_grid;
+    for (const auto& sub_device_id : device->get_sub_device_ids()) {
+        const auto& sub_device_workers = device->worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
+        worker_grid = worker_grid.merge(sub_device_workers);
+        if (!sub_device_workers.empty()) {
+            break;
+        }
+    }
+    auto compute_with_storage_grid_size = worker_grid.bounding_box().end_coord;
     uint32_t num_cores_x = compute_with_storage_grid_size.x;
     uint32_t num_cores_y = compute_with_storage_grid_size.y;
     CoreRange total_cores({0, 0}, {num_cores_x - 1, num_cores_y - 1});
@@ -860,7 +878,16 @@ operation::ProgramWithCallbacks slice_tile_multi_core(
 
     uint32_t num_unpadded_tiles = output.volume() / TILE_HW;
 
-    auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    // auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    CoreRangeSet worker_grid;
+    for (const auto& sub_device_id : device->get_sub_device_ids()) {
+        const auto& sub_device_workers = device->worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
+        worker_grid = worker_grid.merge(sub_device_workers);
+        if (!sub_device_workers.empty()) {
+            break;
+        }
+    }
+    auto compute_with_storage_grid_size = worker_grid.bounding_box().end_coord;
     uint32_t num_cores_x = compute_with_storage_grid_size.x;
     uint32_t num_cores_y = compute_with_storage_grid_size.y;
     auto num_cores_total = num_cores_x * num_cores_y;

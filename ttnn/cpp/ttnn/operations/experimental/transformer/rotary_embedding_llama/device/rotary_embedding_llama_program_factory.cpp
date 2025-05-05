@@ -54,10 +54,18 @@ operation::ProgramWithCallbacks rotary_embedding_llama_multi_core(
     auto [math_fidelity, math_approx_mode, fp32_dest_acc_en, packer_l1_acc, dst_full_sync_en] =
         get_compute_kernel_config_args(device->arch(), compute_kernel_config);
 
-    auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    // auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    CoreRangeSet worker_grid;
+    for (const auto& sub_device_id : device->get_sub_device_ids()) {
+        const auto& sub_device_workers = device->worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
+        worker_grid = worker_grid.merge(sub_device_workers);
+        if (!sub_device_workers.empty()) {
+            break;
+        }
+    }
+    auto compute_with_storage_grid_size = worker_grid.bounding_box().end_coord;
     uint32_t num_cores_x = compute_with_storage_grid_size.x;
     uint32_t num_cores_y = compute_with_storage_grid_size.y;
-
     CoreRange all_cores = CoreRange({0, 0}, {num_cores_x - 1, num_cores_y - 1});
 
     bool in_sharded = input.shard_spec().has_value();

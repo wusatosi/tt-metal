@@ -195,7 +195,17 @@ operation::ProgramWithCallbacks layernorm_multi_core(
     TT_ASSERT(num_beta_tiles % block_size == 0);
 
     uint32_t num_tile_rows = NC * Ht;
-    auto grid_size = device->compute_with_storage_grid_size();
+    // auto grid_size = device->compute_with_storage_grid_size();
+    CoreRangeSet worker_grid;
+    for (const auto& sub_device_id : device->get_sub_device_ids()) {
+        const auto& sub_device_workers = device->worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
+        worker_grid = worker_grid.merge(sub_device_workers);
+        if (!sub_device_workers.empty()) {
+            break;
+        }
+    }
+    auto compute_with_storage_grid_size = worker_grid.bounding_box().end_coord;
+    auto grid_size = compute_with_storage_grid_size;
     auto
         [num_cores,
          all_cores,

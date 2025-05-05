@@ -70,7 +70,16 @@ BinaryDeviceOperation::BroadcastHeightMultiCoreShardedOptimized::create(
     auto all_cores = shard_spec.grid;
     uint32_t ncores = shard_spec.num_cores();
 
-    auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    // auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    CoreRangeSet worker_grid;
+    for (const auto& sub_device_id : device->get_sub_device_ids()) {
+        const auto& sub_device_workers = device->worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
+        worker_grid = worker_grid.merge(sub_device_workers);
+        if (!sub_device_workers.empty()) {
+            break;
+        }
+    }
+    auto compute_with_storage_grid_size = worker_grid.bounding_box().end_coord;
     uint32_t ncores_x = compute_with_storage_grid_size.x;
 
     auto out_shard_spec = output.shard_spec().value();

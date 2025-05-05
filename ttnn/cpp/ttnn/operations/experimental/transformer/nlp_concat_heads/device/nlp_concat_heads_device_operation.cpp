@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "nlp_concat_heads_device_operation.hpp"
+#include <tt-metalium/hal_types.hpp>
 
 namespace ttnn::operations::experimental::transformer {
 
@@ -71,7 +72,18 @@ tt::tt_metal::operation::ProgramWithCallbacks NLPConcatHeadsDeviceOperation::cre
     const auto& input_tensor = input_tensors.at(0);
     auto& output_tensor = output_tensors.at(0);
 
-    CoreCoord compute_with_storage_grid_size = input_tensor.device()->compute_with_storage_grid_size();
+    // CoreCoord compute_with_storage_grid_size = input_tensor.device()->compute_with_storage_grid_size();
+    auto device = input_tensor.device();
+    CoreRangeSet worker_grid;
+    for (const auto& sub_device_id : device->get_sub_device_ids()) {
+        const auto& sub_device_workers =
+            device->worker_cores(tt::tt_metal::HalProgrammableCoreType::TENSIX, sub_device_id);
+        worker_grid = worker_grid.merge(sub_device_workers);
+        if (!sub_device_workers.empty()) {
+            break;
+        }
+    }
+    auto compute_with_storage_grid_size = worker_grid.bounding_box().end_coord;
 
     return multi_core_nlp_concat_heads(input_tensor, output_tensor, compute_with_storage_grid_size);
 }

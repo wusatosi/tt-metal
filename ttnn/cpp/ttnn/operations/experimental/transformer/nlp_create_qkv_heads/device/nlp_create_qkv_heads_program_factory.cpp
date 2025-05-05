@@ -7,6 +7,7 @@
 #include <tt-metalium/util.hpp>
 #include "nlp_create_qkv_heads_device_operation.hpp"
 #include <tt-metalium/work_split.hpp>
+#include <tt-metalium/hal.hpp>
 
 namespace ttnn::operations::experimental::transformer {
 
@@ -24,11 +25,20 @@ NlpCreateHeadsDeviceOperation::Interleaved::cached_program_t NlpCreateHeadsDevic
     const uint32_t head_dim = operation_attributes.head_dim;
     const bool transpose_k_heads = operation_attributes.transpose_k_heads;
     auto& output = tensor_return_value;
-    CoreCoord compute_with_storage_grid_size = input_tensor.device()->compute_with_storage_grid_size();
+    // CoreCoord compute_with_storage_grid_size = input_tensor.device()->compute_with_storage_grid_size();
+    tt_metal::IDevice* device = input_tensor.device();
+    CoreRangeSet worker_grid;
+    for (const auto& sub_device_id : device->get_sub_device_ids()) {
+        const auto& sub_device_workers =
+            device->worker_cores(tt::tt_metal::HalProgrammableCoreType::TENSIX, sub_device_id);
+        worker_grid = worker_grid.merge(sub_device_workers);
+        if (!sub_device_workers.empty()) {
+            break;
+        }
+    }
+    auto compute_with_storage_grid_size = worker_grid.bounding_box().end_coord;
 
     const auto& input_shape = input_tensor.get_padded_shape();
-
-    tt_metal::IDevice* device = input_tensor.device();
 
     tt::DataFormat cb_data_format = tt_metal::datatype_to_dataformat_converter(input_tensor.get_dtype());
 
