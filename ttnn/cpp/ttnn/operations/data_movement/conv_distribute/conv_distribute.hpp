@@ -4,15 +4,14 @@
 
 #pragma once
 
+#include "ttnn/decorators.hpp"
+#include "ttnn/types.hpp"
+
 namespace ttnn {
 namespace operations::data_movement {
 
 struct ConvDistributeOperation {
-    static ttnn::Tensor invoke(
-        QueueId queue_id,
-        const ttnn::Tensor& input_tensor,
-        const ttnn::CoreRangeSet& cores,
-        const ttnn::SmallVector<size_t>& shard_sizes);
+    static Tensor invoke(QueueId queue_id, const ttnn::Tensor& input_tensor, const CoreRangeSet& cores, int divisor);
 };
 
 }  // namespace operations::data_movement

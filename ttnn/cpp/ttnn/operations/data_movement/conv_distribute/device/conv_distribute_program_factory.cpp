@@ -25,10 +25,7 @@ using namespace tt::tt_metal;
 namespace ttnn::operations::data_movement::detail {
 
 operation::ProgramWithCallbacks conv_distribute_multi_core(
-    const Tensor& input_tensor,
-    const Tensor& output_tensor,
-    const ttnn::CoreRangeSet& cores,
-    const ttnn::SmallVector<size_t>& shard_sizes) {
+    const Tensor& input_tensor, const Tensor& output_tensor, const ttnn::CoreRangeSet& cores, int divisor) {
     // TODO: the hard part
     tt::tt_metal::Program program{};
 

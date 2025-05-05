@@ -59,7 +59,7 @@ operation::ProgramWithCallbacks ConvDistributeDeviceOperation::create_program(
     const std::vector<Tensor>& input_tensors, std::vector<Tensor>& output_tensors) const {
     const auto& input_tensor = input_tensors.at(0);
     auto& output_tensor = output_tensors.at(0);
-    return detail::conv_distribute_multi_core(input_tensor, output_tensor, this->cores, this->shard_sizes);
+    return detail::conv_distribute_multi_core(input_tensor, output_tensor, this->cores, this->divisor);
 }
 
 }  // namespace ttnn::operations::data_movement
