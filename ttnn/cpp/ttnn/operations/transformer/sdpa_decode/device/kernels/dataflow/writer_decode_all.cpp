@@ -156,7 +156,7 @@ void kernel_main() {
         generate_mask<cb_mask_in, PNHt>(k_num_chunks, Sk_chunk_t_dynamic, cur_pos);
     }
 
-    noc_async_write_barrier();  // #19201 BH hang workaround
+    // noc_async_write_barrier();  // #19201 BH hang workaround
     for (uint32_t cur_head = cur_head_group * num_heads_per_core;
          cur_head < cur_head_group * num_heads_per_core + num_heads_per_core;
          ++cur_head) {
@@ -203,7 +203,7 @@ void kernel_main() {
         // Write entire out into its corresponding batch
         uint32_t out_tile_id = out_batch_offset;
         cb_wait_front(cb_out, out_chunk_tiles);
-        noc_async_writes_flushed();
+        // noc_async_writes_flushed();
 
         if constexpr (num_kv_heads > 1) {
             // if gqa, we will need to write partial outputs for each head
