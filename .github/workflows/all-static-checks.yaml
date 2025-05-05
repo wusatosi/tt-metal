@@ -80,6 +80,14 @@ jobs:
     # We get rate-limited if we run too often; only run when it's useful
     if: ${{ github.ref_name == 'main' || needs.find-changed-files.outputs.docs-changed == 'true' }}
     steps:
+
+      - name: Restore lychee cache
+        id: restore-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .lycheecache
+          key: cache-lychee-${{ github.sha }}
+          restore-keys: cache-lychee-
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
@@ -88,8 +96,15 @@ jobs:
       - name: Link Checker
         uses: lycheeverse/lychee-action@v2
         with:
-          args: --verbose './README.md' './INSTALLING.md'  './docs/source/**/*.rst' './docs/source/**/*.md'
+          args: --cache --max-cache-age 1d --max-concurrency 1 --max-retries 0 --verbose './README.md' './INSTALLING.md'  './docs/source/**/*.rst' './docs/source/**/*.md'
           fail: true
+      - name: Save lychee cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .lycheecache
+          key: ${{ steps.restore-cache.outputs.cache-primary-key }}
+
   check-forbidden-imports:
     runs-on: ubuntu-latest
     steps:
