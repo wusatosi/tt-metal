@@ -36,19 +36,33 @@ from models.experimental.mochi.tt.common import (
     ],
 )
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
-def test_tt_feedforward_inference(mesh_device, seq_len, use_program_cache, reset_seeds, ff_path, in_feat, seq_shard):
+def test_tt_feedforward_inference(mesh_device, seq_len, use_program_cache, ff_path, in_feat, seq_shard):
     # Fabric setup
     compute_grid_size = mesh_device.compute_with_storage_grid_size()
-    ccl_sub_device_crs = ttnn.CoreRangeSet(
-        {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
+    worker_sub_device_crs = ttnn.CoreRangeSet(
+        {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 2))}
     )
     worker_sub_device = ttnn.SubDevice(
+        [
+            worker_sub_device_crs,
+        ]
+    )
+    ccl_sub_device_crs = ttnn.CoreRangeSet(
+        {
+            ttnn.CoreRange(
+                ttnn.CoreCoord(0, compute_grid_size.y - 1),
+                ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1),
+            )
+        }
+    )
+    ccl_sub_device = ttnn.SubDevice(
         [
             ccl_sub_device_crs,
         ]
     )
+    sub_device_manager = mesh_device.create_sub_device_manager([worker_sub_device, ccl_sub_device], 0)
     worker_sub_device_id = ttnn.SubDeviceId(0)
-    sub_device_manager = mesh_device.create_sub_device_manager([worker_sub_device], 0)
+    ccl_sub_device_id = ttnn.SubDeviceId(1)
     mesh_device.load_sub_device_manager(sub_device_manager)
     # create global semaphore handles
     if seq_shard:
@@ -110,7 +124,18 @@ def test_tt_feedforward_inference(mesh_device, seq_len, use_program_cache, reset
     )
 
     logger.info("Run TtFeedForward")
-    tt_output = tt_model(tt_input, ccl_semaphore_handles, worker_sub_device_id, ttnn.Topology.Ring)
+    _ = tt_model(tt_input, ccl_semaphore_handles, worker_sub_device_id, ccl_sub_device_id, ttnn.Topology.Ring)
+    ttnn.synchronize_device(mesh_device, sub_device_ids=[worker_sub_device_id, ccl_sub_device_id])
+    dummy_tensor = ttnn.from_torch(
+        torch.zeros(1, 1, seq_len, in_feat),
+        device=mesh_device,
+        mesh_mapper=mapper,
+        dtype=ttnn.bfloat16,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        layout=ttnn.TILE_LAYOUT,
+    )
+
+    tt_output = tt_model(tt_input, ccl_semaphore_handles, worker_sub_device_id, ccl_sub_device_id, ttnn.Topology.Ring)
 
     if seq_shard:
         tt_output_torch = ttnn.to_torch(tt_output, mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=-2))[
