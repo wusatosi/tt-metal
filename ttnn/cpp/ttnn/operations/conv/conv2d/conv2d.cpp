@@ -376,13 +376,16 @@ Result conv2d_L1(
     std::array<uint32_t, 4> padding_n4 = sliding_window::get_pair_n4_padding(padding);
     auto input_tensor = input_tensor_;
     bool mm_conv = use_matmul_for_1x1_conv(kernel_size, stride, padding_n4, dilation, groups, conv_config);
-    if (mm_conv) {
+    bool is_large_kernel =
+        is_large_kernel_with_easy_matmul(input_height, input_width, kernel_size, stride, padding_n4, dilation, groups);
+    if (is_large_kernel) {
         input_tensor = convert_tensor_for_1x1_conv(input_tensor_, stride);
         input_height = input_height / stride[0];
         input_width = input_width / stride[1];
         stride = {1, 1};
         kernel_size = {1, 1};
         in_channels = in_channels * kernel_size[0] * kernel_size[1];
+        mm_conv = true;
     }
     auto [output_height, output_width] =
         calculate_output_image_size({input_height, input_width}, kernel_size, stride, padding_n4, dilation);
@@ -466,7 +469,7 @@ Result conv2d_L1(
                 opt_conv_op_block_config.act_block_h_ntiles,
                 input_width,
                 bias_tensor.has_value(),
-                mm_conv,
+                is_large_kernel,
                 true);
         } else {
             tie(weight_tensor_on_device, bias_tensor_on_device) = prepare_conv_weights_biases_on_device(
@@ -483,7 +486,7 @@ Result conv2d_L1(
                 opt_conv_op_block_config.act_block_h_ntiles,
                 input_width,
                 bias_tensor.has_value(),
-                mm_conv);
+                is_large_kernel);
         }
     }
     // if 1x1 conv w/ stride 1, convert input tensor to tile layout if required
