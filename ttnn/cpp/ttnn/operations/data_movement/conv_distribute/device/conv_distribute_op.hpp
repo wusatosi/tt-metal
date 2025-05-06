@@ -15,6 +15,11 @@ struct ConvDistributeDeviceOperation {
     const CoreRangeSet& cores;
     int divisor;
 
+    // allow these members to be set in compute_output_specs function
+    // this will avoid having to recalculate them in the program factory as we can just pass them
+    mutable uint32_t num_blocks_per_core;
+    mutable uint32_t num_cores_with_extra_block;
+
     void validate(const std::vector<Tensor>& input_tensors) const;
     std::vector<ttnn::TensorSpec> compute_output_specs(const std::vector<Tensor>& input_tensors) const;
     tt::tt_metal::operation::ProgramWithCallbacks create_program(
