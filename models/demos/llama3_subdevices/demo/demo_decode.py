@@ -474,8 +474,9 @@ def run_llama3_demo(
         profiler.start(f"log_printing_iter_{iteration}", iteration=iteration)
         # Print out generated outputs for each user at the end of every iteration
         if not is_ci_env:
-            # if len(user_input) == 1:
-            logger.info("[User 0] {}".format("".join(tokenizer.decode(all_outputs))))
+            if iteration % 10000 == 0:
+                # if len(user_input) == 1:
+                logger.info("[User 0] {}".format("".join(tokenizer.decode(all_outputs))))
             # else:
             #     for user in range(batch_size):
             #         text = "".join(tokenizer.decode(all_outputs[user]))
@@ -484,11 +485,12 @@ def run_llama3_demo(
             #         text = text.replace("\n", " ")
             #         logger.info("[User {}] {}".format(user, text))
 
-        if not is_ci_env or iteration % 1000 == 0:
-            # Always print perf at every iteration if not in CI
-            logger.info(
-                f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
-            )
+        if not is_ci_env:
+            if iteration < 1000 or iteration % 1000 == 0:
+                # Always print perf at every iteration if not in CI
+                logger.info(
+                    f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
+                )
 
         if is_ci_env and iteration == 127:
             tokens_per_second_per_user_token127 = tokens_per_second_per_user
