@@ -906,8 +906,8 @@ Conv2dConfig determine_conv_config_for_auto_shard(
         winning_config = width;
     }
 
-    log_info(LogOp, "Core counts H: {} B: {}, W: {}", height.core_count, block.core_count, width.core_count);
-    log_info(
+    log_debug(LogOp, "Core counts H: {} B: {}, W: {}", height.core_count, block.core_count, width.core_count);
+    log_debug(
         LogOp, "Selected shard layout: {}, size: {}", winning_config.conv_config.shard_layout, winning_config.size);
 
     return winning_config.conv_config;

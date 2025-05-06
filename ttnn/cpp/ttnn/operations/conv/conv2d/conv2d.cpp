@@ -11,7 +11,6 @@
 #include <tt-metalium/buffer_types.hpp>
 
 #include "tt-metalium/assert.hpp"
-#include "tt-metalium/bfloat16.hpp"
 #include "tt-metalium/logger.hpp"
 #include "tt-metalium/math.hpp"
 #include "ttnn/operations/data_movement/slice/slice.hpp"
@@ -26,9 +25,6 @@
 #include "ttnn/operations/matmul/matmul.hpp"
 #include "ttnn/operations/sliding_window/halo/halo.hpp"
 #include "ttnn/operations/sliding_window/sliding_window.hpp"
-#include "ttnn/operations/data_movement/permute/permute.hpp"
-#include "ttnn/operations/data_movement/pad/pad.hpp"
-#include "ttnn/operations/data_movement/view/view.hpp"
 #include "ttnn/operations/data_movement/fold/fold.hpp"
 #include "ttnn/operations/core/core.hpp"
 #include "ttnn/operations/data_movement/move/move.hpp"
