@@ -94,8 +94,7 @@ struct NocUnicastCommandHeader {
 // TODO: reduce size. use offset?
 //       currently only for 4KB filled by 2 pages of bf16
 struct NocUnicastScatterCommandHeader {
-    uint64_t noc_address1;
-    uint64_t noc_address2;
+    uint64_t noc_address[2];
 };
 struct NocUnicastInlineWriteCommandHeader {
     uint64_t noc_address;
@@ -303,22 +302,14 @@ struct PacketHeaderBase {
         const NocUnicastScatterCommandHeader& noc_unicast_scatter_command_header, size_t chunk_size_bytes) volatile {
 #if defined(KERNEL_BUILD) || defined(FW_BUILD)
         this->noc_send_type = NOC_UNICAST_SCATTER_WRITE;
-        auto noc_address_components = get_noc_address_components(noc_unicast_scatter_command_header.noc_address1);
-        auto noc_addr1 = safe_get_noc_addr(
-            noc_address_components.first.x,
-            noc_address_components.first.y,
-            noc_address_components.second,
-            edm_to_local_chip_noc);
-
-        noc_address_components = get_noc_address_components(noc_unicast_scatter_command_header.noc_address2);
-        auto noc_addr2 = safe_get_noc_addr(
-            noc_address_components.first.x,
-            noc_address_components.first.y,
-            noc_address_components.second,
-            edm_to_local_chip_noc);
-
-        this->command_fields.unicast_scatter_write.noc_address1 = noc_addr1;
-        this->command_fields.unicast_scatter_write.noc_address2 = noc_addr2;
+        for (uint8_t i = 0; i < 2; i++) {
+            auto noc_address_components = get_noc_address_components(noc_unicast_scatter_command_header.noc_address[i]);
+            this->command_fields.unicast_scatter_write.noc_address[i] = safe_get_noc_addr(
+                noc_address_components.first.x,
+                noc_address_components.first.y,
+                noc_address_components.second,
+                edm_to_local_chip_noc);
+        }
         this->payload_size_bytes = chunk_size_bytes;
 #else
         TT_THROW("Calling to_noc_unicast_write from host is unsupported");

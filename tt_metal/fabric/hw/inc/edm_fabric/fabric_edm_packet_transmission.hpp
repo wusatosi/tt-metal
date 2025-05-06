@@ -207,23 +207,16 @@ __attribute__((optimize("jump-tables"))) FORCE_INLINE void execute_chip_unicast_
         } break;
 
         case tt::tt_fabric::NocSendType::NOC_UNICAST_SCATTER_WRITE: {
-            const auto dest_address1 = header.command_fields.unicast_scatter_write.noc_address1;
-            const auto dest_address2 = header.command_fields.unicast_scatter_write.noc_address2;
-            uint32_t payload_size = payload_size_bytes >> 1;
-            noc_async_write_one_packet_with_trid<false, false>(
-                payload_start_address,
-                dest_address1,
-                payload_size,
-                transaction_id,
-                tt::tt_fabric::local_chip_data_cmd_buf,
-                tt::tt_fabric::edm_to_local_chip_noc);
-            noc_async_write_one_packet_with_trid<false, false>(
-                payload_start_address + payload_size,
-                dest_address2,
-                payload_size,
-                transaction_id,
-                tt::tt_fabric::local_chip_data_cmd_buf,
-                tt::tt_fabric::edm_to_local_chip_noc);
+            const auto payload_size = payload_size_bytes >> 1;
+            for (uint8_t i = 0; i < 2; i++) {
+                noc_async_write_one_packet_with_trid<false, false>(
+                    payload_start_address + (i * payload_size),
+                    header.command_fields.unicast_scatter_write.noc_address[i],
+                    payload_size,
+                    transaction_id,
+                    tt::tt_fabric::local_chip_data_cmd_buf,
+                    tt::tt_fabric::edm_to_local_chip_noc);
+            }
         } break;
 
         case tt::tt_fabric::NocSendType::NOC_MULTICAST_ATOMIC_INC:
