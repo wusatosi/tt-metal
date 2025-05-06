@@ -540,7 +540,7 @@ def test_rms_fuse(
     [
         {
             "trace_region_size": 23887872,
-            "fabric_config": ttnn.FabricConfig.FABRIC_1D,
+            "fabric_config": ttnn.FabricConfig.FABRIC_1D_RING,
             "dispatch_core_axis": ttnn.DispatchCoreAxis.COL,
         }
     ],
@@ -579,7 +579,7 @@ def test_concat_fuse(
         function_level_defaults,
         input_shard_shape,
         input_shard_grid,
-        all_gather_topology=ttnn.Topology.Linear,
+        all_gather_topology=ttnn.Topology.Ring,
         warmup_iters=warmup_iters,
         num_iters=num_iters,
         output_shard_shape=output_shard_shape,

@@ -618,7 +618,7 @@ class TT_CCL:
             dim,
             cluster_axis=cluster_axis,
             mesh_device=self.mesh_device,
-            topology=ttnn.Topology.Linear,
+            topology=ttnn.Topology.Ring,
             multi_device_global_semaphore=self.gather_semaphore_handles[cluster_axis][self.gather_idx[cluster_axis]],
             num_links=num_links,
             num_heads=num_heads,
