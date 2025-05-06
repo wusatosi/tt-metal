@@ -426,7 +426,7 @@ class TT_CCL:
                 num_links=num_links,
                 memory_config=memory_config,
                 dtype=dtype,
-                topology=ttnn.Topology.Linear,
+                topology=ttnn.Topology.Ring,
                 subdevice_id=self.worker_sub_device_id,
             )
 
@@ -596,7 +596,7 @@ class TT_CCL:
             dim,
             cluster_axis=cluster_axis,
             mesh_device=self.mesh_device,
-            topology=ttnn.Topology.Linear,
+            topology=ttnn.Topology.Ring,
             multi_device_global_semaphore=self.gather_semaphore_handles[cluster_axis][self.gather_idx[cluster_axis]],
             persistent_output_tensor=persistent_buffer,
             num_links=num_links,
@@ -757,6 +757,7 @@ def tt_sharded_distributed_rmsnorm(
         num_links=1,
         epsilon=epsilon,
         weight=gamma,
+        topology=ttnn.Topology.Ring,
         stats=persistent_buffer,
         memory_config=output_mem_config,
     )
