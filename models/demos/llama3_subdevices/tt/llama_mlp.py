@@ -119,7 +119,7 @@ class TtLlamaMLP(LightweightModule):
         w1_out_reduced = self.tt_ccl.line_reduce_scatter(
             w1_out,
             cluster_axis=1,
-            num_links=3,
+            num_links=4,
             memory_config=self.model_config["REDUCE_SCATTER_OUT_MEMCFG"],
         )
 
@@ -140,7 +140,7 @@ class TtLlamaMLP(LightweightModule):
             w3_out_reduced = self.tt_ccl.line_reduce_scatter(
                 w3_out,
                 cluster_axis=1,
-                num_links=3,
+                num_links=4,
                 memory_config=self.model_config["REDUCE_SCATTER_OUT_MEMCFG"],
             )
         except Exception as e:
@@ -164,7 +164,7 @@ class TtLlamaMLP(LightweightModule):
             ff1ff3,
             dim=3,
             cluster_axis=1,
-            num_links=3,
+            num_links=4,
             memory_config=self.model_config["FF2_IN_RING_MEMCFG"],
             buffer_key="BINARY_MUL",
         )
@@ -183,7 +183,7 @@ class TtLlamaMLP(LightweightModule):
         )
 
         w2_out_reduced = self.tt_ccl.line_all_reduce(
-            w2_out, cluster_axis=0, num_links=3, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
+            w2_out, cluster_axis=0, num_links=4, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
         )
 
         ttnn.deallocate(w2_out)
