@@ -2559,7 +2559,8 @@ def test_swin_s_conv(
     [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
-@pytest.mark.parametrize("auto_shard", [True, False], ids=["auto_shard", "no_auto_shard"])
+@pytest.mark.parametrize("auto_shard", [False])
+@pytest.mark.parametrize("enable_split_reader", [True, False])
 def test_model_k_256x256(
     device,
     torch_tensor_map,
@@ -2581,7 +2582,9 @@ def test_model_k_256x256(
     dilation,
     shard_layout,
     auto_shard,
+    enable_split_reader,
 ):
+    torch.manual_seed(0)
     run_conv(
         device,
         torch_tensor_map,
@@ -2603,6 +2606,7 @@ def test_model_k_256x256(
         dilation_h=dilation,
         dilation_w=dilation,
         auto_shard=auto_shard,
+        enable_split_reader=enable_split_reader,
     )
 
 
