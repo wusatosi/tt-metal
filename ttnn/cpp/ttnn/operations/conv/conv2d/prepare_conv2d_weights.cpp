@@ -120,9 +120,6 @@ Tensor to_weight_special_padding_tile_layout(
                 (uint32_t)std::ceil((double)weight_matrix_cols / (double)in1_block_w_datums) * in1_block_w_datums;
         }
         // height padding
-        std::cout << "in1_block_h_datums: " << in1_block_h_datums << std::endl;
-        std::cout << "w_shape[1]: " << w_shape[1] << std::endl;
-        std::cout << "w_shape[3]: " << w_shape[3] << std::endl;
         assert(in1_block_h_datums >= w_shape[1] * w_shape[3]);
         uint32_t block_height_padding = in1_block_h_datums - (w_shape[1] * w_shape[3]);
         auto weight_matrix_rows = ((w_shape[1] * w_shape[3]) + block_height_padding) * w_shape[2];
@@ -227,34 +224,17 @@ Tensor to_weight_tile_layout_block_sharded(
             // width padding for conv output shard padding
             weight_matrix_cols = conv_output_shard_width_padded * num_channel_shards;
         }
-        std::cout << "num_channel_shards: " << num_channel_shards << std::endl;
-        std::cout << "w_shape[0]: " << w_shape[0] << std::endl;
-        std::cout << "w_shape[1]: " << w_shape[1] << std::endl;
-        std::cout << "w_shape[2]: " << w_shape[2] << std::endl;
-        std::cout << "w_shape[3]: " << w_shape[3] << std::endl;
         auto weight_matrix_rows = w_shape[1] * w_shape[2] * w_shape[3];
         TT_ASSERT(w_shape[1] % num_channel_shards == 0);
         auto conv_input_shard_width = w_shape[1] / num_channel_shards;
         auto weight_block_height = conv_input_shard_width * w_shape[2] * w_shape[3];
-        std::cout << "weight_block_height: " << weight_block_height << std::endl;
         auto weight_block_height_padded =
             (uint32_t)std::ceil((double)weight_block_height / (double)constants::TILE_HEIGHT) * constants::TILE_HEIGHT;
-        std::cout << "weight_block_height: " << weight_block_height
-                  << ", weight_block_height_padded: " << weight_block_height_padded << std::endl;
         if (weight_block_height < weight_block_height_padded) {
             // height padding for non tile multiple block height
             weight_matrix_rows = weight_block_height_padded * num_channel_shards;
         }
         ttnn::Shape output_shape{1, 1, weight_matrix_rows, weight_matrix_cols};
-        std::cout << "weight_matrix_rows: " << weight_matrix_rows << ", weight_matrix_cols: " << weight_matrix_cols
-                  << std::endl;
-        // for(auto i = 0; i < input_buffer.size(); i++) {
-        //     std::cout << bfloat16_to_float(input_buffer[i]) << "  ";
-        //     if((i+1) % 32 == 0) {
-        //         std::cout << std::endl;
-        //     }
-        // }
-        std::cout << "--------------------------------" << std::endl;
         auto output_buffer = tt::tt_metal::owned_buffer::create<T>(output_shape.volume());
         for (auto ic = 0; ic < num_channel_shards; ic++) {
             for (auto r = 0; r < w_shape[2]; r++) {
@@ -271,21 +251,12 @@ Tensor to_weight_tile_layout_block_sharded(
                                            (ic * conv_input_shard_width + c_s) * w_shape[2] * w_shape[3] +
                                            r * w_shape[3] + s;
                                 output_buffer[matrix_idx] = input_buffer[idx];
-                                // std::cout << matrix_idx << " " << idx << " " << bfloat16_to_float(input_buffer[idx])
-                                // << "  "<< std::endl;
                             }
-                            // std::cout << "--------------------------------" << std::endl;
                         }
                     }
                 }
             }
         }
-        // for(auto i = 0; i < output_buffer.size(); i++) {
-        //     std::cout << bfloat16_to_float(output_buffer[i]) << "  ";
-        //     if((i+1) % 32 == 0) {
-        //         std::cout << std::endl;
-        //     }
-        // }
         return create_tensor_from_owned_buffer<T>(output_buffer, output_dtype, output_shape);
     };
     return convert_tensor<T>(conv_weight_tensor, compute);
@@ -799,11 +770,6 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases
     const bool is_mm_conv) {
     ttnn::Tensor weight_tensor_ = weight_tensor;  // tensor to return
     Shape weight_shape = weight_tensor.get_logical_shape();
-    std::cout << "Initial weight shape: " << weight_shape[0] << ", " << weight_shape[1] << ", " << weight_shape[2]
-              << ", " << weight_shape[3] << std::endl;
-    std::cout << "Initial padded weight shape: " << weight_tensor.get_padded_shape()[0] << ", "
-              << weight_tensor.get_padded_shape()[1] << ", " << weight_tensor.get_padded_shape()[2] << ", "
-              << weight_tensor.get_padded_shape()[3] << std::endl;
     // In case of 1D convolution and 3D weight tensor, reinterpret it as 4D tensor
     if (weight_shape.rank() == 3 && input_width == 1) {
         weight_tensor_ = ttnn::reshape(weight_tensor_, Shape({weight_shape[0], weight_shape[1], weight_shape[2], 1}));
@@ -816,11 +782,6 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases
     uint32_t original_weights_in_channels = original_weights_shape[1];
     uint32_t original_weights_window_h = original_weights_shape[2];
     uint32_t original_weights_window_w = original_weights_shape[3];
-    std::cout << "original_weights_out_channels: " << original_weights_out_channels << std::endl;
-    std::cout << "original_weights_in_channels: " << original_weights_in_channels << std::endl;
-    std::cout << "original_weights_window_h: " << original_weights_window_h << std::endl;
-    std::cout << "original_weights_window_w: " << original_weights_window_w << std::endl;
-    std::cout << "groups: " << groups << std::endl;
 
     ttnn::Tensor bias_tensor_;
     const bool is_conv1d = is_1d_conv(original_weights_window_w, input_width);
@@ -885,8 +846,6 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases
         weight_tensor_ = ttnn::permute(weight_tensor_, ttnn::SmallVector<int64_t>({2, 3, 1, 0}));
 
         weight_shape = weight_tensor_.get_logical_shape();
-        std::cout << "After permute - weight shape: " << weight_shape[0] << ", " << weight_shape[1] << ", "
-                  << weight_shape[2] << ", " << weight_shape[3] << std::endl;
 
         ttnn::Shape weights_channels_padded_shape(
             std::array<uint32_t, 4>({window_h, window_w, out_channels_padded, in_channels_padded}));
@@ -959,8 +918,6 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases
             weight_tensor_,
             ttnn::Shape({1, 1, rounded_weight_block_height * input_num_cores_channels, final_out_channels_padded}));
         weight_shape = weight_tensor_.get_logical_shape();
-        std::cout << "after block sharded padding - weight shape: " << weight_shape[0] << ", " << weight_shape[1]
-                  << ", " << weight_shape[2] << ", " << weight_shape[3] << std::endl;
     } else {
         weight_tensor_ = ttnn::permute(weight_tensor_, ttnn::SmallVector<int64_t>({2, 3, 1, 0}));
 
@@ -1021,8 +978,6 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases
             device);
     }
     weight_shape = weight_tensor_.get_logical_shape();
-    std::cout << "after block sharded padding - weight shape: " << weight_shape[0] << ", " << weight_shape[1] << ", "
-              << weight_shape[2] << ", " << weight_shape[3] << std::endl;
     return {weight_tensor_, bias_tensor.has_value() ? bias_tensor_ : std::optional<ttnn::Tensor>()};
 }
 
@@ -1087,8 +1042,6 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases
     uint32_t in_channels = weights_shape[1];
     uint32_t window_h = weights_shape[2];
     uint32_t window_w = weights_shape[3];
-    std::cout << "out_channels: " << out_channels << ", in_channels: " << in_channels << ", window_h: " << window_h
-              << ", window_w: " << window_w << std::endl;
 
     uint32_t input_num_cores_channels = get_num_cores_channels_from_parallel_config(input_parallel_config);
     uint32_t output_num_cores_channels = get_num_cores_channels_from_parallel_config(output_parallel_config);
@@ -1099,9 +1052,6 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases
         in_channels_padded = in_channels;
     }
     uint32_t out_channel_padding = out_channels_padded - out_channels;
-
-    std::cout << "out_channels_padded: " << out_channels_padded << ", in_channels_padded: " << in_channels_padded
-              << std::endl;
 
     ttnn::Shape weights_channels_padded_shape({out_channels_padded, in_channels_padded, window_h, window_w});
 
@@ -1160,8 +1110,6 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases
         }
     }
     weight_shape = weight_tensor_.get_padded_shape();
-    std::cout << "after prepare_conv_weights_biases_and_move_to_device - weight shape: " << weight_shape[0] << ", "
-              << weight_shape[1] << ", " << weight_shape[2] << ", " << weight_shape[3] << std::endl;
     return {weight_tensor_, bias_tensor.has_value() ? bias_tensor_ : std::optional<ttnn::Tensor>()};
 }
 
@@ -1276,7 +1224,7 @@ ttnn::Tensor prepare_conv_weights(
             opt_conv_op_block_config.act_block_h_ntiles,
             input_width,
             has_bias,
-            false);
+            mm_conv);
     } else {
         tie(weight_tensor_on_device, bias_tensor_on_device) = prepare_conv_weights_biases_and_move_to_device(
             weight_tensor,
@@ -1291,7 +1239,8 @@ ttnn::Tensor prepare_conv_weights(
             groups,
             opt_conv_op_block_config.act_block_h_ntiles,
             input_width,
-            has_bias);
+            has_bias,
+            mm_conv);
     }
 
     return weight_tensor_on_device;

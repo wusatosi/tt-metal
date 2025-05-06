@@ -29,6 +29,7 @@
 #include "ttnn/operations/data_movement/permute/permute.hpp"
 #include "ttnn/operations/data_movement/pad/pad.hpp"
 #include "ttnn/operations/data_movement/view/view.hpp"
+#include "ttnn/operations/data_movement/fold/fold.hpp"
 #include "ttnn/operations/core/core.hpp"
 #include "ttnn/operations/data_movement/move/move.hpp"
 #include "ttnn/operations/experimental/slice_write/slice_write.hpp"
@@ -347,52 +348,8 @@ Result conv2d_DRAM(
     return {dram_output_tensor, output_height, output_width, weight_tensor_on_device, bias_tensor_on_device};
 }
 
-ttnn::Tensor convert_tensors_for_1x1_conv(
-    const ttnn::Tensor& input_tensor,
-    uint32_t in_channels,
-    uint32_t out_channels,
-    uint32_t batch_size,
-    uint32_t input_height,
-    uint32_t input_width,
-    std::array<uint32_t, 2> kernel_size,
-    std::array<uint32_t, 2> stride) {
-    ttnn::Tensor in = input_tensor;
-    // auto in_shape = in.get_padded_shape();
-    // std::cout << "in_shape[0]: " << in_shape[0] << ", in_shape[1]: " << in_shape[1] << ", in_shape[2]: " <<
-    // in_shape[2]
-    //           << ", in_shape[3]: " << in_shape[3] << std::endl;
-    auto in_padded_channels = in_channels;
-    in = ttnn::reshape(
-        in,
-        ttnn::Shape(
-            {batch_size, input_height / stride[0], stride[0], input_width / stride[1], stride[1], in_padded_channels}));
-    // in_shape = in.get_logical_shape();
-    // std::cout << "in_shape[0]: " << in_shape[0] << ", in_shape[1]: " << in_shape[1] << ", in_shape[2]: " <<
-    // in_shape[2]
-    //           << ", in_shape[3]: " << in_shape[3] << ", in_shape[4]: " << in_shape[4]
-    //           << ", in_shape[5]: " << in_shape[5] << std::endl;
-    in = ttnn::permute(in, ttnn::SmallVector<int64_t>({0, 1, 3, 2, 4, 5}));
-    // in_shape = in.get_padded_shape();
-    // std::cout << "in_shape[0]: " << in_shape[0] << ", in_shape[1]: " << in_shape[1] << ", in_shape[2]: " <<
-    // in_shape[2]
-    //           << ", in_shape[3]: " << in_shape[3] << ", in_shape[4]: " << in_shape[4]
-    //           << ", in_shape[5]: " << in_shape[5] << std::endl;
-    in = ttnn::reshape(
-        in,
-        ttnn::Shape(
-            {batch_size,
-             input_height / stride[0],
-             input_width / stride[1],
-             (in_padded_channels)*stride[0] * stride[1]}));
-    // in_shape = in.get_padded_shape();
-    // std::cout << "in_shape[0]: " << in_shape[0] << ", in_shape[1]: " << in_shape[1] << ", in_shape[2]: " <<
-    // in_shape[2]
-    //           << ", in_shape[3]: " << in_shape[3] << std::endl;
-    // in_shape = in.get_logical_shape();
-    // std::cout << "logical shape: " << "in_shape[0]: " << in_shape[0] << ", in_shape[1]: " << in_shape[1]
-    //           << ", in_shape[2]: " << in_shape[2] << ", in_shape[3]: " << in_shape[3] << std::endl;
-
-    return in;
+static ttnn::Tensor convert_tensor_for_1x1_conv(const ttnn::Tensor& input_tensor, std::array<uint32_t, 2> stride) {
+    return ttnn::fold(input_tensor, stride[0], stride[1]);
 }
 
 template <typename T>
@@ -419,16 +376,13 @@ Result conv2d_L1(
     std::array<uint32_t, 4> padding_n4 = sliding_window::get_pair_n4_padding(padding);
     auto input_tensor = input_tensor_;
     bool mm_conv = use_matmul_for_1x1_conv(kernel_size, stride, padding_n4, dilation, groups, conv_config);
-    if ((stride[0] == kernel_size[0] && stride[1] == kernel_size[1]) && (stride[0] >= 16 && stride[1] >= 16)) {
-        std::cout << "Converting tensors for 1x1 conv" << std::endl;
-        input_tensor = convert_tensors_for_1x1_conv(
-            input_tensor_, in_channels, out_channels, batch_size, input_height, input_width, kernel_size, stride);
+    if (mm_conv) {
+        input_tensor = convert_tensor_for_1x1_conv(input_tensor_, stride);
         input_height = input_height / stride[0];
         input_width = input_width / stride[1];
         stride = {1, 1};
         kernel_size = {1, 1};
         in_channels = in_channels * kernel_size[0] * kernel_size[1];
-        mm_conv = true;
     }
     auto [output_height, output_width] =
         calculate_output_image_size({input_height, input_width}, kernel_size, stride, padding_n4, dilation);

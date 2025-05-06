@@ -405,9 +405,13 @@ bool use_matmul_for_1x1_conv(
     const Conv2dConfig& conv_config) {
     bool is_width_sharded =
         (conv_config.shard_layout.has_value() && conv_config.shard_layout.value() == TensorMemoryLayout::WIDTH_SHARDED);
-    return kernel_size[0] == 1 && kernel_size[1] == 1 && stride[0] == stride[1] && stride[0] == 1 && padding[0] == 0 &&
-           padding[1] == 0 && padding[2] == 0 && padding[3] == 0 && dilation[0] == 1 && dilation[1] == 1 &&
-           groups == 1 && (not is_width_sharded);
+    bool is_1X1_conv = kernel_size[0] == 1 && kernel_size[1] == 1 && stride[0] == stride[1] && stride[0] == 1 &&
+                       padding[0] == 0 && padding[1] == 0 && padding[2] == 0 && padding[3] == 0 && dilation[0] == 1 &&
+                       dilation[1] == 1 && groups == 1 && (not is_width_sharded);
+    bool is_large_kerel =
+        ((stride[0] == kernel_size[0] && stride[1] == kernel_size[1]) && (stride[0] >= 16 && stride[1] >= 16) &&
+         padding[0] == 0 && padding[1] == 0);
+    return (is_1X1_conv || is_large_kerel);
 }
 
 bool is_1d_conv(uint32_t kernel_width, uint32_t image_width) { return kernel_width == 1 && image_width == 1; }
@@ -613,11 +617,6 @@ std::tuple<ttnn::Tensor, ParallelConfig, ParallelConfig> shard_or_reshard_tensor
     input_tensor = ttnn::reshape(input_tensor, flattened_input_shape, flattened_padded_input_shape);
     const ttnn::Shape input_shape = flattened_input_shape;
 
-    std::cout << "input shape: " << input_shape[0] << ", " << input_shape[1] << ", " << input_shape[2] << ", "
-              << input_shape[3] << std::endl;
-    std::cout << "needs_shard_or_reshard: " << needs_shard_or_reshard << std::endl;
-    std::cout << "input_tensor_on_device: " << input_tensor_on_device << std::endl;
-
     if (needs_shard_or_reshard) {
         uint32_t tensor_height = input_shape[2];
         uint32_t tensor_width = input_shape[3];
@@ -635,7 +634,6 @@ std::tuple<ttnn::Tensor, ParallelConfig, ParallelConfig> shard_or_reshard_tensor
         // In case we are in auto sharded codepath and convolution maps to matmul
         // Skip sharding of the input tensor and run the matmul out of interleaved tensor.
         bool auto_shard_mm = auto_shard && is_mm_conv;
-        std::cout << "auto_shard_mm: " << auto_shard_mm << std::endl;
         if (input_tensor_on_device) {
             if (is_mm_conv && input_tensor.layout() == Layout::ROW_MAJOR &&
                 parallel_config.shard_scheme != TensorMemoryLayout::HEIGHT_SHARDED) {
