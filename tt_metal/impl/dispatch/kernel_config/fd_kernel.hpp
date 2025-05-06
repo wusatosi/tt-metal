@@ -7,7 +7,6 @@
 #include <tt-metalium/program.hpp>
 #include <stdint.h>
 #include <map>
-#include <string>
 #include <vector>
 
 #include "assert.hpp"
@@ -18,6 +17,9 @@
 #include "tt_metal/impl/dispatch/kernels/packet_queue_ctrl.hpp"
 #include <umd/device/tt_xy_pair.h>
 #include "utils.hpp"
+#include "erisc_datamover_builder.hpp"
+#include "kernel_types.hpp"
+#include "tt_metal/fabric/fabric_mux_config.hpp"
 
 enum class CoreType;
 namespace tt {
@@ -56,7 +58,7 @@ static std::vector<string> dispatch_kernel_file_names = {
     "tt_metal/impl/dispatch/kernels/vc_eth_tunneler.cpp",    // US_TUNNELER_REMOTE
     "tt_metal/impl/dispatch/kernels/vc_packet_router.cpp",   // PACKET_ROUTER_MUX
     "tt_metal/impl/dispatch/kernels/vc_packet_router.cpp",   // PACKET_ROUTER_DEMUX
-    "",                                                      // FABRIC_ROUTER_VC
+    "tt_metal/fabric/impl/kernels/tt_fabric_mux.cpp",        // FABRIC_MUX
     ""                                                       // COUNT
 };
 
@@ -88,16 +90,6 @@ public:
     // after above functions and before FD kernels are launched.
     virtual void ConfigureCore() {}
 
-    // Override for specific kernels that can be configured for fabric. Will be called by the FABRIC_ROUTER_VC, which is
-    // an intermediary FDKernel for indicating a fabric router path needs to be found.
-    virtual void UpdateArgsForFabric(
-        const CoreCoord& fabric_router_virtual,
-        uint32_t outbound_eth_chan,
-        tt::tt_fabric::mesh_id_t upstream_mesh_id,
-        chip_id_t upstream_chip_id,
-        tt::tt_fabric::mesh_id_t downstream_mesh_id,
-        chip_id_t downstream_chip_id) {}
-
     // Generator function to create a kernel of a given type. New kernels need to be added here.
     static FDKernel* Generate(
         int node_id,
@@ -111,15 +103,16 @@ public:
     void AddUpstreamKernel(FDKernel* upstream) { upstream_kernels_.push_back(upstream); }
     void AddDownstreamKernel(FDKernel* downstream) { downstream_kernels_.push_back(downstream); }
 
-    virtual CoreType GetCoreType() {
+    virtual CoreType GetCoreType() const {
         return tt::tt_metal::MetalContext::instance().get_dispatch_core_manager().get_dispatch_core_type();
     }
     tt_cxy_pair GetLogicalCore() { return logical_core_; }
-    tt_cxy_pair GetVirtualCore() {
+    tt_cxy_pair GetVirtualCore() const {
         return tt::tt_metal::MetalContext::instance().get_cluster().get_virtual_coordinate_from_logical_coordinates(
             logical_core_, GetCoreType());
     }
     chip_id_t GetDeviceId() { return device_id_; }  // Since this->device may not exist yet
+    int GetNodeId() const { return node_id_; }
 
     // Get the port index for which a given kernel is upstream/downstream of this one
     int GetUpstreamPort(FDKernel* other) { return GetPort(other, this->upstream_kernels_); }
@@ -128,7 +121,16 @@ public:
     void AddProgram(tt::tt_metal::Program* program) { program_ = program; }
 
 protected:
-    void configure_kernel_variant(
+    // Attributes for an EDM client
+    struct FDKernelEdmConnectionAttributes {
+        size_t worker_flow_control_sem;
+        size_t worker_teardown_sem;
+        size_t worker_buffer_index_sem;  // aka buffer_slot_wrptr_ptr
+    };
+
+    void create_edm_connection_sems(FDKernelEdmConnectionAttributes& attributes);
+
+    [[maybe_unused]] tt::tt_metal::KernelHandle configure_kernel_variant(
         const string& path,
         const std::vector<uint32_t>& compile_args,
         std::map<string, string> defines_in,

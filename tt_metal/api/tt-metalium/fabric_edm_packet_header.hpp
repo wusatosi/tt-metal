@@ -512,6 +512,8 @@ public:
         this->routing_fields.value =
             LowLatencyPacketHeader::calculate_chip_multicast_routing_fields_value(chip_multicast_command_header);
     }
+    inline NocCommandFields get_noc_command_fields() { return command_fields; }
+    inline NocSendType get_noc_send_type() { return noc_send_type; }
 };
 
 // TODO: When we remove the 32B padding requirement, reduce to 16B size check

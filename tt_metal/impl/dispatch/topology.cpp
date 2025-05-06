@@ -12,7 +12,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <initializer_list>
 #include <map>
 #include <memory>
 #include <string>
@@ -29,11 +28,9 @@
 #include "device.hpp"
 #include "impl/context/metal_context.hpp"
 #include "dispatch_core_common.hpp"
-#include "fabric_edm_packet_header.hpp"
 #include "fabric_host_interface.h"
 #include "fabric_types.hpp"
 #include "hal.hpp"
-#include "hal_types.hpp"
 #include "kernel_config/demux.hpp"
 #include "kernel_config/eth_router.hpp"
 #include "kernel_config/eth_tunneler.hpp"
@@ -138,6 +135,17 @@ constexpr noc_selection_t k_packet_queue_noc = {
     .downstream_noc = tt::tt_metal::NOC::NOC_0,
 };
 
+//
+// Fabric MUX NOC selections
+//
+// Must be NoC0
+//
+constexpr noc_selection_t k_fabric_mux_noc = {
+    .non_dispatch_noc = tt::tt_metal::NOC::NOC_0,
+    .upstream_noc = tt::tt_metal::NOC::NOC_0,
+    .downstream_noc = tt::tt_metal::NOC::NOC_0,
+};
+
 // clang-format off
 static const std::vector<DispatchKernelNode> single_chip_arch_1cq = {
     {0, 0, 0, 0, PREFETCH_HD, {x, x, x, x}, {1, 2, x, x}, k_prefetcher_noc},
@@ -183,22 +191,22 @@ static const std::vector<DispatchKernelNode> two_chip_arch_1cq = {
 };
 
 static const std::vector<DispatchKernelNode> two_chip_arch_1cq_fabric = {
-    {0, 0, 0, 0, PREFETCH_HD, /*up*/ {x, x, x, x}, /*down*/ {1, 2, x, x}, NOC::NOC_0, NOC::NOC_0, NOC::NOC_0},
-    {1, 0, 0, 0, DISPATCH_HD, {0, x, x, x}, {2, x, x, x}, NOC::NOC_0, NOC::NOC_1, NOC::NOC_0},
-    {2, 0, 0, 0, DISPATCH_S, {0, x, x, x}, {1, x, x, x}, NOC::NOC_1, NOC::NOC_1, NOC::NOC_1},
+    {0, 0, 0, 0, PREFETCH_HD, {x, x, x, x}, {1, 2, x, x}, k_prefetcher_noc},
+    {1, 0, 0, 0, DISPATCH_HD, {0, x, x, x}, {2, x, x, x}, k_dispatcher_noc},
+    {2, 0, 0, 0, DISPATCH_S, {0, x, x, x}, {1, x, x, x}, k_dispatcher_s_noc},
 
-    {3, 0, 1, 0, PREFETCH_H, {x, x, x, x}, {7, x, x, x}, NOC::NOC_0, NOC::NOC_0, NOC::NOC_0},
-    {4, 0, 1, 0, DISPATCH_H, {8, x, x, x}, {3, x, x, x}, NOC::NOC_0, NOC::NOC_1, NOC::NOC_0},
+    {3, 0, 1, 0, PREFETCH_H, {x, x, x, x}, {6, 5, x, x}, k_prefetcher_noc},
+    {4, 0, 1, 0, DISPATCH_H, {7, x, x, x}, {3, 5, x, x}, k_dispatcher_noc},
 
-    // Sender path PREFETCH_H -> PREFETCH_D
-    {5, 0, x, 0, FABRIC_ROUTER_VC, {3, x, x, x}, {7, x, x, x}},
+    // H2D via MUX
+    {5, 0, 1, 0, FABRIC_MUX, /*Full size*/ {3, x, x, x}, /*Header Only*/ {4, x, x, x}, k_fabric_mux_noc},
 
-    // Return path DISPATCH_D -> DISPATCH_H
-    {6, 0, x, 0, FABRIC_ROUTER_VC, {8, x, x, x}, {4, x, x, x}},
+    {6, 1, x, 0, PREFETCH_D, {3, x, x, x}, {7, 8, 9, x}, k_prefetcher_noc},
+    {7, 1, x, 0, DISPATCH_D, {6, x, x, x}, {8, 4, 9, x}, k_dispatcher_noc},
+    {8, 1, x, 0, DISPATCH_S, {6, x, x, x}, {7, x, x, x}, k_dispatcher_s_noc},
 
-    {7, 1, 1, 0, PREFETCH_D, {3, x, x, x}, {8, 9, x, x}, NOC::NOC_0, NOC::NOC_0, NOC::NOC_0},
-    {8, 1, 1, 0, DISPATCH_D, {7, x, x, x}, {9, 4, x, x}, NOC::NOC_0, NOC::NOC_1, NOC::NOC_0},
-    {9, 1, 1, 0, DISPATCH_S, {7, x, x, x}, {8, x, x, x}, NOC::NOC_1, NOC::NOC_1, NOC::NOC_1},
+    // D2H via MUX
+    {9, 1, 0, 0, FABRIC_MUX, /*Full size*/ {7, x, x, x}, /*Header Only*/ {6, x, x, x}, k_fabric_mux_noc},
 };
 
 static const std::vector<DispatchKernelNode> two_chip_arch_2cq = {
@@ -582,6 +590,16 @@ std::vector<DispatchKernelNode> generate_nodes(const std::set<chip_id_t>& device
 
                 // Pull nodes from the template, updating their index and device id
                 for (DispatchKernelNode node : *nodes_for_one_mmio) {
+                    TT_ASSERT(
+                        node.device_id < template_id_to_device_id.size(),
+                        "Device id {} out of bounds (max = {})",
+                        node.device_id,
+                        template_id_to_device_id.size());
+                    TT_ASSERT(
+                        node.servicing_device_id < template_id_to_device_id.size(),
+                        "Servicing device id {} out of bounds (max = {})",
+                        node.servicing_device_id,
+                        template_id_to_device_id.size());
                     node.device_id = template_id_to_device_id[node.device_id];
                     node.servicing_device_id = template_id_to_device_id[node.servicing_device_id];
                     increment_node_ids(node, index_offset);
@@ -684,13 +702,25 @@ void populate_fd_kernels(const std::vector<DispatchKernelNode>& nodes) {
 
     // Connect the graph with upstream/downstream kernels
     for (const auto& node : nodes) {
-        for (int idx = 0; idx < k_dispatch_max_upstream_kernels; idx++) {
+        TT_ASSERT(node.upstream_ids.size() <= k_dispatch_max_upstream_kernels);
+        TT_ASSERT(node.downstream_ids.size() <= k_dispatch_max_downstream_kernels);
+        for (int idx = 0; idx < node.upstream_ids.size(); idx++) {
             if (node.upstream_ids[idx] >= 0) {
+                TT_ASSERT(
+                    node.upstream_ids[idx] < node_id_to_kernel.size(),
+                    "Upstream kernel id {} out of bounds (max = {})",
+                    node.upstream_ids[idx],
+                    node_id_to_kernel.size());
                 node_id_to_kernel.at(node.id)->AddUpstreamKernel(node_id_to_kernel.at(node.upstream_ids[idx]));
             }
         }
-        for (int idx = 0; idx < k_dispatch_max_downstream_kernels; idx++) {
+        for (int idx = 0; idx < node.downstream_ids.size(); idx++) {
             if (node.downstream_ids[idx] >= 0) {
+                TT_ASSERT(
+                    node.downstream_ids[idx] < node_id_to_kernel.size(),
+                    "Downstream kernel id {} out of bounds (max = {})",
+                    node.downstream_ids[idx],
+                    node_id_to_kernel.size());
                 node_id_to_kernel.at(node.id)->AddDownstreamKernel(node_id_to_kernel.at(node.downstream_ids[idx]));
             }
         }
@@ -853,6 +883,8 @@ std::unique_ptr<Program> create_and_compile_cq_program(IDevice* device) {
 
     // Compile the program and return it so Device can register it
     detail::CompileProgram(device, *cq_program, /*force_slow_dispatch=*/true);
+    // Write runtime args to device
+    detail::WriteRuntimeArgsToDevice(device, *cq_program, /*force_slow_dispatch=*/true);
     // Erase from map. Note: program in map is no longer valid
     // It is returned from this function and the caller will take ownership of it
     command_queue_pgms.erase(device->id());

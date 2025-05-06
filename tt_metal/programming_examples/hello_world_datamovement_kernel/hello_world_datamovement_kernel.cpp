@@ -4,6 +4,8 @@
 
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/device.hpp>
+#include "tt-metalium/fabric_types.hpp"
+#include "tt-metalium/tt_metal.hpp"
 
 int main() {
     using namespace tt;
@@ -11,8 +13,10 @@ int main() {
 
     // Initialize Program and Device
 
+    tt::tt_metal::detail::InitializeFabricConfig(FabricConfig::FABRIC_1D);
+
     constexpr CoreCoord core = {0, 0};
-    int device_id = 0;
+    int device_id = 1;
     IDevice* device = CreateDevice(device_id);
     CommandQueue& cq = device->command_queue();
     Program program = CreateProgram();
@@ -31,14 +35,16 @@ int main() {
         core,
         DataMovementConfig{.processor = DataMovementProcessor::RISCV_1, .noc = NOC::RISCV_1_default});
 
-    // Configure Program and Start Program Execution on Device
+    // // Configure Program and Start Program Execution on Device
 
-    SetRuntimeArgs(program, void_dataflow_kernel_noc0_id, core, {});
-    SetRuntimeArgs(program, void_dataflow_kernel_noc1_id, core, {});
-    EnqueueProgram(cq, program, false);
+    // SetRuntimeArgs(program, void_dataflow_kernel_noc0_id, core, {});
+    // SetRuntimeArgs(program, void_dataflow_kernel_noc1_id, core, {});
+    for (int i = 0; i < 10; i++) {
+        EnqueueProgram(cq, program, false);
+    }
     printf("Hello, Core {0, 0} on Device 0, I am sending you some data. Standby awaiting communication.\n");
 
-    // Wait Until Program Finishes, Print "Hello World!", and Close Device
+    // // Wait Until Program Finishes, Print "Hello World!", and Close Device
 
     Finish(cq);
     printf("Thank you, Core {0, 0} on Device 0, for the completed task.\n");

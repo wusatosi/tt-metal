@@ -334,29 +334,38 @@ void DevicePool::initialize_active_devices() const {
         return;
     }
 
-    for (auto dev : active_devices) {
-        // For Galaxy init, we only need to loop over mmio devices
-        const auto& mmio_device_id =
-            tt::tt_metal::MetalContext::instance().get_cluster().get_associated_mmio_device(dev->id());
-        if (mmio_device_id != dev->id()) {
-            continue;
-        }
-
+    // Call the func on devices to init, skipping remote devices if not needed
+    auto iterate_required_devices = [&](IDevice* mmio_device, const std::function<void(IDevice * device)>&& func) {
         auto tunnels_from_mmio =
-            tt::tt_metal::MetalContext::instance().get_cluster().get_tunnels_from_mmio_device(mmio_device_id);
-        populate_cq_static_args(dev);
-        dev->init_command_queue_device();
-        if (not this->skip_remote_devices) {
-            for (uint32_t t = 0; t < tunnels_from_mmio.size(); t++) {
-                // Need to create devices from farthest to the closest.
-                for (uint32_t ts = tunnels_from_mmio[t].size() - 1; ts > 0; ts--) {
-                    uint32_t mmio_controlled_device_id = tunnels_from_mmio[t][ts];
-                    auto device = get_device(mmio_controlled_device_id);
-                    populate_cq_static_args(device);
-                    device->init_command_queue_device();
+            tt::tt_metal::MetalContext::instance().get_cluster().get_tunnels_from_mmio_device(mmio_device->id());
+
+        for (uint32_t t = 0; t < tunnels_from_mmio.size(); ++t) {
+            // Need to create devices from farthest to the closest.
+            for (uint32_t ts = tunnels_from_mmio[t].size() - 1; ts > 0; --ts) {
+                uint32_t mmio_controlled_device_id = tunnels_from_mmio[t][ts];
+                auto device = get_device(mmio_controlled_device_id);
+                if (!this->skip_remote_devices) {
+                    std::forward<const std::function<void(IDevice*)>>(func)(device);
                 }
             }
         }
+    };
+
+    for (auto device : active_devices) {
+        // For Galaxy init, we only need to loop over mmio devices
+        const auto& mmio_device_id =
+            tt::tt_metal::MetalContext::instance().get_cluster().get_associated_mmio_device(device->id());
+        if (mmio_device_id != device->id()) {
+            continue;
+        }
+
+        // 1. Generate static args
+        populate_cq_static_args(device);
+        iterate_required_devices(device, [](IDevice* remote_device) { populate_cq_static_args(remote_device); });
+
+        // 2. Init / compile programs
+        device->init_command_queue_device();
+        iterate_required_devices(device, [](IDevice* remote_device) { remote_device->init_command_queue_device(); });
     }
 }
 
@@ -768,6 +777,19 @@ void DevicePool::close_devices(const std::vector<IDevice*>& devices, bool skip_s
             Synchronize(dev);    // Synchronize device
         }
     }
+
+    // Terminate dispatch before fabric
+    for (const auto& dev_id : devices_to_close) {
+        auto dev = tt::DevicePool::instance().get_active_device(dev_id);
+        for (int cq_id = 0; cq_id < dev->num_hw_cqs(); cq_id++) {
+            auto& cq = dev->command_queue(cq_id);
+            if (cq.sysmem_manager().get_bypass_mode()) {
+                cq.record_end();
+            }
+            cq.terminate();
+        }
+    }
+
     // Terminate fabric routers
     FabricConfig fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
     if (tt_fabric::is_1d_fabric_config(fabric_config)) {
@@ -825,6 +847,7 @@ void DevicePool::close_devices(const std::vector<IDevice*>& devices, bool skip_s
 
     detail::ProfilerSync(ProfilerSyncState::CLOSE_DEVICE);
 
+    // Terminate the rest of the device's components
     tt::tt_metal::MetalContext::instance().get_cluster().set_internal_routing_info_for_ethernet_cores(false);
     for (const auto& dev_id : devices_to_close) {
         auto dev = tt::DevicePool::instance().get_active_device(dev_id);
