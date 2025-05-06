@@ -4,11 +4,15 @@ from loguru import logger
 import os
 import ttnn
 from models.experimental.mochi.tt.dit.embed import PatchEmbed as TtPatchEmbed
+from models.experimental.mochi.tt.dit.config import MochiConfig
 
 from models.utility_functions import skip_for_grayskull
 from genmo.mochi_preview.dit.joint_model.layers import PatchEmbed
 from models.experimental.mochi.tt.common import get_cache_path, compute_metrics
 from models.experimental.mochi.tests.dit.common import load_model_weights
+
+# Get model configuration
+CONFIG = MochiConfig()
 
 
 @torch.no_grad()
@@ -19,13 +23,8 @@ from models.experimental.mochi.tests.dit.common import load_model_weights
     indirect=True,
 )
 @pytest.mark.parametrize(
-    "device_params",
-    [{"l1_small_size": 1024}],
-    indirect=True,
-)
-@pytest.mark.parametrize(
     "patch_size, in_chans, embed_dim, bias",
-    [(2, 12, 3072, True)],
+    [(CONFIG.patch_size, CONFIG.in_channels, CONFIG.hidden_size_x, CONFIG.patch_embed_bias)],
 )
 @pytest.mark.parametrize("B, T, H, W", [(1, 28, 60, 106)])
 def test_tt_patch_embed_inference(
@@ -88,10 +87,10 @@ def test_tt_patch_embed_inference(
 
     # Compute metrics
     passing = True
+    pcc_required = 0.99
     for b in range(B):
         pcc, mse, mae = compute_metrics(reference_output[b], tt_output_torch[b])
         # Check if model meets requirements
-        pcc_required = 0.99
         passing = passing and (pcc >= pcc_required)
         logger.info(f"PCC: {pcc}, MSE: {mse}, MAE: {mae}")
 

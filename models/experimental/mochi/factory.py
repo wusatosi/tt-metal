@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any
 
 from genmo.mochi_preview.pipelines import ModelFactory, load_to_cpu
 from models.experimental.mochi.tt.dit.model import AsymmDiTJoint
+from models.experimental.mochi.tt.dit.config import MochiConfig
 from models.experimental.mochi.tt.common import get_cache_path, get_mochi_dir
 from models.experimental.mochi.tt.vae.decoder import Decoder
 from models.experimental.mochi.tt.vae.common import load_decoder_weights
@@ -41,6 +42,7 @@ class TtDiTModelFactory(ModelFactory):
         self.weight_cache_path = get_cache_path(os.environ.get("MESH_DEVICE"))
         self.weights_path = os.path.join(get_mochi_dir(), "dit.safetensors")
         self.mesh_device = mesh_device
+        self.config = MochiConfig()
 
     def get_model(
         self,
@@ -76,28 +78,28 @@ class TtDiTModelFactory(ModelFactory):
         print(f"Loading weights from {self.weights_path}")
         state_dict = load_to_cpu(self.weights_path)
 
-        # Create model with standard arguments
+        # Create model using config values
         model = AsymmDiTJoint(
             mesh_device=self.mesh_device,
             state_dict=state_dict,
             weight_cache_path=self.weight_cache_path,
-            depth=48,
-            patch_size=2,
-            num_heads=24,
-            hidden_size_x=3072,
-            hidden_size_y=1536,
-            mlp_ratio_x=4.0,
-            mlp_ratio_y=4.0,
-            in_channels=12,
-            qk_norm=True,
-            qkv_bias=False,
-            out_bias=True,
-            patch_embed_bias=True,
-            timestep_mlp_bias=True,
-            timestep_scale=1000.0,
-            t5_feat_dim=4096,
-            t5_token_length=256,
-            rope_theta=10000.0,
+            depth=self.config.depth,
+            patch_size=self.config.patch_size,
+            num_heads=self.config.num_heads,
+            hidden_size_x=self.config.hidden_size_x,
+            hidden_size_y=self.config.hidden_size_y,
+            mlp_ratio_x=self.config.mlp_ratio_x,
+            mlp_ratio_y=self.config.mlp_ratio_y,
+            in_channels=self.config.in_channels,
+            qk_norm=self.config.qk_norm,
+            qkv_bias=self.config.qkv_bias,
+            out_bias=self.config.out_bias,
+            patch_embed_bias=self.config.patch_embed_bias,
+            timestep_mlp_bias=self.config.timestep_mlp_bias,
+            timestep_scale=self.config.timestep_scale,
+            t5_feat_dim=self.config.t5_feat_dim,
+            t5_token_length=self.config.t5_token_length,
+            rope_theta=self.config.rope_theta,
             attention_mode=self.kwargs["attention_mode"],
             **model_kwargs,
         )

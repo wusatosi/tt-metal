@@ -4,6 +4,7 @@ from loguru import logger
 import os
 import ttnn
 from models.experimental.mochi.tt.dit.mlp import FeedForward as TtFeedForward
+from models.experimental.mochi.tt.dit.config import MochiConfig
 from models.utility_functions import (
     comp_allclose,
 )
@@ -16,6 +17,9 @@ from models.experimental.mochi.tt.common import (
     pad_vision_seq_parallel,
 )
 
+# Get model configuration
+CONFIG = MochiConfig()
+
 
 @torch.no_grad()
 @skip_for_grayskull("Requires wormhole_b0 to run")
@@ -27,8 +31,8 @@ from models.experimental.mochi.tt.common import (
 @pytest.mark.parametrize(
     "ff_path, in_feat, seq_len, seq_shard",
     [
-        ("blocks.0.mlp_x", 3072, 44520, True),
-        ("blocks.0.mlp_y", 1536, 118, False),
+        ("blocks.0.mlp_x", CONFIG.hidden_size_x, 44520, True),
+        ("blocks.0.mlp_y", CONFIG.hidden_size_y, 118, False),
     ],
 )
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
@@ -64,7 +68,7 @@ def test_tt_feedforward_inference(mesh_device, seq_len, use_program_cache, reset
     print(partial_state_dict.keys())
 
     multiple_of = 256
-    mlp_ratio = 4.0
+    mlp_ratio = CONFIG.mlp_ratio_x if "mlp_x" in ff_path else CONFIG.mlp_ratio_y
     mlp_hidden_dim = int(in_feat * mlp_ratio)
 
     reference_model = RefFeedForward(

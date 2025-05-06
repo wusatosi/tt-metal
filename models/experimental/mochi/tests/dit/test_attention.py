@@ -5,6 +5,7 @@ import os
 import ttnn
 from models.utility_functions import skip_for_grayskull, comp_allclose
 from models.experimental.mochi.tt.dit.attention import AsymmetricAttention as TtAsymmetricAttention
+from models.experimental.mochi.tt.dit.config import MochiConfig
 from models.experimental.mochi.tt.common import (
     get_cache_path,
     compute_metrics,
@@ -16,28 +17,33 @@ from models.experimental.mochi.tt.common import (
 
 from models.experimental.mochi.tests.dit.common import (
     load_model_weights,
-    NUM_HEADS,
-    HEAD_DIM,
 )
 from models.tt_transformers.tt.common import get_rot_transformation_mat
 
 from genmo.mochi_preview.dit.joint_model.asymm_models_joint import AsymmetricAttention as RefAsymmetricAttention
 
+
 # Common test configurations
 PCC_REQUIRED = 0.99
+# Get model config
+CONFIG = MochiConfig()
+NUM_HEADS = CONFIG.num_heads
+HEAD_DIM = CONFIG.hidden_size_x // NUM_HEADS
+DIM_X = CONFIG.hidden_size_x
+DIM_Y = CONFIG.hidden_size_y
 
 
-def create_models(mesh_device, state_dict, partial_state_dict, attn_path, dim_x, dim_y, update_y=True):
+def create_models(mesh_device, state_dict, partial_state_dict, attn_path, update_y=True):
     """Initialize both reference and TT models."""
     reference_model = RefAsymmetricAttention(
-        dim_x=dim_x,
-        dim_y=dim_y,
+        dim_x=DIM_X,
+        dim_y=DIM_Y,
         num_heads=NUM_HEADS,
-        qkv_bias=False,
-        qk_norm=True,
+        qkv_bias=CONFIG.qkv_bias,
+        qk_norm=CONFIG.qk_norm,
         update_y=update_y,
-        out_bias=True,
-        attention_mode="sdpa",
+        out_bias=CONFIG.out_bias,
+        attention_mode=CONFIG.attention_mode,
         softmax_scale=None,
         device="cpu",
         qkv_proj_lora_rank=0,
@@ -57,14 +63,14 @@ def create_models(mesh_device, state_dict, partial_state_dict, attn_path, dim_x,
         weight_cache_path=weight_cache_path,
         layer_num=0,
         dtype=ttnn.bfloat16,
-        dim_x=dim_x,
-        dim_y=dim_y,
+        dim_x=DIM_X,
+        dim_y=DIM_Y,
         num_heads=NUM_HEADS,
-        qkv_bias=False,
-        qk_norm=True,
+        qkv_bias=CONFIG.qkv_bias,
+        qk_norm=CONFIG.qk_norm,
         update_y=update_y,
-        out_bias=True,
-        attention_mode="sdpa",
+        out_bias=CONFIG.out_bias,
+        attention_mode=CONFIG.attention_mode,
         softmax_scale=None,
         qkv_proj_lora_rank=0,
         qkv_proj_lora_alpha=0,
@@ -109,19 +115,19 @@ def validate_outputs(tt_outputs, ref_outputs, test_name):
     indirect=True,
 )
 @pytest.mark.parametrize(
-    "attn_path, dim_x, dim_y",
+    "attn_path",
     [
-        ("blocks.0.attn", 3072, 1536),
+        ("blocks.0.attn"),
     ],
 )
-def test_tt_attn_qkv_y(mesh_device, seq_len, use_program_cache, reset_seeds, attn_path, dim_x, dim_y):
+def test_tt_attn_qkv_y(mesh_device, seq_len, use_program_cache, reset_seeds, attn_path):
     state_dict, partial_state_dict = load_model_weights(attn_path)
-    reference_model, tt_model = create_models(mesh_device, state_dict, partial_state_dict, attn_path, dim_x, dim_y)
+    reference_model, tt_model = create_models(mesh_device, state_dict, partial_state_dict, attn_path)
 
     batch_size = 1
     # Create input tensor
-    torch_input = torch.randn(batch_size, seq_len, dim_y)
-    tt_input = to_tt_tensor(torch_input.view(1, batch_size, seq_len, dim_y), mesh_device)
+    torch_input = torch.randn(batch_size, seq_len, DIM_Y)
+    tt_input = to_tt_tensor(torch_input.view(1, batch_size, seq_len, DIM_Y), mesh_device)
 
     logger.info("Run TtAsymmetricAttention QKV_Y")
     tt_q, tt_k, tt_v = tt_model.run_qkv_y(tt_input)
@@ -148,7 +154,7 @@ def test_tt_attn_qkv_y(mesh_device, seq_len, use_program_cache, reset_seeds, att
 @pytest.mark.parametrize(
     "vision_seq_len, text_seq_len",
     [
-        (22 * 256 * 8, 256),  # Tests when X doesn't need padding
+        (22 * 256 * 8, CONFIG.t5_token_length),
         (44520, 118),  # Tests when X needs padding
     ],
 )
@@ -158,15 +164,14 @@ def test_tt_attn_qkv_y(mesh_device, seq_len, use_program_cache, reset_seeds, att
     indirect=True,
 )
 @pytest.mark.parametrize(
-    "attn_path, dim_x, dim_y, update_y",
+    "attn_path, update_y",
     [
-        ("blocks.0.attn", 3072, 1536, True),
-        # ("blocks.47.attn", 3072, 1536, False),
+        ("blocks.0.attn", True),
     ],
 )
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_attn_prepare_qkv(
-    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, dim_x, dim_y, update_y
+    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, update_y
 ):
     # Fabric setup
     compute_grid_size = mesh_device.compute_with_storage_grid_size()
@@ -187,21 +192,19 @@ def test_tt_attn_prepare_qkv(
     }
 
     state_dict, partial_state_dict = load_model_weights(attn_path)
-    reference_model, tt_model = create_models(
-        mesh_device, state_dict, partial_state_dict, attn_path, dim_x, dim_y, update_y
-    )
+    reference_model, tt_model = create_models(mesh_device, state_dict, partial_state_dict, attn_path, update_y)
 
     # Create input tensors
     batch_size = 1
-    x_input = torch.randn(batch_size, vision_seq_len, dim_x)
-    y_input = torch.randn(batch_size, text_seq_len, dim_y)
-    scale_x = torch.randn(batch_size, dim_x)
-    scale_y = torch.randn(batch_size, dim_y)
+    x_input = torch.randn(batch_size, vision_seq_len, DIM_X)
+    y_input = torch.randn(batch_size, text_seq_len, DIM_Y)
+    scale_x = torch.randn(batch_size, DIM_X)
+    scale_y = torch.randn(batch_size, DIM_Y)
 
     # Create RoPE tensors
-    head_dim = dim_x // NUM_HEADS  # 24 heads
-    rope_cos = torch.randn(vision_seq_len, NUM_HEADS, head_dim // 2)
-    rope_sin = torch.randn(vision_seq_len, NUM_HEADS, head_dim // 2)
+
+    rope_cos = torch.randn(vision_seq_len, NUM_HEADS, HEAD_DIM // 2)
+    rope_sin = torch.randn(vision_seq_len, NUM_HEADS, HEAD_DIM // 2)
 
     rope_cos_stack, rope_sin_stack = stack_cos_sin(
         rope_cos.unsqueeze(0).permute(0, 2, 1, 3), rope_sin.unsqueeze(0).permute(0, 2, 1, 3)
@@ -212,14 +215,14 @@ def test_tt_attn_prepare_qkv(
     valid_token_indices = torch.arange(total_seq_len)
     max_seqlen_in_batch = total_seq_len
 
-    x_pad = pad_vision_seq_parallel(x_input.view(1, batch_size, vision_seq_len, dim_x), mesh_device.get_num_devices())
+    x_pad = pad_vision_seq_parallel(x_input.view(1, batch_size, vision_seq_len, DIM_X), mesh_device.get_num_devices())
     cos_pad = pad_vision_seq_parallel(rope_cos_stack, mesh_device.get_num_devices())
     sin_pad = pad_vision_seq_parallel(rope_sin_stack, mesh_device.get_num_devices())
 
     tt_x = to_tt_tensor(x_pad, mesh_device, shard_dim=-2)
-    tt_y = to_tt_tensor(y_input.view(1, batch_size, text_seq_len, dim_y), mesh_device)
-    tt_scale_x = to_tt_tensor(scale_x.view(batch_size, 1, 1, dim_x), mesh_device)
-    tt_scale_y = to_tt_tensor(scale_y.view(batch_size, 1, 1, dim_y), mesh_device)
+    tt_y = to_tt_tensor(y_input.view(1, batch_size, text_seq_len, DIM_Y), mesh_device)
+    tt_scale_x = to_tt_tensor(scale_x.view(batch_size, 1, 1, DIM_X), mesh_device)
+    tt_scale_y = to_tt_tensor(scale_y.view(batch_size, 1, 1, DIM_Y), mesh_device)
     tt_rope_cos = to_tt_tensor(cos_pad, mesh_device, shard_dim=-3)
     tt_rope_sin = to_tt_tensor(sin_pad, mesh_device, shard_dim=-3)
 
@@ -228,7 +231,7 @@ def test_tt_attn_prepare_qkv(
 
     persistent_buffers = {
         "seq_to_col_intermediate": ttnn.from_torch(
-            torch.zeros([1, batch_size, x_pad.shape[2], 3 * head_dim * NUM_HEADS // mesh_device.get_num_devices()]),
+            torch.zeros([1, batch_size, x_pad.shape[2], 3 * HEAD_DIM * NUM_HEADS // mesh_device.get_num_devices()]),
             device=mesh_device,
             layout=ttnn.TILE_LAYOUT,
             dtype=ttnn.bfloat16,
@@ -236,7 +239,7 @@ def test_tt_attn_prepare_qkv(
             mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
         ),
         "seq_to_col_output": ttnn.from_torch(
-            torch.zeros([1, batch_size, x_pad.shape[2], 3 * head_dim * NUM_HEADS // mesh_device.get_num_devices()]),
+            torch.zeros([1, batch_size, x_pad.shape[2], 3 * HEAD_DIM * NUM_HEADS // mesh_device.get_num_devices()]),
             device=mesh_device,
             layout=ttnn.TILE_LAYOUT,
             dtype=ttnn.bfloat16,
@@ -312,33 +315,30 @@ def test_tt_attn_prepare_qkv(
     indirect=True,
 )
 @pytest.mark.parametrize(
-    "attn_path, dim_x, dim_y, update_y",
+    "attn_path, update_y",
     [
-        ("blocks.0.attn", 3072, 1536, True),
-        ("blocks.47.attn", 3072, 1536, False),
+        ("blocks.0.attn", True),
+        ("blocks.47.attn", False),
     ],
 )
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_attn_run_attention(
-    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, dim_x, dim_y, update_y
+    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, update_y
 ):
     """Test run_attention implementation by comparing with reference model."""
     state_dict, partial_state_dict = load_model_weights(attn_path)
-    reference_model, tt_model = create_models(
-        mesh_device, state_dict, partial_state_dict, attn_path, dim_x, dim_y, update_y
-    )
+    reference_model, tt_model = create_models(mesh_device, state_dict, partial_state_dict, attn_path, update_y)
 
     batch_size = 1
-    head_dim = dim_x // NUM_HEADS
 
     # Create input tensors
     seq_len = vision_seq_len + text_seq_len
-    torch_q_x = torch.randn(batch_size, NUM_HEADS, vision_seq_len, head_dim)
-    torch_k_x = torch.randn(batch_size, NUM_HEADS, vision_seq_len, head_dim)
-    torch_v_x = torch.randn(batch_size, NUM_HEADS, vision_seq_len, head_dim)
-    torch_q_y = torch.randn(batch_size, NUM_HEADS, text_seq_len, head_dim)
-    torch_k_y = torch.randn(batch_size, NUM_HEADS, text_seq_len, head_dim)
-    torch_v_y = torch.randn(batch_size, NUM_HEADS, text_seq_len, head_dim)
+    torch_q_x = torch.randn(batch_size, NUM_HEADS, vision_seq_len, HEAD_DIM)
+    torch_k_x = torch.randn(batch_size, NUM_HEADS, vision_seq_len, HEAD_DIM)
+    torch_v_x = torch.randn(batch_size, NUM_HEADS, vision_seq_len, HEAD_DIM)
+    torch_q_y = torch.randn(batch_size, NUM_HEADS, text_seq_len, HEAD_DIM)
+    torch_k_y = torch.randn(batch_size, NUM_HEADS, text_seq_len, HEAD_DIM)
+    torch_v_y = torch.randn(batch_size, NUM_HEADS, text_seq_len, HEAD_DIM)
 
     # Convert to TT tensors
     tt_q_x = to_tt_tensor(torch_q_x, mesh_device, shard_dim=-3)
@@ -371,9 +371,9 @@ def test_tt_attn_run_attention(
         torch_q = torch.cat([torch_q_x, torch_q_y], dim=2)
         torch_k = torch.cat([torch_k_x, torch_k_y], dim=2)
         torch_v = torch.cat([torch_v_x, torch_v_y], dim=2)
-        ref_q = torch_q.transpose(1, 2).view(-1, NUM_HEADS, head_dim)  # (B*L, H, D)
-        ref_k = torch_k.transpose(1, 2).view(-1, NUM_HEADS, head_dim)  # (B*L, H, D)
-        ref_v = torch_v.transpose(1, 2).view(-1, NUM_HEADS, head_dim)  # (B*L, H, D)
+        ref_q = torch_q.transpose(1, 2).view(-1, NUM_HEADS, HEAD_DIM)  # (B*L, H, D)
+        ref_k = torch_k.transpose(1, 2).view(-1, NUM_HEADS, HEAD_DIM)  # (B*L, H, D)
+        ref_v = torch_v.transpose(1, 2).view(-1, NUM_HEADS, HEAD_DIM)  # (B*L, H, D)
 
         ref_out = reference_model.run_attention(ref_q, ref_k, ref_v, B=batch_size)
 
@@ -400,7 +400,7 @@ def test_tt_attn_run_attention(
 @pytest.mark.parametrize(
     "vision_seq_len, text_seq_len",
     [
-        (22 * 256 * 8, 256),
+        (22 * 256 * 8, CONFIG.t5_token_length),
         (44520, 118),
     ],
 )
@@ -410,15 +410,14 @@ def test_tt_attn_run_attention(
     indirect=True,
 )
 @pytest.mark.parametrize(
-    "attn_path, dim_x, dim_y, update_y",
+    "attn_path, update_y",
     [
-        ("blocks.0.attn", 3072, 1536, True),
-        #        ("blocks.47.attn", 3072, 1536, False),
+        ("blocks.0.attn", True),
     ],
 )
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_attn_post_attention(
-    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, dim_x, dim_y, update_y
+    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, update_y
 ):
     # Fabric setup
     compute_grid_size = mesh_device.compute_with_storage_grid_size()
@@ -441,19 +440,17 @@ def test_tt_attn_post_attention(
 
     """Test post_attention implementation by comparing with reference model."""
     state_dict, partial_state_dict = load_model_weights(attn_path)
-    reference_model, tt_model = create_models(
-        mesh_device, state_dict, partial_state_dict, attn_path, dim_x, dim_y, update_y
-    )
+    reference_model, tt_model = create_models(mesh_device, state_dict, partial_state_dict, attn_path, update_y)
 
     batch_size = 1
     total_seq_len = vision_seq_len + text_seq_len
 
     # Create input tensor - simulating attention output
-    torch_out = torch.randn(batch_size * total_seq_len, dim_x)
+    torch_out = torch.randn(batch_size * total_seq_len, DIM_X)
 
     # Convert to TT tensor
-    torch_x = torch_out[:vision_seq_len].view(1, batch_size, vision_seq_len, dim_x)
-    torch_y = torch_out[vision_seq_len:].view(1, batch_size, text_seq_len, dim_x)
+    torch_x = torch_out[:vision_seq_len].view(1, batch_size, vision_seq_len, DIM_X)
+    torch_y = torch_out[vision_seq_len:].view(1, batch_size, text_seq_len, DIM_X)
     x_padded = pad_vision_seq_parallel(torch_x, mesh_device.get_num_devices())
     tt_x = to_tt_tensor(x_padded, mesh_device, shard_dim=-1)
     tt_y = to_tt_tensor(torch_y, mesh_device, shard_dim=-1)
@@ -536,8 +533,7 @@ def test_tt_attn_post_attention(
 @pytest.mark.parametrize(
     "vision_seq_len, text_seq_len",
     [
-        (22 * 256 * 8, 256),
-        # (43 * 1024, 256),
+        (22 * 256 * 8, CONFIG.t5_token_length),
         (44520, 118),
     ],
 )
@@ -547,15 +543,14 @@ def test_tt_attn_post_attention(
     indirect=True,
 )
 @pytest.mark.parametrize(
-    "attn_path, dim_x, dim_y, update_y",
+    "attn_path, update_y",
     [
-        ("blocks.0.attn", 3072, 1536, True),
-        # ("blocks.47.attn", 3072, 1536, False),
+        ("blocks.0.attn", True),
     ],
 )
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_attn_forward(
-    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, dim_x, dim_y, update_y
+    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, update_y
 ):
     # Fabric setup
     compute_grid_size = mesh_device.compute_with_storage_grid_size()
@@ -580,21 +575,19 @@ def test_tt_attn_forward(
     max_mse = 1.2e-4
     """Test complete forward pass of TtAsymmetricAttention."""
     state_dict, partial_state_dict = load_model_weights(attn_path)
-    reference_model, tt_model = create_models(
-        mesh_device, state_dict, partial_state_dict, attn_path, dim_x, dim_y, update_y
-    )
+    reference_model, tt_model = create_models(mesh_device, state_dict, partial_state_dict, attn_path, update_y)
 
     # Create input tensors
     batch_size = 1
-    x_input = torch.randn(batch_size, vision_seq_len, dim_x)
-    y_input = torch.randn(batch_size, text_seq_len, dim_y)
-    scale_x = torch.randn(batch_size, dim_x)
-    scale_y = torch.randn(batch_size, dim_y)
+    x_input = torch.randn(batch_size, vision_seq_len, DIM_X)
+    y_input = torch.randn(batch_size, text_seq_len, DIM_Y)
+    scale_x = torch.randn(batch_size, DIM_X)
+    scale_y = torch.randn(batch_size, DIM_Y)
 
     # Create RoPE tensors
-    head_dim = dim_x // NUM_HEADS
-    rope_cos = torch.randn(vision_seq_len, NUM_HEADS, head_dim // 2)
-    rope_sin = torch.randn(vision_seq_len, NUM_HEADS, head_dim // 2)
+
+    rope_cos = torch.randn(vision_seq_len, NUM_HEADS, HEAD_DIM // 2)
+    rope_sin = torch.randn(vision_seq_len, NUM_HEADS, HEAD_DIM // 2)
 
     rope_cos_stack, rope_sin_stack = stack_cos_sin(
         rope_cos.unsqueeze(0).permute(0, 2, 1, 3), rope_sin.unsqueeze(0).permute(0, 2, 1, 3)
@@ -611,14 +604,14 @@ def test_tt_attn_forward(
 
     tt_x = to_tt_tensor(x_padded, mesh_device, shard_dim=-2)
     tt_y = to_tt_tensor(y_input.unsqueeze(0), mesh_device)
-    tt_scale_x = to_tt_tensor(scale_x.view(batch_size, 1, 1, dim_x), mesh_device)
-    tt_scale_y = to_tt_tensor(scale_y.view(batch_size, 1, 1, dim_y), mesh_device)
+    tt_scale_x = to_tt_tensor(scale_x.view(batch_size, 1, 1, DIM_X), mesh_device)
+    tt_scale_y = to_tt_tensor(scale_y.view(batch_size, 1, 1, DIM_Y), mesh_device)
     tt_rope_cos = to_tt_tensor(cos_padded, mesh_device, shard_dim=-3)
     tt_rope_sin = to_tt_tensor(sin_padded, mesh_device, shard_dim=-3)
 
     persistent_buffers = {
         "seq_to_col_intermediate": ttnn.from_torch(
-            torch.zeros([1, batch_size, x_padded.shape[2], 3 * head_dim * NUM_HEADS // mesh_device.get_num_devices()]),
+            torch.zeros([1, batch_size, x_padded.shape[2], 3 * HEAD_DIM * NUM_HEADS // mesh_device.get_num_devices()]),
             device=mesh_device,
             layout=ttnn.TILE_LAYOUT,
             dtype=ttnn.bfloat16,
@@ -626,7 +619,7 @@ def test_tt_attn_forward(
             mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
         ),
         "seq_to_col_output": ttnn.from_torch(
-            torch.zeros([1, batch_size, x_padded.shape[2], 3 * head_dim * NUM_HEADS // mesh_device.get_num_devices()]),
+            torch.zeros([1, batch_size, x_padded.shape[2], 3 * HEAD_DIM * NUM_HEADS // mesh_device.get_num_devices()]),
             device=mesh_device,
             layout=ttnn.TILE_LAYOUT,
             dtype=ttnn.bfloat16,
@@ -634,7 +627,7 @@ def test_tt_attn_forward(
             mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
         ),
         "col_to_seq_intermediate": ttnn.from_torch(
-            torch.zeros([1, batch_size, x_padded.shape[2] // mesh_device.get_num_devices(), head_dim * NUM_HEADS]),
+            torch.zeros([1, batch_size, x_padded.shape[2] // mesh_device.get_num_devices(), HEAD_DIM * NUM_HEADS]),
             device=mesh_device,
             layout=ttnn.TILE_LAYOUT,
             dtype=ttnn.bfloat16,
@@ -642,7 +635,7 @@ def test_tt_attn_forward(
             mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
         ),
         "col_to_seq_output": ttnn.from_torch(
-            torch.zeros([1, batch_size, x_padded.shape[2] // mesh_device.get_num_devices(), head_dim * NUM_HEADS]),
+            torch.zeros([1, batch_size, x_padded.shape[2] // mesh_device.get_num_devices(), HEAD_DIM * NUM_HEADS]),
             device=mesh_device,
             layout=ttnn.TILE_LAYOUT,
             dtype=ttnn.bfloat16,

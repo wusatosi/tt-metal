@@ -504,7 +504,7 @@ class AsymmDiTJoint(LightweightModule):
         # TODO: c shape should be broadcastable to x shape, with batch dim matching. It currently doesn't.
         # Pre-applied SILU expected in block
         # Note that on-device SILU is less accurate than on host
-        self.maybe_setup_persistent_buffers(x)
+        self.maybe_setup_persistent_buffers(x_1BNX)
         c_11BX = ttnn.silu(c_11BX)
 
         # Run blocks

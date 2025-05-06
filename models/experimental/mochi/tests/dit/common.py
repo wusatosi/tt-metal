@@ -2,9 +2,6 @@ import os
 
 from models.experimental.mochi.tt.common import get_mochi_dir
 
-NUM_HEADS = 24
-HEAD_DIM = 128
-
 
 def load_model_weights(state_dict_prefix):
     """Load and prepare model weights."""

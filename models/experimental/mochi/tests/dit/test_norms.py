@@ -6,11 +6,16 @@ from loguru import logger
 from models.utility_functions import skip_for_grayskull, comp_allclose
 from models.experimental.mochi.tt.dit.norms import modulated_rmsnorm
 from models.experimental.mochi.tt.dit.norms import residual_tanh_gated_rmsnorm
+from models.experimental.mochi.tt.dit.config import MochiConfig
 from models.experimental.mochi.tt.common import compute_metrics
 
 from genmo.mochi_preview.dit.joint_model.residual_tanh_gated_rmsnorm import (
     residual_tanh_gated_rmsnorm as ref_residual_tanh_gated_rmsnorm,
 )
+
+# Get model configuration
+CONFIG = MochiConfig()
+PCC_REQUIRED = 0.99
 
 
 @torch.no_grad()
@@ -23,8 +28,8 @@ from genmo.mochi_preview.dit.joint_model.residual_tanh_gated_rmsnorm import (
 @pytest.mark.parametrize(
     "S, D",
     [
-        (44520, 3072),
-        # (118, 1536),
+        (44520, CONFIG.hidden_size_x),
+        # (118, CONFIG.hidden_size_y),
     ],
 )
 def test_modulated_rmsnorm(mesh_device, use_program_cache, reset_seeds, S, D):
@@ -72,8 +77,7 @@ def test_modulated_rmsnorm(mesh_device, use_program_cache, reset_seeds, S, D):
     print(comp_allclose(reference_output, tt_output_torch.view(reference_output.shape)))
 
     # Check if model meets requirements
-    pcc_required = 0.99
-    passing = pcc >= pcc_required
+    passing = pcc >= PCC_REQUIRED
 
     if passing:
         logger.info("Modulated RMSNorm Passed!")
@@ -82,7 +86,7 @@ def test_modulated_rmsnorm(mesh_device, use_program_cache, reset_seeds, S, D):
 
     assert (
         passing
-    ), f"Modulated RMSNorm output does not meet PCC requirement {pcc_required}: {pcc}, MSE: {mse}, MAE: {mae}."
+    ), f"Modulated RMSNorm output does not meet PCC requirement {PCC_REQUIRED}: {pcc}, MSE: {mse}, MAE: {mae}."
 
 
 @torch.no_grad()
@@ -95,8 +99,8 @@ def test_modulated_rmsnorm(mesh_device, use_program_cache, reset_seeds, S, D):
 @pytest.mark.parametrize(
     "S, D",
     [
-        (44520, 3072),
-        (256, 1536),
+        (44520, CONFIG.hidden_size_x),
+        (CONFIG.t5_token_length, CONFIG.hidden_size_y),
     ],
 )
 def test_residual_tanh_gated_rmsnorm(mesh_device, use_program_cache, reset_seeds, S, D):
@@ -148,15 +152,14 @@ def test_residual_tanh_gated_rmsnorm(mesh_device, use_program_cache, reset_seeds
     print(comp_allclose(reference_output, tt_output_torch.view(reference_output.shape)))
 
     # Check if model meets requirements
-    pcc_required = 0.99
-    passing = pcc >= pcc_required
+    passing = pcc >= PCC_REQUIRED
 
     if passing:
         logger.info("Residual Tanh Gated RMSNorm Passed!")
     else:
         logger.warning("Residual Tanh Gated RMSNorm Failed!")
 
-    assert passing, f"Output does not meet PCC requirement {pcc_required}: {pcc}, MSE: {mse}, MAE: {mae}."
+    assert passing, f"Output does not meet PCC requirement {PCC_REQUIRED}: {pcc}, MSE: {mse}, MAE: {mae}."
 
 
 @torch.no_grad()
@@ -169,7 +172,7 @@ def test_residual_tanh_gated_rmsnorm(mesh_device, use_program_cache, reset_seeds
 @pytest.mark.parametrize(
     "S, D",
     [
-        (44544, 3072),
+        (44544, CONFIG.hidden_size_x),
     ],
 )
 def test_layernorm(mesh_device, use_program_cache, reset_seeds, S, D):
@@ -232,5 +235,11 @@ def test_layernorm(mesh_device, use_program_cache, reset_seeds, S, D):
     print(comp_allclose(reference_output, tt_output_torch.view(reference_output.shape)))
 
     # Check if model meets requirements
-    pcc_required = 0.99
-    passing = pcc >= pcc_required
+    passing = pcc >= PCC_REQUIRED
+
+    if passing:
+        logger.info("LayerNorm Passed!")
+    else:
+        logger.warning("LayerNorm Failed!")
+
+    assert passing, f"LayerNorm output does not meet PCC requirement {PCC_REQUIRED}: {pcc}, MSE: {mse}, MAE: {mae}."

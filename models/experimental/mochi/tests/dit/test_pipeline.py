@@ -6,6 +6,7 @@ import os
 import ttnn
 from models.utility_functions import skip_for_grayskull
 from models.experimental.mochi.tt.common import compute_metrics
+from models.experimental.mochi.tt.dit.config import MochiConfig
 from genmo.mochi_preview.pipelines import sample_model as reference_sample_model
 from models.experimental.mochi.pipelines import sample_model as sample_model_tt
 from genmo.mochi_preview.pipelines import (
@@ -16,6 +17,10 @@ from genmo.mochi_preview.pipelines import (
 )
 from transformers import T5EncoderModel
 from models.experimental.mochi.tests.dit.test_model import create_models
+
+# Get model configuration
+CONFIG = MochiConfig()
+PCC_REQUIRED = 0.985
 
 
 @torch.no_grad()
@@ -45,7 +50,6 @@ def test_sample_model(mesh_device, use_program_cache, reset_seeds, n_layers):
     negative_prompt = ""
 
     # Create schedules
-    # sigma_schedule = linear_quadratic_schedule(num_steps, 0.025)
     sigma_schedule = linear_quadratic_schedule(num_steps + 1, 0.025)[: num_steps + 1]
     cfg_schedule = [cfg_scale] * num_steps
 
@@ -81,21 +85,20 @@ def test_sample_model(mesh_device, use_program_cache, reset_seeds, n_layers):
     tt_output = sample_model_tt(device=device, dit=tt_dit, conditioning=conditioning, **sample_args)
 
     # Compute metrics
-    pcc_required = 0.985
     pcc, mse, mae = compute_metrics(reference_output, tt_output)
 
     logger.info(f"Sample Model Output Metrics:")
     logger.info(f"PCC: {pcc}, MSE: {mse}, MAE: {mae}")
 
-    passing = pcc >= pcc_required
+    passing = pcc >= PCC_REQUIRED
 
     if passing:
         logger.info("Sample model test Passed!")
     else:
         logger.warning("Sample model test Failed!")
-        logger.warning(f"PCC {pcc} below required {pcc_required}")
+        logger.warning(f"PCC {pcc} below required {PCC_REQUIRED}")
 
-    assert passing, f"Sample model output does not meet PCC requirement {pcc_required}"
+    assert passing, f"Sample model output does not meet PCC requirement {PCC_REQUIRED}"
 
 
 @torch.no_grad()
@@ -129,7 +132,6 @@ def test_sample_model_perf(mesh_device, use_program_cache, reset_seeds, n_layers
     negative_prompt = ""
 
     # Create schedules
-    # sigma_schedule = linear_quadratic_schedule(num_steps, 0.025)
     def get_schedule(num_steps):
         sigma_schedule = linear_quadratic_schedule(num_steps, 0.025)
         cfg_schedule = [cfg_scale] * num_steps
@@ -174,7 +176,7 @@ def test_sample_model_perf(mesh_device, use_program_cache, reset_seeds, n_layers
         B = 1
         SPATIAL_DOWNSAMPLE = 8
         TEMPORAL_DOWNSAMPLE = 6
-        IN_CHANNELS = 12
+        IN_CHANNELS = CONFIG.in_channels
         latent_t = ((t - 1) // TEMPORAL_DOWNSAMPLE) + 1
         latent_w, latent_h = w // SPATIAL_DOWNSAMPLE, h // SPATIAL_DOWNSAMPLE
 

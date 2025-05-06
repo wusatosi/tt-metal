@@ -81,6 +81,11 @@ def sample_model(device, dit, conditioning, **args):
         )
 
         assert cond_z_1BNI.shape == uncond_z_1BNI.shape
+        """
+        For correctness, we send outputs to host and do CFG update in torch fp32.
+        CFG on device in fp32 leads to small errors which accumulate due to TF32 unpack.
+        This can be moved back to device when we have a high precision CFG kernel.
+        """
         torch_cond = dit.reverse_preprocess(cond_z_1BNI, latent_t, latent_h, latent_w, N)
         torch_uncond = dit.reverse_preprocess(uncond_z_1BNI, latent_t, latent_h, latent_w, N)
         ttnn.deallocate(cond_z_1BNI)
@@ -92,6 +97,8 @@ def sample_model(device, dit, conditioning, **args):
     # Preparation before first iteration
     rope_cos_1HND, rope_sin_1HND, trans_mat = dit.prepare_rope_features(T=latent_t, H=latent_h, W=latent_w)
     # Note that conditioning contains list of len 1 to index into
+    # Critically, we need to remove padded tokens from conditioning. GPU version
+    # uses `packed_indices` to mask but JointSDPA requires padding information in the tensor shape.
     num_text_tokens = cond_text["packed_indices"]["max_seqlen_in_batch_kv"] - num_visual_tokens
     cond_text["y_feat"][0] = cond_text["y_feat"][0][:, :num_text_tokens, :]
     cond_text["y_mask"][0] = cond_text["y_mask"][0][:, :num_text_tokens]
@@ -154,13 +161,9 @@ class TTPipeline(MochiSingleGPUPipeline):
             print("load decoder onto device")
             decoder = self.decoder_factory.get_model(local_rank=0, device_id=0, world_size=1)
             if self.decode_type == "tiled_full":
-                # frames = decode_latents_tiled_full(self.decoder, latents, **self.decode_args)
-                pass
+                assert False, "Tiled full decoding not supported"
             elif self.decode_type == "tiled_spatial":
-                # frames = decode_latents_tiled_spatial(
-                #     self.decoder, latents, **self.decode_args, num_tiles_w=4, num_tiles_h=2
-                # )
-                pass
+                assert False, "Tiled spatial decoding not supported"
             else:
                 frames = decode_latents(decoder, latents)
 

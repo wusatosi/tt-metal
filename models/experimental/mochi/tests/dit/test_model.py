@@ -4,6 +4,7 @@ from loguru import logger
 import os
 import ttnn
 from models.experimental.mochi.tt.dit.model import AsymmDiTJoint as TtAsymmDiTJoint
+from models.experimental.mochi.tt.dit.config import MochiConfig
 from models.utility_functions import (
     comp_allclose,
 )
@@ -18,6 +19,10 @@ from genmo.mochi_preview.pipelines import (
 )
 from transformers import T5EncoderModel
 
+# Get model configuration
+CONFIG = MochiConfig()
+PCC_REQUIRED = 0.99
+
 
 def create_models(mesh_device, n_layers: int = 48):
     """Create and initialize both reference and TT models.
@@ -29,26 +34,26 @@ def create_models(mesh_device, n_layers: int = 48):
     Returns:
         tuple: (reference_model, tt_model, state_dict)
     """
-    # Model configuration
+    # Model configuration using CONFIG values
     config = dict(
         depth=n_layers,
-        patch_size=2,
-        num_heads=24,
-        hidden_size_x=3072,
-        hidden_size_y=1536,
-        mlp_ratio_x=4.0,
-        mlp_ratio_y=4.0,
-        in_channels=12,
-        qk_norm=True,
-        qkv_bias=False,
-        out_bias=True,
-        patch_embed_bias=True,
-        timestep_mlp_bias=True,
-        timestep_scale=1000.0,
-        t5_feat_dim=4096,
-        t5_token_length=256,
-        rope_theta=10000.0,
-        attention_mode="sdpa",
+        patch_size=CONFIG.patch_size,
+        num_heads=CONFIG.num_heads,
+        hidden_size_x=CONFIG.hidden_size_x,
+        hidden_size_y=CONFIG.hidden_size_y,
+        mlp_ratio_x=CONFIG.mlp_ratio_x,
+        mlp_ratio_y=CONFIG.mlp_ratio_y,
+        in_channels=CONFIG.in_channels,
+        qk_norm=CONFIG.qk_norm,
+        qkv_bias=CONFIG.qkv_bias,
+        out_bias=CONFIG.out_bias,
+        patch_embed_bias=CONFIG.patch_embed_bias,
+        timestep_mlp_bias=CONFIG.timestep_mlp_bias,
+        timestep_scale=CONFIG.timestep_scale,
+        t5_feat_dim=CONFIG.t5_feat_dim,
+        t5_token_length=CONFIG.t5_token_length,
+        rope_theta=CONFIG.rope_theta,
+        attention_mode=CONFIG.attention_mode,
     )
 
     from safetensors.torch import load_file
@@ -89,6 +94,7 @@ def create_models(mesh_device, n_layers: int = 48):
     [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, reset_seeds):
     dtype = ttnn.bfloat16
 
@@ -97,9 +103,8 @@ def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, 
     time_steps = 28
     height = 60
     width = 106
-    PATCH_SIZE = 2
 
-    num_visual_tokens = time_steps * height * width // (PATCH_SIZE**2)
+    num_visual_tokens = time_steps * height * width // (CONFIG.patch_size**2)
 
     # Create models using common function
     reference_model, tt_model, _ = create_models(mesh_device, n_layers)
@@ -139,8 +144,7 @@ def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, 
     pcc, mse, mae = compute_metrics(reference_output, tt_output)
 
     # Check if model meets requirements
-    pcc_required = 0.99
-    passing = pcc >= pcc_required
+    passing = pcc >= PCC_REQUIRED
 
     logger.info(comp_allclose(reference_output, tt_output))
     logger.info(f"PCC: {pcc}, MSE: {mse}, MAE: {mae}")
@@ -152,7 +156,7 @@ def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, 
 
     assert (
         passing
-    ), f"TtAsymmDiTJoint output does not meet PCC requirement {pcc_required}: {pcc}, MSE: {mse}, MAE: {mae}."
+    ), f"TtAsymmDiTJoint output does not meet PCC requirement {PCC_REQUIRED}: {pcc}, MSE: {mse}, MAE: {mae}."
 
 
 @torch.no_grad()
@@ -171,9 +175,8 @@ def test_tt_asymm_dit_joint_prepare(mesh_device, use_program_cache, reset_seeds)
     time_steps = 28
     height = 60
     width = 106
-    PATCH_SIZE = 2
 
-    num_visual_tokens = time_steps * height * width // (PATCH_SIZE**2)
+    num_visual_tokens = time_steps * height * width // (CONFIG.patch_size**2)
 
     # Create models using common function with 0 layers since we only need prepare()
     reference_model, tt_model, _ = create_models(mesh_device, n_layers=0)
@@ -346,15 +349,14 @@ def test_tt_asymm_dit_joint_model_fn(mesh_device, use_program_cache, reset_seeds
     # Constants from pipelines.py
     SPATIAL_DOWNSAMPLE = 8
     TEMPORAL_DOWNSAMPLE = 6
-    IN_CHANNELS = 12
+    IN_CHANNELS = CONFIG.in_channels
     batch_size = 1
 
     # Calculate latent dimensions
     latent_t = ((num_frames - 1) // TEMPORAL_DOWNSAMPLE) + 1
     latent_w, latent_h = width // SPATIAL_DOWNSAMPLE, height // SPATIAL_DOWNSAMPLE
 
-    PATCH_SIZE = 2
-    num_visual_tokens = latent_t * latent_h * latent_w // (PATCH_SIZE**2)
+    num_visual_tokens = latent_t * latent_h * latent_w // (CONFIG.patch_size**2)
 
     # Create models using common function
     reference_model, tt_model, _ = create_models(mesh_device, n_layers)
@@ -408,7 +410,6 @@ def test_tt_asymm_dit_joint_model_fn(mesh_device, use_program_cache, reset_seeds
         (reference_uncond_out, tt_uncond_out, "unconditional"),
     ]
 
-    pcc_required = 0.99
     passing = True
 
     for ref, tt, name in outputs:
@@ -417,14 +418,14 @@ def test_tt_asymm_dit_joint_model_fn(mesh_device, use_program_cache, reset_seeds
         logger.info(comp_allclose(ref, tt))
         logger.info(f"PCC: {pcc}, MSE: {mse}, MAE: {mae}")
 
-        output_passing = pcc >= pcc_required
+        output_passing = pcc >= PCC_REQUIRED
         passing = passing and output_passing
 
         if output_passing:
             logger.info(f"{name.title()} output Passed!")
         else:
             logger.warning(f"{name.title()} output Failed!")
-            logger.warning(f"PCC {pcc} below required {pcc_required}")
+            logger.warning(f"PCC {pcc} below required {PCC_REQUIRED}")
 
     if passing:
         logger.info("\nAll TtAsymmDiTJoint outputs with real inputs Passed!")
@@ -444,9 +445,8 @@ def test_tt_asymm_dit_joint_model_fn(mesh_device, use_program_cache, reset_seeds
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_asymm_dit_joint_preprocess(mesh_device, use_program_cache, reset_seeds):
     """Test that we can reverse the preprocessing of input"""
-    B, C, T, H, W = 1, 12, 28, 60, 106
-    PATCH_SIZE = 2
-    num_visual_tokens = T * H * W // (PATCH_SIZE**2)
+    B, C, T, H, W = 1, CONFIG.in_channels, 28, 60, 106
+    num_visual_tokens = T * H * W // (CONFIG.patch_size**2)
     _, tt_model, _ = create_models(mesh_device, n_layers=0)
     x = torch.randn(B, C, T, H, W)
     x_1BNI, N = tt_model.preprocess_input(x)

@@ -4,9 +4,14 @@ from loguru import logger
 import os
 import ttnn
 from models.experimental.mochi.tt.dit.final_layer import FinalLayer as TtFinalLayer
+from models.experimental.mochi.tt.dit.config import MochiConfig
 from models.utility_functions import comp_allclose, skip_for_grayskull
 from genmo.mochi_preview.dit.joint_model.asymm_models_joint import FinalLayer as RefFinalLayer
 from models.experimental.mochi.tt.common import get_mochi_dir, get_cache_path, compute_metrics
+
+# Get model configuration
+CONFIG = MochiConfig()
+PCC_REQUIRED = 0.99
 
 
 @torch.no_grad()
@@ -19,9 +24,9 @@ from models.experimental.mochi.tt.common import get_mochi_dir, get_cache_path, c
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_final_layer_inference(mesh_device, use_program_cache, reset_seeds):
     dtype = ttnn.bfloat16
-    hidden_size = 3072
-    patch_size = 2
-    out_channels = 12
+    hidden_size = CONFIG.hidden_size_x
+    patch_size = CONFIG.patch_size
+    out_channels = CONFIG.out_channels
     seq_len = 44 * 1024  # Same as in feedforward test
     batch_size = 1
 
@@ -122,8 +127,7 @@ def test_tt_final_layer_inference(mesh_device, use_program_cache, reset_seeds):
     pcc, mse, mae = compute_metrics(reference_output, tt_output_torch)
 
     # Check if model meets requirements
-    pcc_required = 0.99
-    passing = pcc >= pcc_required
+    passing = pcc >= PCC_REQUIRED
 
     logger.info(comp_allclose(reference_output, tt_output_torch))
     logger.info(f"PCC: {pcc}, MSE: {mse}, MAE: {mae}")
@@ -133,4 +137,4 @@ def test_tt_final_layer_inference(mesh_device, use_program_cache, reset_seeds):
     else:
         logger.warning("TtFinalLayer Failed!")
 
-    assert passing, f"TtFinalLayer output does not meet PCC requirement {pcc_required}: {pcc}, MSE: {mse}, MAE: {mae}."
+    assert passing, f"TtFinalLayer output does not meet PCC requirement {PCC_REQUIRED}: {pcc}, MSE: {mse}, MAE: {mae}."
