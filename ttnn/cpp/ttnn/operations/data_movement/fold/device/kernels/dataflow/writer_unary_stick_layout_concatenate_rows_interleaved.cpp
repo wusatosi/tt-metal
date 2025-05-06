@@ -6,6 +6,17 @@
 
 #include "dataflow_api.h"
 
+inline void print_bf16_pages(uint32_t l1_addr, uint32_t elts_per_page, uint32_t npages, uint32_t start = 0) {
+    volatile tt_l1_ptr uint16_t* ptr = reinterpret_cast<volatile tt_l1_ptr uint16_t*>(l1_addr) + start * elts_per_page;
+    for (uint32_t page = 0; page < npages; ++page) {
+        DPRINT << start + page << ": ";
+        for (uint32_t j = 0; j < elts_per_page; ++j, ++ptr) {
+            DPRINT << BF16(*ptr) << " ";
+        }
+        DPRINT << ENDL();
+    }
+}
+
 void kernel_main() {
     const uint32_t dst_addr = get_arg_val<uint32_t>(0);
     const uint32_t dst_page_size = get_arg_val<uint32_t>(1);
@@ -35,11 +46,21 @@ void kernel_main() {
 
     auto dst_noc_addr = NOC_XY_ADDR(NOC_X(my_x[0]), NOC_Y(my_y[0]), scratch_addr);
 
+    DPRINT << "aligned_chunk_size: " << aligned_chunk_size << ENDL();
+    DPRINT << "aligned_row_size: " << aligned_row_size << ENDL();
+    DPRINT << "aligned_pixel_size: " << aligned_pixel_size << ENDL();
+    DPRINT << "stride_h: " << stride_h << ENDL();
+    DPRINT << "stride_w: " << stride_w << ENDL();
+    DPRINT << "num_dst_rows: " << num_dst_rows << ENDL();
+    DPRINT << "num_dst_cols: " << num_dst_cols << ENDL();
+
     auto extract_next_dst_page = [&](uint32_t src_address, uint64_t dst_noc_addr) -> uint32_t {
         for (uint32_t row = 0, src_row_offset = 0; row < stride_h; ++row, src_row_offset += aligned_row_size) {
             for (uint32_t col = 0, src_col_offset = 0; col < stride_w; ++col, src_col_offset += aligned_pixel_size) {
                 uint32_t src_offset = src_col_offset + src_row_offset;
                 noc_async_write(src_address + src_offset, dst_noc_addr, pixel_size);
+                noc_async_write_barrier();
+                print_bf16_pages(src_address + src_offset, pixel_size / 2, 1);
                 dst_noc_addr += pixel_size;
             }
         }
@@ -56,6 +77,8 @@ void kernel_main() {
             src_addr = extract_next_dst_page(src_addr, dst_noc_addr);
             uint64_t dst_addr = get_noc_addr(dst_page_id, s);
             noc_async_write(scratch_addr, dst_addr, dst_page_size);
+            // print_bf16_pages(scratch_addr, dst_page_size/2, 1);
+            noc_async_write_barrier();
             dst_page_id += 1;
         }
 
