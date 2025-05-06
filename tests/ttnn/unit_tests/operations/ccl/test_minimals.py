@@ -525,7 +525,7 @@ def test_rms_fuse(
         ),
     ],
 )
-@pytest.mark.parametrize("num_links", [3])
+@pytest.mark.parametrize("num_links", [4])
 @pytest.mark.parametrize(
     "input_dtype",
     [

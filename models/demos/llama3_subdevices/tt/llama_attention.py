@@ -383,7 +383,7 @@ class TtLlamaAttention(LightweightModule):
             attn_output_1G4D_sharded_rm,
             dim=1,
             cluster_axis=1,
-            num_links=3,
+            num_links=4,
             memory_config=self.model_config["SHARDED_ATTN_WO_INPUT_RING_MEMCFG"],
             num_heads=self.n_local_heads,
         )

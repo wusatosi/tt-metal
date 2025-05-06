@@ -47,8 +47,8 @@ void kernel_main() {
     uint32_t num_cores = get_arg_val<uint32_t>(arg_idx++);
     bool wait_output_semaphore = get_arg_val<uint32_t>(arg_idx++);
     bool reset_global_semaphore = get_arg_val<uint32_t>(arg_idx++);
-    constexpr uint8_t out_ready_sem_noc0_x = 19;       // get_arg_val<uint32_t>(arg_idx++);
-    constexpr uint8_t out_ready_sem_noc0_y = 18;       // get_arg_val<uint32_t>(arg_idx++);
+    uint8_t out_ready_sem_noc0_x = get_arg_val<uint32_t>(arg_idx++);
+    uint8_t out_ready_sem_noc0_y = get_arg_val<uint32_t>(arg_idx++);
 
     const uint32_t concat_semaphore_send_addr = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
     const uint32_t concat_semaphore_send_addr2 = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
