@@ -286,7 +286,7 @@ class TtLlamaAttention(LightweightModule):
         ) = self.tt_ccl.line_all_reduce_create_heads(
             xqkv_fused_sharded,
             cluster_axis=1,
-            num_links=3,
+            num_links=4,
             num_heads=self.n_local_heads,
             memory_config=self.model_config["CREATE_HEAD_INPUT_MEMCFG"],
             num_kv_heads=self.n_local_kv_heads,
@@ -404,7 +404,7 @@ class TtLlamaAttention(LightweightModule):
         # print("done matmul")
 
         dense_out_reduced = self.tt_ccl.line_all_reduce(
-            dense_out_ttnn, cluster_axis=0, num_links=3, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
+            dense_out_ttnn, cluster_axis=0, num_links=4, memory_config=self.model_config["DECODE_RESIDUAL_MEMCFG"]
         )
         ttnn.deallocate(dense_out_ttnn)
 
