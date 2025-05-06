@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#include "ttnn/operations/conv/conv2dmatmul/device/conv2dmatmul_program_factory.hpp"
 #include "hostdevcommon/kernel_structs.h"
 #include "ttnn/tensor/host_buffer/functions.hpp"
 #include <tt-metalium/work_split.hpp>
