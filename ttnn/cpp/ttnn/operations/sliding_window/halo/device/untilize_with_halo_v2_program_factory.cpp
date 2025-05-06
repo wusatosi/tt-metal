@@ -319,6 +319,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     const uint32_t ncores_c,
     const uint32_t max_out_nsticks_per_core,
     const uint32_t max_ref_size,
+    const uint32_t max_local_size,
     const Tensor& padding_config,
     const Tensor& local_config,
     const Tensor& remote_config,
@@ -490,6 +491,17 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         CBHandle remote_temp_cb = CreateCircularBuffer(program, all_cores, remote_temp_cb_config);
     }
 
+    // create the local temp CB
+    uint32_t local_temp_cb_id = 0;
+    if (max_local_size > 0) {
+        local_temp_cb_id = cb_indices.get_next_cb_id();
+        auto local_temp_cb_config =
+            CircularBufferConfig(
+                max_local_size * output_shard_shape[1] * out_nbytes, {{local_temp_cb_id, kernel_config_df}})
+                .set_page_size(local_temp_cb_id, output_shard_shape[1] * out_nbytes);
+        CBHandle local_temp_cb = CreateCircularBuffer(program, all_cores, local_temp_cb_config);
+    }
+
     // noc conversion function
     auto core_id_to_noc_coords = [is_block_sharded, transpose_mcast, device](uint32_t core_id) -> CoreCoord {
         auto num_cores_x = device->compute_with_storage_grid_size().x;
@@ -541,15 +553,19 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     log_debug(tt::LogOp, "out_stick_nbytes = {}", out_stick_nbytes);
     log_debug(tt::LogOp, "input_tensor.buffer()->alignment() = {}", input_tensor.buffer()->alignment());
 
+    printf("max_local_size = %d\n", max_local_size);
+    printf("local_temp_cb_id = %d\n", local_temp_cb_id);
+
     if (out_stick_nbytes % input_tensor.buffer()->alignment() != 0) {
         aligned_input_nstick_nbytes = tt::round_up(out_stick_nbytes, input_tensor.buffer()->alignment());
     }
     // reader kernel
     std::vector<uint32_t> reader_ct_args = {
-        0,  // padding_config_cb_id
-        0,  // local_config_cb_id
-        0,  // remote_config_cb_id
-        0,  // remote_temp_cb_id
+        0,                 // padding_config_cb_id
+        0,                 // local_config_cb_id
+        0,                 // remote_config_cb_id
+        0,                 // remote_temp_cb_id
+        local_temp_cb_id,  // local_temp_cb_id
         cb_indices.src_cb_id,
         input_to_writer_cb_id,
         cb_indices.out_cb_id,
@@ -593,7 +609,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     reader_ct_args[1] = 0;
     reader_ct_args[2] = cb_indices.remote_config_cb_id;
     reader_ct_args[3] = remote_temp_cb_id;
-    reader_ct_args[30] = 1;  // no wait remote
+    reader_ct_args[31] = 1;  // no wait remote
     KernelHandle reader_kernel_id1 = CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/sliding_window/halo/device/kernels/dataflow/halo_gather_in_place.cpp",
