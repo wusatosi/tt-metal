@@ -118,7 +118,7 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases
     uint32_t act_block_h_ntiles,
     uint32_t input_width,
     const bool has_bias,
-    const bool is_mm_conv = false);
+    const bool is_large_kernel_with_easy_matmul = false);
 
 template <typename T>
 std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases_and_move_to_device(
@@ -135,7 +135,7 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases
     uint32_t act_block_h_ntiles,
     uint32_t input_width,
     const bool has_bias,
-    const bool is_mm_conv = false,
+    const bool is_large_kernel_with_easy_matmul = false,
     const bool parameters_on_device = true);
 
 }  // namespace conv2d
