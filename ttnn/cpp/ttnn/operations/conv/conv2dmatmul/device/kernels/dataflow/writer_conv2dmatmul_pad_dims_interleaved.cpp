@@ -24,14 +24,14 @@ void kernel_main() {
     constexpr uint32_t stride_height = get_compile_time_arg_val(3);
     constexpr uint32_t stride_width = get_compile_time_arg_val(4);
     constexpr uint32_t stick_nbytes = get_compile_time_arg_val(5);
-    constexpr uint32_t start_block_id = get_compile_time_arg_val(6);
-    constexpr uint32_t num_blocks = get_compile_time_arg_val(7);
-    constexpr uint32_t ntiles_per_row = get_compile_time_arg_val(8);
-    constexpr uint32_t element_size = get_compile_time_arg_val(9);
-    constexpr uint32_t cb_id_in1 = get_compile_time_arg_val(10);
+    constexpr uint32_t ntiles_per_row = get_compile_time_arg_val(6);
+    constexpr uint32_t element_size = get_compile_time_arg_val(7);
+    constexpr uint32_t cb_id_in1 = get_compile_time_arg_val(8);
 
     uint32_t dst_addr = get_arg_val<uint32_t>(0);
-
+    uint32_t start_block_id = get_arg_val<uint32_t>(1);
+    uint32_t num_blocks = get_arg_val<uint32_t>(2);
+    uint32_t nblocks_per_core = get_arg_val<uint32_t>(3);
     constexpr bool dst_is_dram = true;
     constexpr uint32_t TILE_HEIGHT = 32;
     constexpr uint32_t TILE_WIDTH = 32;
