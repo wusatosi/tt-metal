@@ -405,24 +405,13 @@ bool use_matmul_for_1x1_conv(
     const Conv2dConfig& conv_config) {
     bool is_width_sharded =
         (conv_config.shard_layout.has_value() && conv_config.shard_layout.value() == TensorMemoryLayout::WIDTH_SHARDED);
-    return kernel_size[0] == 1 && kernel_size[1] == 1 && stride[0] == stride[1] && stride[0] == 1 && padding[0] == 0 &&
-           padding[1] == 0 && padding[2] == 0 && padding[3] == 0 && dilation[0] == 1 && dilation[1] == 1 &&
-           (not is_width_sharded);
-}
-
-bool is_large_kernel_with_easy_matmul(
-    Layout input_tensor_layout,
-    uint32_t input_height,
-    uint32_t input_width,
-    const std::array<uint32_t, 2>& kernel_size,
-    const std::array<uint32_t, 2>& stride,
-    const std::array<uint32_t, 4>& padding,
-    const std::array<uint32_t, 2>& dilation,
-    uint32_t groups) {
-    return (
-        (stride[0] == kernel_size[0] && stride[1] == kernel_size[1]) && (stride[0] >= 16 && stride[1] >= 16) &&
-        padding[0] == 0 && padding[1] == 0 && dilation[0] == 1 && dilation[1] == 1 && groups == 1 &&
-        (input_height % stride[0] == 0 && input_width % stride[1] == 0) && input_tensor_layout == Layout::TILE);
+    bool is_1X1_conv = kernel_size[0] == 1 && kernel_size[1] == 1 && stride[0] == stride[1] && stride[0] == 1 &&
+                       padding[0] == 0 && padding[1] == 0 && padding[2] == 0 && padding[3] == 0 && dilation[0] == 1 &&
+                       dilation[1] == 1 && groups == 1 && (not is_width_sharded);
+    bool is_large_kerel =
+        ((stride[0] == kernel_size[0] && stride[1] == kernel_size[1]) && (stride[0] >= 16 && stride[1] >= 16) &&
+         padding[0] == 0 && padding[1] == 0);
+    return (is_1X1_conv || is_large_kerel);
 }
 
 bool is_1d_conv(uint32_t kernel_width, uint32_t image_width) { return kernel_width == 1 && image_width == 1; }
@@ -906,9 +895,10 @@ Conv2dConfig determine_conv_config_for_auto_shard(
     if (width.size < winning_config.size && !is_mm_conv) {
         winning_config = width;
     }
+    winning_config = block;
 
-    log_debug(LogOp, "Core counts H: {} B: {}, W: {}", height.core_count, block.core_count, width.core_count);
-    log_debug(
+    log_info(LogOp, "Core counts H: {} B: {}, W: {}", height.core_count, block.core_count, width.core_count);
+    log_info(
         LogOp, "Selected shard layout: {}, size: {}", winning_config.conv_config.shard_layout, winning_config.size);
 
     return winning_config.conv_config;

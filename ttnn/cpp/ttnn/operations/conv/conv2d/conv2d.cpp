@@ -11,6 +11,7 @@
 #include <tt-metalium/buffer_types.hpp>
 
 #include "tt-metalium/assert.hpp"
+#include "tt-metalium/bfloat16.hpp"
 #include "tt-metalium/logger.hpp"
 #include "tt-metalium/math.hpp"
 #include "ttnn/operations/data_movement/slice/slice.hpp"
@@ -25,6 +26,9 @@
 #include "ttnn/operations/matmul/matmul.hpp"
 #include "ttnn/operations/sliding_window/halo/halo.hpp"
 #include "ttnn/operations/sliding_window/sliding_window.hpp"
+#include "ttnn/operations/data_movement/permute/permute.hpp"
+#include "ttnn/operations/data_movement/pad/pad.hpp"
+#include "ttnn/operations/data_movement/view/view.hpp"
 #include "ttnn/operations/data_movement/fold/fold.hpp"
 #include "ttnn/operations/core/core.hpp"
 #include "ttnn/operations/data_movement/move/move.hpp"
@@ -372,16 +376,13 @@ Result conv2d_L1(
     std::array<uint32_t, 4> padding_n4 = sliding_window::get_pair_n4_padding(padding);
     auto input_tensor = input_tensor_;
     bool mm_conv = use_matmul_for_1x1_conv(kernel_size, stride, padding_n4, dilation, groups, conv_config);
-    bool is_large_kernel = is_large_kernel_with_easy_matmul(
-        input_tensor.layout(), input_height, input_width, kernel_size, stride, padding_n4, dilation, groups);
-    if (is_large_kernel) {
+    if (mm_conv) {
         input_tensor = convert_tensor_for_1x1_conv(input_tensor_, stride);
         input_height = input_height / stride[0];
         input_width = input_width / stride[1];
         stride = {1, 1};
         kernel_size = {1, 1};
         in_channels = in_channels * kernel_size[0] * kernel_size[1];
-        mm_conv = true;
     }
     auto [output_height, output_width] =
         calculate_output_image_size({input_height, input_width}, kernel_size, stride, padding_n4, dilation);
@@ -465,7 +466,7 @@ Result conv2d_L1(
                 opt_conv_op_block_config.act_block_h_ntiles,
                 input_width,
                 bias_tensor.has_value(),
-                is_large_kernel,
+                mm_conv,
                 true);
         } else {
             tie(weight_tensor_on_device, bias_tensor_on_device) = prepare_conv_weights_biases_on_device(
@@ -482,7 +483,7 @@ Result conv2d_L1(
                 opt_conv_op_block_config.act_block_h_ntiles,
                 input_width,
                 bias_tensor.has_value(),
-                is_large_kernel);
+                mm_conv);
         }
     }
     // if 1x1 conv w/ stride 1, convert input tensor to tile layout if required
