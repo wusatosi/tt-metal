@@ -1724,6 +1724,7 @@ std::tuple<SubDeviceManagerId, SubDeviceId> Device::create_sub_device_manager_wi
 }
 
 void Device::load_sub_device_manager(SubDeviceManagerId sub_device_manager_id) {
+    TT_FATAL(!this->sysmem_manager_->get_bypass_mode(), "Can't load subdevice while tracing");
     sub_device_manager_tracker_->load_sub_device_manager(sub_device_manager_id);
 }
 

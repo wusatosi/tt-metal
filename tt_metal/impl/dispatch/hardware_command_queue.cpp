@@ -311,6 +311,7 @@ void HWCommandQueue::enqueue_read_from_core_l1(
     bool blocking,
     tt::stl::Span<const SubDeviceId> sub_device_ids) {
     ZoneScopedN("HWCommandQueue_enqueue_read_from_core_l1");
+    TT_FATAL(!this->manager_.get_bypass_mode(), "Enqueue read from core l1 cannot be used with tracing");
 
     const HalProgrammableCoreType core_type = this->device_->get_programmable_core_type(virtual_core);
     TT_FATAL(
@@ -350,6 +351,7 @@ void HWCommandQueue::enqueue_write_to_core_l1(
     bool blocking,
     tt::stl::Span<const SubDeviceId> sub_device_ids) {
     ZoneScopedN("HWCommandQueue_enqueue_write_to_core_l1");
+    TT_FATAL(!this->manager_.get_bypass_mode(), "Enqueue write to core l1 cannot be used with tracing");
 
     const HalProgrammableCoreType core_type = this->device_->get_programmable_core_type(virtual_core);
     TT_FATAL(
@@ -528,11 +530,13 @@ void HWCommandQueue::enqueue_record_event(
 
 void HWCommandQueue::enqueue_wait_for_event(const std::shared_ptr<Event>& sync_event) {
     ZoneScopedN("HWCommandQueue_enqueue_wait_for_event");
+    TT_FATAL(!this->manager_.get_bypass_mode(), "Enqueue Wait for Event cannot be used with tracing");
     event_dispatch::issue_wait_for_event_commands(id_, sync_event->cq_id, this->manager_, sync_event->event_id);
 }
 
 void HWCommandQueue::enqueue_trace(const uint32_t trace_id, bool blocking) {
     ZoneScopedN("HWCommandQueue_enqueue_trace");
+    TT_FATAL(!this->manager_.get_bypass_mode(), "Enqueue trace cannot be used while tracing");
 
     auto trace_inst = this->device_->get_trace(trace_id);
     auto descriptor = trace_inst->desc;
