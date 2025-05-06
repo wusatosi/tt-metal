@@ -31,6 +31,6 @@ pytest models/experimental/mochi/tests/test_tt_asymm_dit_joint.py::test_tt_asymm
 ```
 Now you can try generating a video. With those environment variables still set, run
 ```bash
-python models/experimental/mochi/cli_tt.py --model_dir /proj_sw/mochi-data/
+python models/experimental/mochi/cli.py --model_dir /proj_sw/mochi-data/
 ```
 Grab a few coffees while you wait for the video.

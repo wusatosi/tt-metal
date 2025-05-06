@@ -32,7 +32,7 @@ echo "Starting video generation..."
 for i in "${!prompts[@]}"; do
     start_time=$(date +%s.%N)
 
-    MOCHI_DIR=/proj_sw/mochi-data MESH_DEVICE=T3K python models/experimental/mochi/cli_tt.py \
+    MOCHI_DIR=/proj_sw/mochi-data MESH_DEVICE=T3K python models/experimental/mochi/cli.py \
         --prompt "${prompts[$i]}" \
         --model_dir "models/mochi/mochi-v1-128x96"  || exit 1
 
