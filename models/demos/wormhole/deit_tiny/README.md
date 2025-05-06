@@ -30,6 +30,9 @@ To run the demo for the DEIT model, follow these instructions:
   pytest --disable-warnings models/demos/wormhole/deit_tiny/demo/demo_deit_ttnn_cifar10_inference.py
   ```
 
+  > **Important:** The file `deit_tiny_patch16_trained_statedict.pth` contains modified weights where the key names of the custom weights have been remapped to match the model's state dictionary key names. This remapping ensures compatibility with the current implementation. No parameters or values in the weights have been altered during this process.
+
+
 - For running the prediction on images, use the following command:
 
   ```sh
@@ -37,4 +40,5 @@ To run the demo for the DEIT model, follow these instructions:
   ```
 
   > **Note:** Ensure that the images to be used for predictions are stored in the `images` folder. When the `demo_deit_ttnn_predict.py` script is run, the predictions will be saved in the `results` folder.
+
 
