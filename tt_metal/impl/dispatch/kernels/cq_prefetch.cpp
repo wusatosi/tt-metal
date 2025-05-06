@@ -17,10 +17,11 @@
 //
 
 #include "dataflow_api.h"
+#include "dataflow_api_addrgen.h"
 #include "tt_metal/impl/dispatch/kernels/cq_commands.hpp"
 #include "tt_metal/impl/dispatch/kernels/cq_common.hpp"
-#include "tt_metal/fabric/hw/inc/tt_fabric_api.h"
-#include "tt_metal/fabric/hw/inc/tt_fabric_interface.h"
+#include "fabric_edm_packet_header.hpp"
+#include "tt_metal/fabric/hw/inc/tt_fabric_mux_interface.hpp"
 #include "debug/dprint.h"
 #include "noc/noc_parameters.h"  // PCIE_ALIGNMENT
 
@@ -72,17 +73,27 @@ constexpr uint32_t downstream_dispatch_s_cb_sem_id = get_compile_time_arg_val(23
 constexpr uint32_t dispatch_s_buffer_size = get_compile_time_arg_val(24);
 constexpr uint32_t dispatch_s_cb_log_page_size = get_compile_time_arg_val(25);
 
-// used for fd on fabric
-constexpr uint32_t downstream_mesh_id = get_compile_time_arg_val(26);
-constexpr uint32_t downstream_dev_id = get_compile_time_arg_val(27);
-constexpr uint32_t upstream_mesh_id = get_compile_time_arg_val(28);
-constexpr uint32_t upstream_dev_id = get_compile_time_arg_val(29);
-constexpr uint32_t fabric_router_noc_xy = get_compile_time_arg_val(30);
-constexpr uint32_t outbound_eth_chan = get_compile_time_arg_val(31);
-constexpr uint32_t client_interface_addr = get_compile_time_arg_val(32);
+// used for fabric mux connection
+constexpr uint32_t fabric_header_rb_base = get_compile_time_arg_val(26);
+constexpr uint32_t fabric_header_rb_entries = get_compile_time_arg_val(27);
+constexpr uint32_t my_fabric_sync_status_addr = get_compile_time_arg_val(28);
 
-constexpr uint32_t is_d_variant = get_compile_time_arg_val(33);
-constexpr uint32_t is_h_variant = get_compile_time_arg_val(34);
+constexpr uint8_t fabric_mux_x = get_compile_time_arg_val(29);
+constexpr uint8_t fabric_mux_y = get_compile_time_arg_val(30);
+constexpr uint8_t fabric_mux_num_buffers_per_channel = get_compile_time_arg_val(31);
+constexpr size_t fabric_mux_channel_buffer_size_bytes = get_compile_time_arg_val(32);
+constexpr size_t fabric_mux_channel_base_address = get_compile_time_arg_val(33);
+constexpr size_t fabric_mux_connection_info_address = get_compile_time_arg_val(34);
+constexpr size_t fabric_mux_connection_handshake_address = get_compile_time_arg_val(35);
+constexpr size_t fabric_mux_flow_control_address = get_compile_time_arg_val(36);
+constexpr size_t fabric_mux_buffer_index_address = get_compile_time_arg_val(37);
+constexpr size_t fabric_mux_status_address = get_compile_time_arg_val(38);
+constexpr size_t fabric_worker_flow_control_sem = get_compile_time_arg_val(39);
+constexpr size_t fabric_worker_teardown_sem = get_compile_time_arg_val(40);
+constexpr size_t fabric_worker_buffer_index_sem = get_compile_time_arg_val(41);
+
+constexpr uint32_t is_d_variant = get_compile_time_arg_val(42);
+constexpr uint32_t is_h_variant = get_compile_time_arg_val(43);
 
 constexpr uint32_t prefetch_q_end = prefetch_q_base + prefetch_q_size;
 constexpr uint32_t cmddat_q_end = cmddat_q_base + cmddat_q_size;
@@ -192,8 +203,9 @@ static uint32_t rd_block_idx = 0;
 static uint32_t upstream_total_acquired_page_count = 0;
 static uint32_t ringbuffer_wp = scratch_db_base;
 static uint32_t ringbuffer_offset = 0;
-static auto client_interface =
-    reinterpret_cast<volatile tt_l1_ptr fabric_pull_client_interface_t*>(client_interface_addr);
+// On prefetch_h remote this should be connected to fabric router which can send to prefetch_d (semaphore + data)
+// On prefetch_d remote this should be connected to fabric router which can send to prefetch_h (semaphore only)
+static tt::tt_fabric::WorkerToFabricMuxSender<fabric_mux_num_buffers_per_channel> edm_sender;
 
 // Feature to stall the prefetcher, mainly for ExecBuf impl which reuses CmdDataQ
 static enum StallState { STALL_NEXT = 2, STALLED = 1, NOT_STALLED = 0 } stall_state = NOT_STALLED;
@@ -1475,6 +1487,10 @@ static uint32_t process_relay_inline_all(uint32_t data_ptr, uint32_t fence, bool
 
     // Write sizes below may exceed NOC_MAX_BURST_SIZE so we use the any_len version
     // Amount to write depends on how much free space
+    //
+    // Max relay size is determined by the fabric mux
+    // Sending more than the relay size is UB
+    //
     uint32_t downstream_pages_left = (downstream_cb_end - downstream_data_ptr) >> downstream_cb_log_page_size;
     if (downstream_pages_left >= npages) {
         // WAIT is not needed here because previous writes have already been flushed. Prefetch H only uses this
@@ -1667,10 +1683,50 @@ void kernel_main_hd() {
 }
 
 void kernel_main() {
-    DPRINT << "prefetcher_" << is_h_variant << is_d_variant << ": start" << ENDL();
-    if constexpr (use_fabric(fabric_router_noc_xy)) {
-        tt::tt_fabric::fabric_endpoint_init(client_interface, 0 /*unused*/);
+    return;
+    if (!(is_h_variant and !is_d_variant)) {
+        return;
     }
+    // Send data to D variant via MUX
+    edm_sender.init(
+        true,
+        fabric_mux_x,
+        fabric_mux_y,
+        fabric_mux_channel_base_address,
+        fabric_mux_num_buffers_per_channel,
+        fabric_mux_flow_control_address,
+        fabric_mux_connection_handshake_address,
+        fabric_mux_connection_info_address,
+        fabric_mux_channel_buffer_size_bytes,
+        fabric_mux_buffer_index_address,
+        (volatile uint32_t* const)get_semaphore<fd_core_type>(fabric_worker_flow_control_sem),
+        (volatile uint32_t* const)get_semaphore<fd_core_type>(fabric_worker_teardown_sem),
+        get_semaphore<fd_core_type>(fabric_worker_buffer_index_sem));
+
+    auto packet_header = reinterpret_cast<volatile tt_l1_ptr PACKET_HEADER_TYPE*>(fabric_header_rb_base);
+    packet_header->to_chip_unicast(static_cast<uint8_t>(1));
+
+    tt::tt_fabric::wait_for_fabric_endpoint_ready(
+        fabric_mux_x, fabric_mux_y, fabric_mux_status_address, my_fabric_sync_status_addr);
+
+    tt::tt_fabric::fabric_client_connect<fabric_mux_num_buffers_per_channel>(edm_sender);
+
+    DPRINT << "Fabric Client Connected" << ENDL();
+
+    auto src_data = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(cmddat_q_base);
+    src_data[0] = 0x1;
+    src_data[1] = 0x2;
+    src_data[2] = 0x3;
+    src_data[3] = 0x4;
+
+    uint64_t noc_dest_addr = get_noc_addr_helper(downstream_noc_xy, downstream_cb_base);
+    packet_header->to_noc_unicast_write(
+        tt::tt_fabric::NocUnicastCommandHeader{noc_dest_addr}, 16 + sizeof(PACKET_HEADER_TYPE));
+
+    tt::tt_fabric::fabric_async_write<fabric_mux_num_buffers_per_channel>(
+        edm_sender, packet_header, (uint32_t)src_data, 16 + sizeof(PACKET_HEADER_TYPE));
+    noc_async_write_barrier();
+    DPRINT << "Send data done" << ENDL();
 
     if (is_h_variant and is_d_variant) {
         kernel_main_hd();

@@ -5,25 +5,23 @@
 #include "fd_kernel.hpp"
 
 #include <host_api.hpp>
-#include <utility>
 #include <variant>
 
 #include "data_types.hpp"
 #include "demux.hpp"
 #include "device.hpp"
 #include "dispatch.hpp"
-#include "dispatch/kernel_config/fabric_router_vc.hpp"
 #include "dispatch_core_common.hpp"
 #include "dispatch_s.hpp"
 #include "dprint_server.hpp"
 #include "eth_router.hpp"
 #include "eth_tunneler.hpp"
 #include "fabric_types.hpp"
-#include "hal.hpp"
 #include "hal_types.hpp"
 #include "kernel_types.hpp"
 #include "mux.hpp"
 #include "prefetch.hpp"
+#include "fabric_mux.hpp"
 #include "impl/context/metal_context.hpp"
 #include <umd/device/tt_core_coordinates.h>
 
@@ -110,12 +108,13 @@ FDKernel* FDKernel::Generate(
             return new EthRouterKernel(node_id, device_id, servicing_device_id, cq_id, noc_selection, true);
         case PACKET_ROUTER_DEMUX:
             return new EthRouterKernel(node_id, device_id, servicing_device_id, cq_id, noc_selection, false);
-        case FABRIC_ROUTER_VC: return new tt::tt_metal::FabricRouterVC(node_id, device_id, servicing_device_id, cq_id);
+        case FABRIC_MUX:
+            return new tt::tt_metal::FabricMux(node_id, device_id, servicing_device_id, cq_id, noc_selection);
         default: TT_FATAL(false, "Unrecognized dispatch kernel type: {}.", type); return nullptr;
     }
 }
 
-void FDKernel::configure_kernel_variant(
+tt::tt_metal::KernelHandle FDKernel::configure_kernel_variant(
     const string& path,
     const std::vector<uint32_t>& compile_args,
     std::map<string, string> defines_in,
@@ -151,7 +150,7 @@ void FDKernel::configure_kernel_variant(
     defines.insert(defines_in.begin(), defines_in.end());
 
     if (GetCoreType() == CoreType::WORKER) {
-        tt::tt_metal::CreateKernel(
+        return tt::tt_metal::CreateKernel(
             *program_,
             path,
             logical_core_,
@@ -163,7 +162,7 @@ void FDKernel::configure_kernel_variant(
                 .defines = defines,
                 .opt_level = opt_level});
     } else {
-        tt::tt_metal::CreateKernel(
+        return tt::tt_metal::CreateKernel(
             *program_,
             path,
             logical_core_,
@@ -174,4 +173,10 @@ void FDKernel::configure_kernel_variant(
                 .defines = defines,
                 .opt_level = opt_level});
     }
+}
+
+void FDKernel::create_edm_connection_sems(FDKernelEdmConnectionAttributes& attributes) {
+    attributes.worker_flow_control_sem = tt::tt_metal::CreateSemaphore(*program_, logical_core_, 0, GetCoreType());
+    attributes.worker_buffer_index_sem = tt::tt_metal::CreateSemaphore(*program_, logical_core_, 0, GetCoreType());
+    attributes.worker_teardown_sem = tt::tt_metal::CreateSemaphore(*program_, logical_core_, 0, GetCoreType());
 }
