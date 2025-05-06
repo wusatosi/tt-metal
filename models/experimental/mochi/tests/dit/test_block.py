@@ -61,7 +61,7 @@ def create_models(mesh_device, state_dict, partial_state_dict, block_path, dim_x
         mesh_device=mesh_device,
         state_dict=state_dict,
         state_dict_prefix=block_path,
-        weight_cache_path=get_cache_path(os.environ.get("FAKE_DEVICE")),
+        weight_cache_path=get_cache_path(os.environ.get("MESH_DEVICE")),
         layer_num=0,
         dtype=ttnn.bfloat16,
         hidden_size_x=dim_x,
@@ -88,11 +88,7 @@ def create_models(mesh_device, state_dict, partial_state_dict, block_path, dim_x
 )
 @pytest.mark.parametrize(
     "mesh_device",
-    [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
-            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
-        )
-    ],
+    [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
 @pytest.mark.parametrize(
@@ -316,11 +312,7 @@ def load_saved_tensors(block_num):
 )
 @pytest.mark.parametrize(
     "mesh_device",
-    [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
-            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
-        )
-    ],
+    [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
 def test_tt_block_with_saved_tensors(mesh_device, use_program_cache, reset_seeds, block_path, update_y):

@@ -1,10 +1,6 @@
-from typing import Any, Dict, Optional
-
 import ttnn
 import torch
-import torch.nn.functional as F
 from genmo.lib.progress import get_new_progress_bar
-from genmo.lib.utils import Timer
 from genmo.mochi_preview.vae.vae_stats import dit_latents_to_vae_latents
 import numpy as np
 import random
@@ -12,7 +8,6 @@ import random
 from genmo.mochi_preview.pipelines import (
     MochiSingleGPUPipeline,
     move_to_device,
-    t5_tokenizer,
     get_conditioning,
     compute_packed_indices,
 )
@@ -149,14 +144,14 @@ class TTPipeline(MochiSingleGPUPipeline):
                     negative_prompt=negative_prompt,
                 )
 
-            print("get dit")
+            print("load dit onto device")
             dit = self.dit_factory.get_model(local_rank=0, device_id=0, world_size=1)
             print("sample_model")
             latents = sample_model(self.device, dit, conditioning, **kwargs)
             print("deallocate dit")
             dit.dealloc()
 
-            print("get decoder")
+            print("load decoder onto device")
             decoder = self.decoder_factory.get_model(local_rank=0, device_id=0, world_size=1)
             if self.decode_type == "tiled_full":
                 # frames = decode_latents_tiled_full(self.decoder, latents, **self.decode_args)

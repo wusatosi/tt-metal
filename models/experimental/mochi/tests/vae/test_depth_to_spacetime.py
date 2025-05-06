@@ -72,11 +72,7 @@ def test_depth_to_spacetime_torch(B, C, T, H, W, texp, sexp):
 @pytest.mark.parametrize("parallel_factor", [1, 8], ids=["T1", "T8"])
 @pytest.mark.parametrize(
     "mesh_device",
-    [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
-            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
-        )
-    ],
+    [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
 def test_depth_to_spacetime_tt(mesh_device, B, C, T, H, W, texp, sexp, parallel_factor):

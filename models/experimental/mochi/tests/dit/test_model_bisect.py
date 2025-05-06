@@ -78,7 +78,7 @@ def create_models(mesh_device, n_layers: int = 48):
     reference_model.load_state_dict(state_dict)
 
     # Create TT model
-    weight_cache_path = get_cache_path(os.environ.get("FAKE_DEVICE"))
+    weight_cache_path = get_cache_path(os.environ.get("MESH_DEVICE"))
     tt_model = TtAsymmDiTJoint(
         mesh_device=mesh_device,
         state_dict=state_dict,
@@ -94,11 +94,7 @@ def create_models(mesh_device, n_layers: int = 48):
 @pytest.mark.parametrize("n_layers", [1, 2], ids=["L1", "L2"])
 @pytest.mark.parametrize(
     "mesh_device",
-    [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
-            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
-        )
-    ],
+    [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
 def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, reset_seeds):
@@ -171,11 +167,7 @@ def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, 
 @skip_for_grayskull("Requires wormhole_b0 to run")
 @pytest.mark.parametrize(
     "mesh_device",
-    [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
-            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
-        )
-    ],
+    [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
 def test_tt_asymm_dit_joint_prepare(mesh_device, use_program_cache, reset_seeds):
@@ -233,11 +225,7 @@ def test_tt_asymm_dit_joint_prepare(mesh_device, use_program_cache, reset_seeds)
 @skip_for_grayskull("Requires wormhole_b0 to run")
 @pytest.mark.parametrize(
     "mesh_device",
-    [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
-            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
-        )
-    ],
+    [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
 @pytest.mark.parametrize("n_layers", [1, 48], ids=["L1", "L48"])
@@ -474,11 +462,7 @@ def test_tt_asymm_dit_joint_model_fn(mesh_device, use_program_cache, reset_seeds
 @skip_for_grayskull("Requires wormhole_b0 to run")
 @pytest.mark.parametrize(
     "mesh_device",
-    [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
-            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
-        )
-    ],
+    [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
 @pytest.mark.parametrize("n_layers", [1, 48], ids=["L1", "L48"])
@@ -660,11 +644,7 @@ def test_model_fn_no_e2e_optim(mesh_device, use_program_cache, reset_seeds, n_la
 @skip_for_grayskull("Requires wormhole_b0 to run")
 @pytest.mark.parametrize(
     "mesh_device",
-    [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
-            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
-        )
-    ],
+    [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
 @pytest.mark.parametrize("n_layers", [1, 5, 48], ids=["L1", "L5", "L48"])
@@ -783,11 +763,7 @@ def test_each_step(mesh_device, use_program_cache, reset_seeds, n_layers):
 @skip_for_grayskull("Requires wormhole_b0 to run")
 @pytest.mark.parametrize(
     "mesh_device",
-    [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
-            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
-        )
-    ],
+    [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
 @pytest.mark.parametrize("n_layers", [1, 48], ids=["L1", "L48"])
@@ -947,11 +923,7 @@ def compare_to_reference(tt, ref_path):
 @skip_for_grayskull("Requires wormhole_b0 to run")
 @pytest.mark.parametrize(
     "mesh_device",
-    [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
-            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
-        )
-    ],
+    [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
 def test_tt_asymm_dit_joint_preprocess(mesh_device, use_program_cache, reset_seeds):

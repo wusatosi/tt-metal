@@ -13,11 +13,7 @@ from models.experimental.mochi.tt.common import get_mochi_dir, get_cache_path, c
 @skip_for_grayskull("Requires wormhole_b0 to run")
 @pytest.mark.parametrize(
     "mesh_device",
-    [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
-            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
-        )
-    ],
+    [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
@@ -66,7 +62,7 @@ def test_tt_final_layer_inference(mesh_device, use_program_cache, reset_seeds):
     reference_model.load_state_dict(partial_state_dict)
 
     # Create TT model
-    weight_cache_path = get_cache_path(os.environ.get("FAKE_DEVICE"))
+    weight_cache_path = get_cache_path(os.environ.get("MESH_DEVICE"))
     tt_model = TtFinalLayer(
         mesh_device=mesh_device,
         state_dict=state_dict,

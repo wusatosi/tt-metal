@@ -23,7 +23,7 @@ ln -s /path/to/tt-mochi/src/genmo genmo
 ```
 Now run a test:
 ```bash
-export FAKE_DEVICE=T3K # Tells our Mochi to configure itself for T3K
+export MESH_DEVICE=T3K # Tells our Mochi to configure itself for T3K
 export MOCHI_DIR=/path/to/tt-mochi/weights # Tells our Mochi where to find the weights. This dir should contain weights for the dit, decoder, and encoder.
 
 # Run a DiT test with 1 layer

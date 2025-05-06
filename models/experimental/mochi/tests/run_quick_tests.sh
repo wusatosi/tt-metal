@@ -3,8 +3,8 @@
 set -e
 echo "Running mochi tests"
 
-if [ -z "${FAKE_DEVICE}" ]; then
-    echo "Error: FAKE_DEVICE environment variable must be set"
+if [ -z "${MESH_DEVICE}" ]; then
+    echo "Error: MESH_DEVICE environment variable must be set"
     exit 1
 fi
 

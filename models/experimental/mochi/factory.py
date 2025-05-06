@@ -38,7 +38,7 @@ class TtDiTModelFactory(ModelFactory):
         )
 
         # TODO: parametrize based on inputs to get_model
-        self.weight_cache_path = get_cache_path(os.environ.get("FAKE_DEVICE"))
+        self.weight_cache_path = get_cache_path(os.environ.get("MESH_DEVICE"))
         self.weights_path = os.path.join(get_mochi_dir(), "dit.safetensors")
         self.mesh_device = mesh_device
 

@@ -4,10 +4,8 @@ import pytest
 from loguru import logger
 import os
 import ttnn
-import pickle
-from pathlib import Path
 from models.experimental.mochi.tt.vae.conv1x1 import Conv1x1 as TtConv1x1
-from genmo.mochi_preview.vae.models import Conv1x1 as RefConv1x1, Decoder
+from genmo.mochi_preview.vae.models import Conv1x1 as RefConv1x1
 
 from models.experimental.mochi.tt.common import (
     compute_metrics,
@@ -135,11 +133,7 @@ def validate_outputs(tt_output, ref_output, test_name):
 @pytest.mark.parametrize("use_real_weights", [False, True], ids=["random_weights", "real_weights"])
 @pytest.mark.parametrize(
     "mesh_device",
-    [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
-            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
-        )
-    ],
+    [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
 def test_tt_conv3d_1x1x1(
@@ -186,11 +180,7 @@ def test_tt_conv3d_1x1x1(
 @pytest.mark.parametrize("use_real_weights", [False, True], ids=["random_weights", "real_weights"])
 @pytest.mark.parametrize(
     "mesh_device",
-    [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
-            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
-        )
-    ],
+    [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
 def test_tt_conv1x1_linear(
@@ -241,11 +231,7 @@ def test_tt_conv1x1_linear(
 @pytest.mark.parametrize("use_real_weights", [False, True], ids=["random_weights", "real_weights"])
 @pytest.mark.parametrize(
     "mesh_device",
-    [
-        {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
-            os.environ.get("FAKE_DEVICE"), len(ttnn.get_device_ids())
-        )
-    ],
+    [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
 def test_tt_conv1x1_expand(
