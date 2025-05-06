@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <stdint.h>
+#include <cstdint>
 #include "dataflow_api.h"
 #include "cpp/ttnn/operations/data_movement/common/kernels/common.hpp"
 
@@ -18,12 +19,12 @@ inline void print_bf16_pages(uint32_t l1_addr, uint32_t elts_per_page, uint32_t 
 }
 
 void kernel_main() {
-    constexpr uint32_t start_block_id = get_compile_time_arg_val(0);
-    constexpr uint32_t num_blocks = get_compile_time_arg_val(1);
-    constexpr uint32_t ntiles_per_row = get_compile_time_arg_val(2);
-    constexpr uint32_t cb_id_in0 = get_compile_time_arg_val(3);
+    constexpr uint32_t ntiles_per_row = get_compile_time_arg_val(0);
+    constexpr uint32_t cb_id_in0 = get_compile_time_arg_val(1);
 
     uint32_t src_addr = get_arg_val<uint32_t>(0);
+    uint32_t start_block_id = get_arg_val<uint32_t>(1);
+    uint32_t num_blocks = get_arg_val<uint32_t>(2);
 
     constexpr bool src_is_dram = true;
 
