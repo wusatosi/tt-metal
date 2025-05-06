@@ -338,6 +338,10 @@ void MAIN {
             }
         }
         /* END OF FLASH ATTENTION LOOP */
+        for (uint32_t i = 0; i < 10; i++) {
+            asm volatile("nop");
+        }
+
 
         // do reduction across intermediates from other cores if this is the reduction core
         if (do_reduce) {
@@ -388,7 +392,7 @@ void MAIN {
                     copy_block(cb_cur_max, cb_prev_max, Sq_chunk_t);
                     copy_block(cb_cur_sum, cb_prev_sum, Sq_chunk_t);
 #ifndef ARCH_WORMHOLE
-                    UNPACK(asm volatile("fence"));  // #19201 BH hang workaround
+                    //UNPACK(asm volatile("fence"));  // #19201 BH hang workaround
 #endif
                 }
             }

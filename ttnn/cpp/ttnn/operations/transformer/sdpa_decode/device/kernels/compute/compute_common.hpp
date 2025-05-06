@@ -224,15 +224,16 @@ void add_block_inplace(uint32_t in0_cb, uint32_t in1_cb, uint32_t num_tiles) {
     // Postcondition: in0_cb has num_tiles produced
     // Postcondition: in1_cb has num_tiles consumed
 
-    add_tiles_init(in0_cb, in1_cb);
+    //add_tiles_init(in0_cb, in1_cb);
+    add_tiles_init(in0_cb, in1_cb, /*acc_to_dest=*/false, /*skip=*/true);
     cb_wait_front(in0_cb, num_tiles);
     cb_wait_front(in1_cb, num_tiles);
     for (uint32_t i = 0; i < num_tiles; i++) {
         acquire_dst();
-        add_tiles(in0_cb, in1_cb, 0, i, 0);
+        add_tiles(in0_cb, in1_cb, 0, i, 0, true);
         cb_pop_front(in0_cb, 1);
         cb_reserve_back(in0_cb, 1);
-        pack_tile(0, in0_cb);
+        //pack_tile(0, in0_cb);
         cb_push_back(in0_cb, 1);
         release_dst();
     }
@@ -246,7 +247,7 @@ void add_block(uint32_t in0_cb, uint32_t in1_cb, uint32_t out_cb, uint32_t num_t
     // Postcondition: in0_cb has num_tiles produced
     // Postcondition: in1_cb has num_tiles consumed
 
-    add_tiles_init(in0_cb, in1_cb);
+    add_tiles_init(in0_cb, in1_cb, /*acc_to_dest=*/false, /*skip=*/false);
     cb_wait_front(in0_cb, num_tiles);
     cb_wait_front(in1_cb, num_tiles);
     cb_reserve_back(out_cb, num_tiles);

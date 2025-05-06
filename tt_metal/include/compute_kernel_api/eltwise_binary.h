@@ -55,12 +55,12 @@ ALWI void binary_op_init_common(uint32_t icb0, uint32_t icb1, uint32_t ocb) {
  */
 // clang-format on
 template <bool full_init, EltwiseBinaryType eltwise_binary_type>
-ALWI void binary_tiles_init(uint32_t icb0, uint32_t icb1, bool acc_to_dest = false) {
+ALWI void binary_tiles_init(uint32_t icb0, uint32_t icb1, bool acc_to_dest = false, bool skip=false) {
     MATH((llk_math_eltwise_binary_init_with_operands<eltwise_binary_type, NONE, MATH_FIDELITY>(
         icb0, icb1, 0 /*transpose*/, acc_to_dest)));
 
     if constexpr (full_init) {
-        UNPACK((llk_unpack_AB_init<BroadcastType::NONE>(icb0, icb1, 0 /*transpose*/, acc_to_dest)));
+        UNPACK((llk_unpack_AB_init<BroadcastType::NONE>(icb0, icb1, 0 /*transpose*/, acc_to_dest, skip)));
     }
 }
 
@@ -87,8 +87,8 @@ ALWI void mul_tiles_init(uint32_t icb0, uint32_t icb1) { binary_tiles_init<true,
  * | acc_to_dest    | If true, operation = A + B + dst_tile_idx of add_tiles | bool     | 0,1         | False |
  */
 // clang-format on
-ALWI void add_tiles_init(uint32_t icb0, uint32_t icb1, bool acc_to_dest = false) {
-    binary_tiles_init<true, ELWADD>(icb0, icb1, acc_to_dest);
+ALWI void add_tiles_init(uint32_t icb0, uint32_t icb1, bool acc_to_dest = false, bool skip=false) {
+    binary_tiles_init<true, ELWADD>(icb0, icb1, acc_to_dest, skip);
 }
 
 // clang-format off
@@ -157,10 +157,14 @@ ALWI void mul_tiles(uint32_t icb0, uint32_t icb1, uint32_t itile0, uint32_t itil
  * | dst_tile_index | The index of the tile in DST REG for the result C        | uint32_t | Must be less than the acquired size of DST REG | True     |
  */
 // clang-format on
-ALWI void add_tiles(uint32_t icb0, uint32_t icb1, uint32_t itile0, uint32_t itile1, uint32_t idst) {
+ALWI void add_tiles(uint32_t icb0, uint32_t icb1, uint32_t itile0, uint32_t itile1, uint32_t idst, bool skip_part = false) {
+    if (skip_part) {
+    UNPACK((llk_unpack_AB_skip(icb0, icb1, itile0, itile1)));
+    } else {
     UNPACK((llk_unpack_AB(icb0, icb1, itile0, itile1)));
     MATH((llk_math_eltwise_binary<ELWADD, NONE, MATH_FIDELITY, EltwiseBinaryReuseDestType::NONE, DST_ACCUM_MODE>(
         icb0, icb1, idst)));
+    }
 }
 
 // clang-format off

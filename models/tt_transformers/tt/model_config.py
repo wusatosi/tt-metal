@@ -742,8 +742,8 @@ class ModelArgs:
             self.model_config["SDPA_DECODE_PROGCFG"] = ttnn.SDPAProgramConfig(
                 compute_with_storage_grid_size=(8, 8),
                 exp_approx_mode=False,
-                q_chunk_size=128 if self.arch_name == "blackhole" else 256,
-                k_chunk_size=128 if self.arch_name == "blackhole" else 256,
+                q_chunk_size=256 if self.arch_name == "blackhole" else 256,
+                k_chunk_size=256 if self.arch_name == "blackhole" else 256,
             )
 
             self.model_config["SDPA_DECODE_COMPUTE_PROGCFG"] = ttnn.WormholeComputeKernelConfig(
@@ -1424,6 +1424,7 @@ class ModelArgs:
             state_dict = {f"{state_dict_prefix}{k}": torch.randn_like(v) for k, v in state_dict.items()}
         elif self.checkpoint_type == CheckpointType.Meta:
             state_dict = load_meta_state_dict(self.CKPT_DIR, self.n_layers)
+            print(f"GOT STATE DICT {len(state_dict)}")
         else:
             assert self.checkpoint_type == CheckpointType.HuggingFace
             if self.from_hf_url:
@@ -1441,6 +1442,7 @@ class ModelArgs:
             if any([r in k for r in remv]):
                 state_dict.pop(k)
 
+        print("GOT HERE1")
         return state_dict
 
     def create_dram_sharded_mem_config(self, k, n):
