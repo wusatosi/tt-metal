@@ -28,12 +28,12 @@ void kernel_main() {
     // Runtime args
     // Note: Coalesced sizes -> wrt to receiver cores, sizes -> wrt to dram reader cores
     uint32_t rt_args_idx = 0;
-    const uint32_t* coalesced_page_sizes = (uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_tensors)));
-    const uint32_t* coalesced_num_pages = (uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_tensors)));
-    const uint32_t* block_num_tiles = (uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_tensors)));
-    const uint32_t* single_tile_sizes = (uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_tensors)));
+    const uint32_t* coalesced_page_sizes = (const uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_tensors)));
+    const uint32_t* coalesced_num_pages = (const uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_tensors)));
+    const uint32_t* block_num_tiles = (const uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_tensors)));
+    const uint32_t* single_tile_sizes = (const uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_tensors)));
     const uint32_t* block_height_in_tiles =
-        (uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_tensors)));  // Kt / num_blocks = in_block_h;
+        (const uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_tensors)));  // Kt / num_blocks = in_block_h;
 
     uint32_t noc = noc_index;
     for (uint32_t layer = 0; layer < num_layers; layer++) {

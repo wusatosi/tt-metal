@@ -16,9 +16,9 @@ uint32_t vc;
 uint32_t noc_x;
 uint32_t noc_y;
 uint32_t receiver_index;
-tt_l1_ptr uint32_t* page_size;
-tt_l1_ptr uint32_t* num_blocks;
-tt_l1_ptr uint32_t* block_num_tiles;
+const tt_l1_ptr uint32_t* page_size;
+const tt_l1_ptr uint32_t* num_blocks;
+const tt_l1_ptr uint32_t* block_num_tiles;
 
 uint32_t start_page_size;
 
@@ -29,9 +29,9 @@ void kernel_main() {
     noc_y = get_arg_val<uint32_t>(rt_args_idx++);
     receiver_index = get_arg_val<uint32_t>(rt_args_idx++);
 
-    page_size = (tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
-    num_blocks = (tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
-    block_num_tiles = (tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
+    page_size = (const tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
+    num_blocks = (const tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
+    block_num_tiles = (const tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
 
     start_page_size = page_size[0];
 

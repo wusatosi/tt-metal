@@ -131,9 +131,9 @@ void kernel_main() {
     volatile tt_l1_ptr uint32_t* signal_semaphore_addr_ptr2 =
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(signal_semaphore_addr2);
 
-    tt_l1_ptr uint32_t* in0_mcast_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    const tt_l1_ptr uint32_t* in0_mcast_noc_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += in_num_cores;
-    tt_l1_ptr uint32_t* in0_mcast_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    const tt_l1_ptr uint32_t* in0_mcast_noc_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += in_num_cores;
     uint32_t second_half_core = get_arg_val<uint32_t>(arg_idx++);
     uint32_t start_row = get_arg_val<uint32_t>(arg_idx++);

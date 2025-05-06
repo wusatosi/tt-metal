@@ -90,14 +90,14 @@ void kernel_main() {
         uint32_t rx_addr_hi;
         uint32_t start_val = 0;
         bool match;
-        tt_l1_ptr uint32_t* src_endpoint_ids;
-        tt_l1_ptr uint32_t* target_addresses;
+        const tt_l1_ptr uint32_t* src_endpoint_ids;
+        const tt_l1_ptr uint32_t* target_addresses;
 
         // parse runtime args relevant to the command
         src_endpoint_ids =
-            reinterpret_cast<tt_l1_ptr uint32_t*>(get_arg_addr(increment_arg_idx(rt_args_idx, num_producers)));
+            reinterpret_cast<const tt_l1_ptr uint32_t*>(get_arg_addr(increment_arg_idx(rt_args_idx, num_producers)));
         target_addresses =
-            reinterpret_cast<tt_l1_ptr uint32_t*>(get_arg_addr(increment_arg_idx(rt_args_idx, num_producers)));
+            reinterpret_cast<const tt_l1_ptr uint32_t*>(get_arg_addr(increment_arg_idx(rt_args_idx, num_producers)));
 
         // compute max_packet_size_mask (borrowed from tx kernel)
         if constexpr (pkt_dest_size_choice == pkt_dest_size_choices_t::RANDOM) {

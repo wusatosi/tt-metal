@@ -53,18 +53,18 @@ void kernel_main() {
     const uint32_t concat_semaphore_send_addr = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
     const uint32_t concat_semaphore_send_addr2 = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
 
-    tt_l1_ptr uint32_t* core_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    const tt_l1_ptr uint32_t* core_noc_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_cores;
-    tt_l1_ptr uint32_t* core_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    const tt_l1_ptr uint32_t* core_noc_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_cores;
 
-    tt_l1_ptr uint32_t* mcast_dest_noc_start_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    const tt_l1_ptr uint32_t* mcast_dest_noc_start_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_sem_ranges;
-    tt_l1_ptr uint32_t* mcast_dest_noc_start_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    const tt_l1_ptr uint32_t* mcast_dest_noc_start_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_sem_ranges;
-    tt_l1_ptr uint32_t* mcast_dest_noc_end_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    const tt_l1_ptr uint32_t* mcast_dest_noc_end_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_sem_ranges;
-    tt_l1_ptr uint32_t* mcast_dest_noc_end_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    const tt_l1_ptr uint32_t* mcast_dest_noc_end_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_sem_ranges;
 
     size_t arg_for_fab = arg_idx;

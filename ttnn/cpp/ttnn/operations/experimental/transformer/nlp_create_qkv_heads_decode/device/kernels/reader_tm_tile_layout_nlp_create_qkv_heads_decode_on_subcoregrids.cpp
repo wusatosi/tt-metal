@@ -32,8 +32,8 @@ void kernel_main() {
     constexpr uint32_t index_stick_size = get_compile_time_arg_val(15);
     constexpr uint32_t cb_batch_offset_id = get_compile_time_arg_val(16);
 
-    tt_l1_ptr uint32_t* in0_mcast_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(3));
-    tt_l1_ptr uint32_t* in0_mcast_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(3 + in_num_cores));
+    const tt_l1_ptr uint32_t* in0_mcast_noc_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(3));
+    const tt_l1_ptr uint32_t* in0_mcast_noc_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(3 + in_num_cores));
 
     uint32_t device_batch_offset = 0;
 

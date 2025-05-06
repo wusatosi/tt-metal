@@ -17,9 +17,10 @@ void kernel_main() {
     const uint32_t num_sticks_per_core_read = get_arg_val<uint32_t>(7);
     const uint32_t num_read_per_barrier = get_arg_val<uint32_t>(8);
 
-    tt_l1_ptr uint32_t* num_unpadded_sticks = (tt_l1_ptr uint32_t*)(get_arg_addr(9));
-    volatile tt_l1_ptr uint32_t* num_padded_sticks = num_unpadded_sticks + num_dims;
-    volatile tt_l1_ptr uint32_t* id_per_dim = num_padded_sticks + num_dims;
+    const tt_l1_ptr uint32_t* num_unpadded_sticks = (const tt_l1_ptr uint32_t*)(get_arg_addr(9));
+    const tt_l1_ptr uint32_t* num_padded_sticks = num_unpadded_sticks + num_dims;
+    uint32_t id_per_dim[num_dims];
+    memcpy(id_per_dim, num_padded_sticks + num_dims, sizeof(uint32_t) * num_dims);
 
     constexpr bool src0_is_dram = get_compile_time_arg_val(0) == 1;
     constexpr uint32_t misalignment = get_compile_time_arg_val(1);

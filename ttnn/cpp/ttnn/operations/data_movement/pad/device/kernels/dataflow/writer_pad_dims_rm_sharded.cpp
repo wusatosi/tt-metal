@@ -43,7 +43,7 @@ void kernel_main() {
     uint32_t front_pad_n = get_arg_val<uint32_t>(2);
     uint32_t front_pad_c = get_arg_val<uint32_t>(3);
     uint32_t front_pad_h = get_arg_val<uint32_t>(4);
-    tt_l1_ptr uint32_t* start_dim_offset = (tt_l1_ptr uint32_t*)(get_arg_addr(5));
+    const tt_l1_ptr uint32_t* start_dim_offset = (const tt_l1_ptr uint32_t*)(get_arg_addr(5));
 
     constexpr uint32_t N = get_compile_time_arg_val(0);
     constexpr uint32_t H = get_compile_time_arg_val(1);

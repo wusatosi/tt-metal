@@ -13,29 +13,29 @@ constexpr uint32_t num_receivers = get_compile_time_arg_val(1);
 constexpr uint32_t num_layers = get_compile_time_arg_val(2);
 constexpr uint32_t remote_cb_id = get_compile_time_arg_val(3);
 
-tt_l1_ptr uint32_t* noc_x;
-tt_l1_ptr uint32_t* noc_y;
-tt_l1_ptr uint32_t* coalesced_page_size;
-tt_l1_ptr uint32_t* coalesced_num_pages;
-tt_l1_ptr uint32_t* num_blocks;
-tt_l1_ptr uint32_t* block_num_tiles;
-tt_l1_ptr uint32_t* page_size;
-tt_l1_ptr uint32_t* num_tile_rows;
+const tt_l1_ptr uint32_t* noc_x;
+const tt_l1_ptr uint32_t* noc_y;
+const tt_l1_ptr uint32_t* coalesced_page_size;
+const tt_l1_ptr uint32_t* coalesced_num_pages;
+const tt_l1_ptr uint32_t* num_blocks;
+const tt_l1_ptr uint32_t* block_num_tiles;
+const tt_l1_ptr uint32_t* page_size;
+const tt_l1_ptr uint32_t* num_tile_rows;
 
 uint32_t start_page_size;
 uint32_t layer = 0;
 
 void kernel_main() {
     uint32_t rt_args_idx = 0;
-    noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_receivers)));
-    noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_receivers)));
+    noc_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_receivers)));
+    noc_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_receivers)));
 
-    coalesced_page_size = (tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
-    coalesced_num_pages = (tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
-    num_blocks = (tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
-    block_num_tiles = (tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
-    page_size = (tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
-    num_tile_rows = (tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
+    coalesced_page_size = (const tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
+    coalesced_num_pages = (const tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
+    num_blocks = (const tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
+    block_num_tiles = (const tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
+    page_size = (const tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
+    num_tile_rows = (const tt_l1_ptr uint32_t*)(get_arg_addr(increment_arg_idx(rt_args_idx, num_layers)));
 
     start_page_size = page_size[0];
 

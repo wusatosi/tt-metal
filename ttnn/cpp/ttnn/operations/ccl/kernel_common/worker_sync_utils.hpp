@@ -91,11 +91,12 @@ uint32_t increment_arg_idx(uint32_t& arg_idx, uint32_t num_args = 1) {
 // Used to signal an operation that it can start processing data, resulting in overlapping
 struct OpSignaler {
     uint32_t num_workers_to_sync = 0;
-    uint32_t* workers_noc_coords = nullptr;  // Worker NOC coordinates [x1, y1, x2, y2...], first one is for master
+    const uint32_t* workers_noc_coords =
+        nullptr;  // Worker NOC coordinates [x1, y1, x2, y2...], first one is for master
     uint32_t worker_sync_sem_addr = 0;
 
     uint32_t num_fused_op_cores_to_signal = 0;
-    uint32_t* signal_op_cores_noc_coords = nullptr;
+    const uint32_t* signal_op_cores_noc_coords = nullptr;
     uint32_t signal_op_sem_addr = 0;
     bool mcast_signal_op_cores = true;
     uint32_t curr_worker_is_master = 0;
@@ -109,12 +110,12 @@ struct OpSignaler {
         this->num_workers_to_sync = get_arg_val<uint32_t>(rt_args_idx++);
         uint32_t curr_worker_index = get_arg_val<uint32_t>(rt_args_idx++);
         this->worker_sync_sem_addr = get_semaphore(get_arg_val<uint32_t>(rt_args_idx++));
-        this->workers_noc_coords = (uint32_t*)get_arg_addr(
+        this->workers_noc_coords = (const uint32_t*)get_arg_addr(
             increment_arg_idx(rt_args_idx, this->num_workers_to_sync * 2));  // Skip over the number of workers
 
         this->num_fused_op_cores_to_signal = get_arg_val<uint32_t>(rt_args_idx++);
         this->signal_op_cores_noc_coords =
-            (uint32_t*)get_arg_addr(increment_arg_idx(rt_args_idx, this->num_fused_op_cores_to_signal * 2));
+            (const uint32_t*)get_arg_addr(increment_arg_idx(rt_args_idx, this->num_fused_op_cores_to_signal * 2));
         this->signal_op_sem_addr = get_semaphore(get_arg_val<uint32_t>(rt_args_idx++));
         this->mcast_signal_op_cores = get_arg_val<uint32_t>(rt_args_idx++) == 1;
 

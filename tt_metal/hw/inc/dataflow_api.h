@@ -95,7 +95,7 @@ inline uint8_t get_relative_logical_y() {
  * | arg_idx        | Unique Runtime argument index                                           | uint32_t | 0 to 255    | True     |
  */
 // clang-format on
-static FORCE_INLINE uint32_t get_arg_addr(int arg_idx) { return (uint32_t)&rta_l1_base[arg_idx]; }
+static FORCE_INLINE const uint32_t* get_arg_addr(int arg_idx) { return (const uint32_t*)&rta_l1_base[arg_idx]; }
 
 // clang-format off
 /**
@@ -916,7 +916,7 @@ FORCE_INLINE void noc_async_read_tile(
  * | Argument          | Description                                             | Type     | Valid Range                                                    | Required |
  * |-------------------|---------------------------------------------------------|----------|----------------------------------------------------------------|----------|
  * | src_local_l1_addr | Source address in local L1 memory                       | uint32_t | 0..1MB                                                         | True     |
- * | dst_noc_addr      | Encoding of the destination NOC location (x,y)+address  | uint64_t | DOX-TODO (insert a reference to what constitutes valid coords) | True     |
+ * | dst_noc_addr      | Encoding of the destination NOC location (x,y)+address  | uint64_t | DOX-TODO (ins ert  a reference to what constitutes valid coords) | rue    |
  * | size              | Size of data transfer in bytes                          | uint32_t | 0..1MB                                                         | True     |
  */
 // clang-format on

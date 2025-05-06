@@ -13,9 +13,9 @@ void kernel_main() {
     uint32_t num_sticks_per_shard_core = get_arg_val<uint32_t>(2);
     uint32_t num_cores_read = get_arg_val<uint32_t>(3);
     uint32_t read_stick_stride = get_arg_val<uint32_t>(4);
-    tt_l1_ptr uint32_t* read_stick_offset = (tt_l1_ptr uint32_t*)(get_arg_addr(5));
-    tt_l1_ptr uint32_t* noc_coord_x = (tt_l1_ptr uint32_t*)(get_arg_addr(5 + num_cores_read));
-    tt_l1_ptr uint32_t* noc_coord_y = (tt_l1_ptr uint32_t*)(get_arg_addr(5 + num_cores_read * 2));
+    const tt_l1_ptr uint32_t* read_stick_offset = (const tt_l1_ptr uint32_t*)(get_arg_addr(5));
+    const tt_l1_ptr uint32_t* noc_coord_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(5 + num_cores_read));
+    const tt_l1_ptr uint32_t* noc_coord_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(5 + num_cores_read * 2));
 
     constexpr uint32_t cb_in0 = get_compile_time_arg_val(0);
     constexpr uint32_t cb_out0 = get_compile_time_arg_val(1);

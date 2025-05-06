@@ -83,13 +83,13 @@ void kernel_main() {
         return;  // early exit because no computes needs to be done
     }
 
-    tt_l1_ptr uint32_t* all_reducer_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    const tt_l1_ptr uint32_t* all_reducer_noc_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_reducer_cores;
-    tt_l1_ptr uint32_t* all_reducer_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    const tt_l1_ptr uint32_t* all_reducer_noc_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_reducer_cores;
-    tt_l1_ptr uint32_t* all_output_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    const tt_l1_ptr uint32_t* all_output_noc_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_output_cores;
-    tt_l1_ptr uint32_t* all_output_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx++));
+    const tt_l1_ptr uint32_t* all_output_noc_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx++));
 
     uint32_t reduce_core_index = (cur_batch * num_cores_per_batch) / num_cores_per_head + cur_head_group;
     uint32_t reduce_core_noc_x = all_reducer_noc_x[reduce_core_index];

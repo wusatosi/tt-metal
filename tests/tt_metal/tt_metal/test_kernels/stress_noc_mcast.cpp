@@ -28,7 +28,7 @@ inline uint32_t next_rand(tt_l1_ptr uint8_t* rnds, uint32_t& rnd_index) {
 
 void kernel_main() {
     uint64_t done_time = c_tensix_core::read_wall_clock() + duration;
-    tt_l1_ptr uint8_t* rnds = (tt_l1_ptr uint8_t*)(get_arg_addr(0));
+    const tt_l1_ptr uint8_t* rnds = (const tt_l1_ptr uint8_t*)(get_arg_addr(0));
     uint32_t rnd_index = 0;
 
     uint64_t stall_time = 0;

@@ -52,9 +52,9 @@ void kernel_main() {
     uint32_t in1_mcast_sender_id = get_arg_val<uint32_t>(i++);
     uint32_t in1_mcast_sender_num_x = get_arg_val<uint32_t>(i++);
     uint32_t in1_mcast_sender_num_y = get_arg_val<uint32_t>(i++);
-    tt_l1_ptr uint32_t* in1_mcast_sender_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(i));
+    const tt_l1_ptr uint32_t* in1_mcast_sender_noc_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(i));
     i += in1_mcast_sender_num_x;
-    tt_l1_ptr uint32_t* in1_mcast_sender_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(i));
+    const tt_l1_ptr uint32_t* in1_mcast_sender_noc_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(i));
     i += in1_mcast_sender_num_y;
 
     constexpr bool src1_is_dram = get_compile_time_arg_val(1) == 1;

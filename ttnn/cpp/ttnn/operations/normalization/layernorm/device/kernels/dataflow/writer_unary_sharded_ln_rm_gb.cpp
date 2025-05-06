@@ -32,7 +32,7 @@ void kernel_main() {
     // Reshard writer
     const uint32_t num_segments_to_write_back = get_arg_val<uint32_t>(7);
     const uint32_t storage_core_start_offset = get_arg_val<uint32_t>(8);
-    tt_l1_ptr uint32_t* segment_args = (tt_l1_ptr uint32_t*)(get_arg_addr(9));
+    const tt_l1_ptr uint32_t* segment_args = (const tt_l1_ptr uint32_t*)(get_arg_addr(9));
 
     constexpr uint32_t cb_gamma = tt::CBIndex::c_5;
     constexpr uint32_t cb_beta = tt::CBIndex::c_6;

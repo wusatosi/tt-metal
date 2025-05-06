@@ -84,10 +84,10 @@ void kernel_main() {
 
     // X and Y lookup are independant.
     // X Lookup table for translating logical to physical cores.
-    tt_l1_ptr uint32_t* act_mcast_x_lookup = (tt_l1_ptr uint32_t*)(get_arg_addr(i));
+    const tt_l1_ptr uint32_t* act_mcast_x_lookup = (const tt_l1_ptr uint32_t*)(get_arg_addr(i));
     i += num_cores_x;
     // Y lookup.
-    tt_l1_ptr uint32_t* act_mcast_y_lookup = (tt_l1_ptr uint32_t*)(get_arg_addr(i));
+    const tt_l1_ptr uint32_t* act_mcast_y_lookup = (const tt_l1_ptr uint32_t*)(get_arg_addr(i));
 
     // Equivalent to Core Index.
     uint32_t this_core_id = this_core_x + (num_cores_x * this_core_y);

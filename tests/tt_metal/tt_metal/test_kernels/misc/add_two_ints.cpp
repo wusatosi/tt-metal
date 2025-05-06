@@ -12,8 +12,8 @@
  */
 
 void kernel_main() {
-    tt_l1_ptr std::uint32_t* arg_a = (tt_l1_ptr uint32_t*)get_arg_addr(0);
-    tt_l1_ptr std::uint32_t* arg_b = (tt_l1_ptr uint32_t*)get_arg_addr(1);
+    const tt_l1_ptr std::uint32_t* arg_a = (const tt_l1_ptr uint32_t*)get_arg_addr(0);
+    const tt_l1_ptr std::uint32_t* arg_b = (const tt_l1_ptr uint32_t*)get_arg_addr(1);
     constexpr uint32_t l1_address = get_compile_time_arg_val(0);
 
     volatile tt_l1_ptr std::uint32_t* result = (tt_l1_ptr uint32_t*)(l1_address);

@@ -42,17 +42,17 @@ void kernel_main() {
     uint32_t index_in_cores = get_arg_val<uint32_t>(arg_idx++);
     uint32_t block_num_tiles = get_arg_val<uint32_t>(arg_idx++);
 
-    tt_l1_ptr uint32_t* q_in0_mcast_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
-    tt_l1_ptr uint32_t* q_in0_mcast_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx + q_num_cores));
+    const tt_l1_ptr uint32_t* q_in0_mcast_noc_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    const tt_l1_ptr uint32_t* q_in0_mcast_noc_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx + q_num_cores));
 
-    tt_l1_ptr uint32_t* k_in0_mcast_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx + 2 * q_num_cores));
-    tt_l1_ptr uint32_t* k_in0_mcast_noc_y =
-        (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx + 2 * q_num_cores + q_num_cores));
+    const tt_l1_ptr uint32_t* k_in0_mcast_noc_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx + 2 * q_num_cores));
+    const tt_l1_ptr uint32_t* k_in0_mcast_noc_y =
+        (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx + 2 * q_num_cores + q_num_cores));
 
-    tt_l1_ptr uint32_t* v_in0_mcast_noc_x =
-        (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx + 2 * q_num_cores + 2 * q_num_cores));
-    tt_l1_ptr uint32_t* v_in0_mcast_noc_y =
-        (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx + 2 * q_num_cores + 2 * q_num_cores + q_num_cores));
+    const tt_l1_ptr uint32_t* v_in0_mcast_noc_x =
+        (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx + 2 * q_num_cores + 2 * q_num_cores));
+    const tt_l1_ptr uint32_t* v_in0_mcast_noc_y =
+        (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx + 2 * q_num_cores + 2 * q_num_cores + q_num_cores));
 
     // rt args for reduction receiver kernel
     const uint32_t signal_semaphore_addr =

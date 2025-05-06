@@ -16,7 +16,7 @@ void kernel_main() {
     const uint32_t num_segments = get_arg_val<uint32_t>(4);
 
     uint32_t args_idx = 0;
-    tt_l1_ptr uint32_t* args = (tt_l1_ptr uint32_t*)(get_arg_addr(5));
+    const tt_l1_ptr uint32_t* args = (const tt_l1_ptr uint32_t*)(get_arg_addr(5));
 
     uint32_t base_l1_read_addr = get_read_ptr(shard_cb_id);
 

@@ -10,11 +10,11 @@ void kernel_main() {
     constexpr uint32_t num_sticks_padded = get_compile_time_arg_val(1);
 
     const uint32_t num_cores_read = get_arg_val<uint32_t>(0);
-    tt_l1_ptr uint32_t* read_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(1));
-    tt_l1_ptr uint32_t* read_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(2));
-    tt_l1_ptr uint32_t* num_stick_chunks = (tt_l1_ptr uint32_t*)(get_arg_addr(1 + num_cores_read * 2));
-    tt_l1_ptr uint32_t* chunk_start_id = (tt_l1_ptr uint32_t*)(get_arg_addr(1 + num_cores_read * 3));
-    tt_l1_ptr uint32_t* chunk_num_sticks = (tt_l1_ptr uint32_t*)(chunk_start_id + 1);
+    const tt_l1_ptr uint32_t* read_noc_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(1));
+    const tt_l1_ptr uint32_t* read_noc_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(2));
+    const tt_l1_ptr uint32_t* num_stick_chunks = (const tt_l1_ptr uint32_t*)(get_arg_addr(1 + num_cores_read * 2));
+    const tt_l1_ptr uint32_t* chunk_start_id = (const tt_l1_ptr uint32_t*)(get_arg_addr(1 + num_cores_read * 3));
+    const tt_l1_ptr uint32_t* chunk_num_sticks = (const tt_l1_ptr uint32_t*)(chunk_start_id + 1);
 
     constexpr auto cb_in0 = tt::CBIndex::c_0;
     constexpr auto cb_out0 = tt::CBIndex::c_16;

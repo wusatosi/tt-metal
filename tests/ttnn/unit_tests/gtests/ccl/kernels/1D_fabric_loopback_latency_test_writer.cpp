@@ -47,14 +47,15 @@ void kernel_main() {
             0);
     }
     size_t num_downstream_congestion_writers = get_arg_val<uint32_t>(arg_idx++);
-    size_t* downstream_congestion_writer_teardown_semaphore_addresses_ptr =
-        reinterpret_cast<size_t*>(get_arg_addr(arg_idx));
+    const size_t* downstream_congestion_writer_teardown_semaphore_addresses_ptr =
+        reinterpret_cast<const size_t*>(get_arg_addr(arg_idx));
     arg_idx += num_downstream_congestion_writers;
-    size_t* downstream_congestion_writer_noc_x_list_ptr = reinterpret_cast<size_t*>(get_arg_addr(arg_idx));
+    const size_t* downstream_congestion_writer_noc_x_list_ptr = reinterpret_cast<const size_t*>(get_arg_addr(arg_idx));
     arg_idx += num_downstream_congestion_writers;
-    size_t* downstream_congestion_writer_noc_y_list_ptr = reinterpret_cast<size_t*>(get_arg_addr(arg_idx));
+    const size_t* downstream_congestion_writer_noc_y_list_ptr = reinterpret_cast<const size_t*>(get_arg_addr(arg_idx));
     arg_idx += num_downstream_congestion_writers;
-    size_t* downstream_congestion_writer_hop_distance_list_ptr = reinterpret_cast<size_t*>(get_arg_addr(arg_idx));
+    const size_t* downstream_congestion_writer_hop_distance_list_ptr =
+        reinterpret_cast<const size_t*>(get_arg_addr(arg_idx));
     arg_idx += num_downstream_congestion_writers;
 
     auto fabric_connection = FabricConnectionManager::build_from_args(arg_idx);

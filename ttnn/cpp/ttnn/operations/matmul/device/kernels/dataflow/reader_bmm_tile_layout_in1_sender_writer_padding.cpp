@@ -128,8 +128,8 @@ void kernel_main() {
     const uint32_t vc = get_arg_val<uint32_t>(rt_args_idx++);
     const uint32_t num_dram_shards_to_read = get_arg_val<uint32_t>(rt_args_idx++);
     const uint32_t dram_tensor_start_offset = get_arg_val<uint32_t>(rt_args_idx++);
-    tt_l1_ptr uint32_t* in1_block_w_dram_stride_bytes = (tt_l1_ptr uint32_t*)get_arg_addr(rt_args_idx++);
-    tt_l1_ptr uint32_t* current_dram_bank_id = (tt_l1_ptr uint32_t*)get_arg_addr(rt_args_idx++);
+    const tt_l1_ptr uint32_t* in1_block_w_dram_stride_bytes = (const tt_l1_ptr uint32_t*)(get_arg_addr(rt_args_idx++));
+    const tt_l1_ptr uint32_t* current_dram_bank_id = (const tt_l1_ptr uint32_t*)(get_arg_addr(rt_args_idx++));
 
     constexpr uint32_t in1_dram_block_num_tiles = get_compile_time_arg_val(32);
     constexpr uint32_t in1_block_w_dram_bytes = get_compile_time_arg_val(33);

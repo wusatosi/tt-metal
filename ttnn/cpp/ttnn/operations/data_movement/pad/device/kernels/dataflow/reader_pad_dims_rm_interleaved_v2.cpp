@@ -23,7 +23,7 @@ void kernel_main() {
     uint32_t front_pad_n = get_arg_val<uint32_t>(4);
     uint32_t front_pad_c = get_arg_val<uint32_t>(5);
     uint32_t front_pad_h = get_arg_val<uint32_t>(6);
-    tt_l1_ptr uint32_t* start_dim_offset = (tt_l1_ptr uint32_t*)(get_arg_addr(7));
+    const tt_l1_ptr uint32_t* start_dim_offset = (const tt_l1_ptr uint32_t*)(get_arg_addr(7));
 
     constexpr bool src_is_dram = get_compile_time_arg_val(0) == 1;
     constexpr uint32_t N = get_compile_time_arg_val(1);

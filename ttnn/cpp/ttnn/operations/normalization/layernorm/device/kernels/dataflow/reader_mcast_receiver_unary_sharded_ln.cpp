@@ -29,8 +29,8 @@ void kernel_main() {
     const bool is_second_stage_reader = get_arg_val<uint32_t>(2);
     const uint32_t start_x = get_arg_val<uint32_t>(3);
     const uint32_t start_y = get_arg_val<uint32_t>(4);
-    volatile tt_l1_ptr uint32_t* in0_remote_noc_x = (volatile tt_l1_ptr uint32_t*)(get_arg_addr(5));
-    volatile tt_l1_ptr uint32_t* in0_remote_noc_y = (volatile tt_l1_ptr uint32_t*)(get_arg_addr(5 + num_x));
+    const tt_l1_ptr uint32_t* in0_remote_noc_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(5));
+    const tt_l1_ptr uint32_t* in0_remote_noc_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(5 + num_x));
 
     const uint32_t num_tiles_to_read = is_last_all_to_all_worker ? num_tiles_per_worker_last : num_tiles_per_worker;
 

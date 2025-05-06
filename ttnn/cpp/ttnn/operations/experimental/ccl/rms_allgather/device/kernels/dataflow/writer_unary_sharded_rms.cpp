@@ -49,9 +49,9 @@ void kernel_main() {
         uint32_t num_cores = get_arg_val<uint32_t>(arg_idx++);
         const uint8_t out_ready_sem_noc0_x = get_arg_val<uint32_t>(arg_idx++);
         const uint8_t out_ready_sem_noc0_y = get_arg_val<uint32_t>(arg_idx++);
-        tt_l1_ptr uint32_t* core_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+        const tt_l1_ptr uint32_t* core_noc_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
         arg_idx += num_cores;
-        tt_l1_ptr uint32_t* core_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+        const tt_l1_ptr uint32_t* core_noc_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
         arg_idx += num_cores;
         auto fabric_connection =
             FabricConnectionManager::build_from_args<FabricConnectionManager::BUILD_AND_OPEN_CONNECTION_START_ONLY>(

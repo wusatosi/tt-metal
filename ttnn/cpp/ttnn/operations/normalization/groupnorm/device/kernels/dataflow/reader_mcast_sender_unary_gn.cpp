@@ -122,8 +122,8 @@ void kernel_main() {
     uint32_t mcast_last_group_dest_noc_end_x;
     uint32_t mcast_last_group_dest_noc_end_y;
     // volatile tt_l1_ptr uint32_t * noc_coord;
-    tt_l1_ptr uint32_t* noc_coord_x;
-    tt_l1_ptr uint32_t* noc_coord_y;
+    const tt_l1_ptr uint32_t* noc_coord_x;
+    const tt_l1_ptr uint32_t* noc_coord_y;
 
     // number of cores in mcast groups
     uint32_t num_mcast_cores_first_group;
@@ -148,8 +148,8 @@ void kernel_main() {
         mcast_last_group_dest_noc_end_y = get_arg_val<uint32_t>(20);
         num_mcast_cores_last_group = get_arg_val<uint32_t>(21);
 
-        noc_coord_x = (tt_l1_ptr uint32_t*)(get_arg_addr(22));
-        noc_coord_y = (tt_l1_ptr uint32_t*)(get_arg_addr(22 + num_mcast_cores));
+        noc_coord_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(22));
+        noc_coord_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(22 + num_mcast_cores));
 
     } else if (has_mcast_first_group and not has_mcast_last_group) {
         mcast_first_group_dest_noc_start_x = get_arg_val<uint32_t>(12);
@@ -158,8 +158,8 @@ void kernel_main() {
         mcast_first_group_dest_noc_end_y = get_arg_val<uint32_t>(15);
         num_mcast_cores_first_group = get_arg_val<uint32_t>(16);
 
-        noc_coord_x = (tt_l1_ptr uint32_t*)(get_arg_addr(17));
-        noc_coord_y = (tt_l1_ptr uint32_t*)(get_arg_addr(17 + num_mcast_cores));
+        noc_coord_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(17));
+        noc_coord_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(17 + num_mcast_cores));
 
     } else if (not has_mcast_first_group and has_mcast_last_group) {
         mcast_last_group_dest_noc_start_x = get_arg_val<uint32_t>(12);
@@ -168,12 +168,12 @@ void kernel_main() {
         mcast_last_group_dest_noc_end_y = get_arg_val<uint32_t>(15);
         num_mcast_cores_last_group = get_arg_val<uint32_t>(16);
 
-        noc_coord_x = (tt_l1_ptr uint32_t*)(get_arg_addr(17));
-        noc_coord_y = (tt_l1_ptr uint32_t*)(get_arg_addr(17 + num_mcast_cores));
+        noc_coord_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(17));
+        noc_coord_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(17 + num_mcast_cores));
 
     } else {
-        noc_coord_x = (tt_l1_ptr uint32_t*)(get_arg_addr(12));
-        noc_coord_y = (tt_l1_ptr uint32_t*)(get_arg_addr(12 + num_mcast_cores));
+        noc_coord_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(12));
+        noc_coord_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(12 + num_mcast_cores));
     }
 
     const uint64_t reduce_sender_semaphore_noc_addr = get_noc_multicast_addr(

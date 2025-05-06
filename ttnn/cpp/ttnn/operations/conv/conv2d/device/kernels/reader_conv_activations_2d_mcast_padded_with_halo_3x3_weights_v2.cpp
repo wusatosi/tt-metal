@@ -105,7 +105,7 @@ void kernel_main() {
     uint32_t act_mcast_sender_noc_x = get_arg_val<uint32_t>(i);
     i += 1;
 
-    tt_l1_ptr uint32_t* act_mcast_sender_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(i));
+    const tt_l1_ptr uint32_t* act_mcast_sender_noc_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(i));
 
     volatile tt_l1_ptr uint32_t* packed_reader_indices_ptr =
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(get_write_ptr(cb_reader_indices));

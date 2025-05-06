@@ -296,19 +296,19 @@ void kernel_main() {
     const size_t dest_noc_y_bwd = get_arg_val<uint32_t>(arg_idx++);
 
     const size_t num_send_types = get_arg_val<uint32_t>(arg_idx++);
-    size_t* send_types_int = reinterpret_cast<size_t*>(get_arg_addr(arg_idx));
+    const size_t* send_types_int = reinterpret_cast<const size_t*>(get_arg_addr(arg_idx));
     arg_idx += num_send_types;
-    size_t* chip_send_types_int = reinterpret_cast<size_t*>(get_arg_addr(arg_idx));
+    const size_t* chip_send_types_int = reinterpret_cast<const size_t*>(get_arg_addr(arg_idx));
     arg_idx += num_send_types;
-    size_t* send_counts_per_type = reinterpret_cast<size_t*>(get_arg_addr(arg_idx));
+    const size_t* send_counts_per_type = reinterpret_cast<const size_t*>(get_arg_addr(arg_idx));
     arg_idx += num_send_types;
-    size_t* num_fwd_hops_per_type = reinterpret_cast<size_t*>(get_arg_addr(arg_idx));
+    const size_t* num_fwd_hops_per_type = reinterpret_cast<const size_t*>(get_arg_addr(arg_idx));
     arg_idx += num_send_types;
-    size_t* num_bwd_hops_per_type = reinterpret_cast<size_t*>(get_arg_addr(arg_idx));
+    const size_t* num_bwd_hops_per_type = reinterpret_cast<const size_t*>(get_arg_addr(arg_idx));
     arg_idx += num_send_types;
-    size_t* send_type_payload_sizes = reinterpret_cast<size_t*>(get_arg_addr(arg_idx));
+    const size_t* send_type_payload_sizes = reinterpret_cast<const size_t*>(get_arg_addr(arg_idx));
     arg_idx += num_send_types;
-    size_t* flush_send = reinterpret_cast<size_t*>(get_arg_addr(arg_idx));
+    const size_t* flush_send = reinterpret_cast<size_t*>(const get_arg_addr(arg_idx));
     arg_idx += num_send_types;
 
     const size_t source_l1_cb_index = get_arg_val<uint32_t>(arg_idx++);

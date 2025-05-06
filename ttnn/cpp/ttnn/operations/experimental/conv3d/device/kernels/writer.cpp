@@ -54,9 +54,9 @@ void kernel_main() {
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(semaphore_addr);
 
     // Get worker core coordinates
-    tt_l1_ptr uint32_t* worker_core_xs = (tt_l1_ptr uint32_t*)(get_arg_addr(argidx));
+    const tt_l1_ptr uint32_t* worker_core_xs = (const tt_l1_ptr uint32_t*)(get_arg_addr(argidx));
     argidx += num_workers;
-    tt_l1_ptr uint32_t* worker_core_ys = (tt_l1_ptr uint32_t*)(get_arg_addr(argidx));
+    const tt_l1_ptr uint32_t* worker_core_ys = (const tt_l1_ptr uint32_t*)(get_arg_addr(argidx));
 
     constexpr uint32_t tile_bytes = get_tile_size(cb_weight_tiled);
     constexpr DataFormat data_format = get_dataformat(cb_weight_tiled);

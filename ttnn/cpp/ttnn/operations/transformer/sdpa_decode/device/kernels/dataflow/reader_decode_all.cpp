@@ -97,9 +97,9 @@ void kernel_main() {
         return;  // early exit because no computes needs to be done
     }
 
-    tt_l1_ptr uint32_t* all_output_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
+    const tt_l1_ptr uint32_t* all_output_noc_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx));
     arg_idx += num_output_cores;
-    tt_l1_ptr uint32_t* all_output_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx++));
+    const tt_l1_ptr uint32_t* all_output_noc_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(arg_idx++));
 
     uint32_t output_core_noc_x = all_output_noc_x[cur_batch];
     uint32_t output_core_noc_y = all_output_noc_y[cur_batch];

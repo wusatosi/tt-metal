@@ -22,8 +22,8 @@ void kernel_main() {
     constexpr uint32_t face_h = get_compile_time_arg_val(8);
     constexpr uint32_t face_hw = get_compile_time_arg_val(9);
 
-    tt_l1_ptr uint32_t* in0_mcast_noc_x = (tt_l1_ptr uint32_t*)(get_arg_addr(2));
-    tt_l1_ptr uint32_t* in0_mcast_noc_y = (tt_l1_ptr uint32_t*)(get_arg_addr(2 + in_num_cores));
+    const tt_l1_ptr uint32_t* in0_mcast_noc_x = (const tt_l1_ptr uint32_t*)(get_arg_addr(2));
+    const tt_l1_ptr uint32_t* in0_mcast_noc_y = (const tt_l1_ptr uint32_t*)(get_arg_addr(2 + in_num_cores));
 
     // Q
     uint32_t cur_core_idx = 0;

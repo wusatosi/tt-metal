@@ -12,7 +12,7 @@ inline void write_resharded_data(
     uint32_t cb_out_resharded,
     uint32_t num_segments_to_write_back,
     uint32_t storage_core_start_offset,
-    tt_l1_ptr uint32_t* segment_args,
+    const tt_l1_ptr uint32_t* segment_args,
     uint32_t worker_core_stride_w_bytes,
     uint32_t storage_core_stride_w_bytes,
     uint32_t block_ht) {

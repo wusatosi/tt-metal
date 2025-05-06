@@ -27,7 +27,7 @@ void kernel_main() {
     DPRINT << "num_sticks_per_core_read: " << num_sticks_per_core_read << ENDL();
     DPRINT << "num_read_per_barrier: " << num_read_per_barrier << ENDL();
 #endif
-    tt_l1_ptr uint32_t* num_unpadded_sticks = (tt_l1_ptr uint32_t*)(get_arg_addr(9));
+    const tt_l1_ptr uint32_t* num_unpadded_sticks = (const tt_l1_ptr uint32_t*)(get_arg_addr(9));
     volatile tt_l1_ptr uint32_t* num_padded_sticks = num_unpadded_sticks + num_dims;
     volatile tt_l1_ptr uint32_t* id_per_dim = num_padded_sticks + num_dims;
     constexpr uint32_t cb_id_out0 = get_compile_time_arg_val(0);
