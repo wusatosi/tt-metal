@@ -25,12 +25,18 @@ from models.demos.llama3_subdevices.tt.llama_common import (
     check_mesh_tensor_alloc,
 )
 
+from conftest import is_6u, is_tg_cluster
+
 PACKET_WORKER_CRS = ttnn.CoreRangeSet(
     [
         ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(3, 1)),
         ttnn.CoreRange(ttnn.CoreCoord(1, 2), ttnn.CoreCoord(2, 2)),
     ]
 )
+
+
+def is_4u_cluster():
+    return is_tg_cluster()
 
 
 def gen_tensor(dim, shard_height, shard_width, num_devices_scatter, num_devices_fracture, num_cores, scheme="random"):
@@ -407,6 +413,110 @@ def test_fabric_reduce_scatter_tg_no_trace(mesh_device, trace_mode):
         warmup_iters,
         trace_mode,
         num_links=3,
+        scheme="random",
+    )
+
+
+@pytest.mark.parametrize(
+    "device_params",
+    [
+        {
+            "trace_region_size": 269312,
+            "dispatch_core_axis": ttnn.DispatchCoreAxis.COL,
+            "fabric_config": ttnn.FabricConfig.FABRIC_1D,
+        }
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("trace_mode", [True])
+@pytest.mark.parametrize(
+    "mesh_device",
+    [
+        (8, 4),
+    ],
+    indirect=True,
+)
+def test_fabric_reduce_scatter_tg_trace_4l(mesh_device, trace_mode):
+    # Only run these tests on unharvested TG
+    device_grid = (mesh_device.compute_with_storage_grid_size().x, mesh_device.compute_with_storage_grid_size().y)
+    if device_grid != (7, 10):
+        pytest.skip("Not TG!")
+
+    if is_4u_cluster():
+        pytest.skip("Not 6U!")
+
+    dim = 3
+    shard_height = 32
+    shard_width = 160
+    num_devices_scatter = 4
+    num_devices_fracture = 8
+    num_cores = 24
+    num_iters = 75
+    warmup_iters = 10
+    trace_mode = trace_mode
+    num_links = 4
+
+    run_reduce_scatter_test(
+        mesh_device,
+        dim,
+        shard_height,
+        shard_width,
+        num_devices_scatter,
+        num_devices_fracture,
+        num_cores,
+        num_iters,
+        warmup_iters,
+        trace_mode,
+        num_links=num_links,
+        scheme="random",
+    )
+
+
+@pytest.mark.parametrize(
+    "device_params",
+    [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL, "fabric_config": ttnn.FabricConfig.FABRIC_1D}],
+    indirect=True,
+)
+@pytest.mark.parametrize("trace_mode", [False])
+@pytest.mark.parametrize(
+    "mesh_device",
+    [
+        (8, 4),
+    ],
+    indirect=True,
+)
+def test_fabric_reduce_scatter_tg_no_trace_4l(mesh_device, trace_mode):
+    # Only run these tests on unharvested TG
+    device_grid = (mesh_device.compute_with_storage_grid_size().x, mesh_device.compute_with_storage_grid_size().y)
+    if device_grid != (7, 10):
+        pytest.skip("Not TG!")
+
+    if is_4u_cluster():
+        pytest.skip("Not 6U!")
+
+    dim = 3
+    shard_height = 32
+    shard_width = 160
+    num_devices_scatter = 4
+    num_devices_fracture = 8
+    num_cores = 24
+    num_iters = 30
+    warmup_iters = 0
+    trace_mode = trace_mode
+    num_links = 4
+
+    run_reduce_scatter_test(
+        mesh_device,
+        dim,
+        shard_height,
+        shard_width,
+        num_devices_scatter,
+        num_devices_fracture,
+        num_cores,
+        num_iters,
+        warmup_iters,
+        trace_mode,
+        num_links=num_links,
         scheme="random",
     )
 
