@@ -200,19 +200,10 @@ Tensor convert_conv_weight_tensor_to_tiled_layout(
         conv_weight_tensor, output_dtype, to_w_tile_layout_map, in1_block_h, in1_block_w);
 }
 
-static inline float bfloat16_to_float(bfloat16 bfloat_val) {
-    uint16_t raw = *reinterpret_cast<const uint16_t*>(&bfloat_val);
-    uint32_t uint32_data = ((uint32_t)raw) << 16;
-    float f;
-    std::memcpy(&f, &uint32_data, sizeof(f));
-    return f;
-}
-
 template <typename T>
 Tensor to_weight_tile_layout_block_sharded(
     const Tensor& conv_weight_tensor, uint32_t num_channel_shards, DataType output_dtype) {
     auto w_shape = conv_weight_tensor.get_padded_shape();
-    // auto w_shape = conv_weight_tensor.get_logical_shape();
     auto compute = [&w_shape, &num_channel_shards, &output_dtype](const auto& input_buffer) {
         auto weight_matrix_cols = w_shape[0];
         TT_ASSERT(weight_matrix_cols % num_channel_shards == 0);
@@ -1109,7 +1100,6 @@ std::pair<ttnn::Tensor, std::optional<ttnn::Tensor>> prepare_conv_weights_biases
             bias_tensor_ = ttnn::operations::core::to_device(bias_tensor_, device, std::nullopt);
         }
     }
-    weight_shape = weight_tensor_.get_padded_shape();
     return {weight_tensor_, bias_tensor.has_value() ? bias_tensor_ : std::optional<ttnn::Tensor>()};
 }
 
