@@ -44,6 +44,6 @@ void kernel_main() {
         noc_async_write_barrier();
         socket_notify_sender(receiver_socket);
     }
-    noc_async_write_barrier();
     update_socket_config(receiver_socket);
+    noc_async_write_barrier();
 }
