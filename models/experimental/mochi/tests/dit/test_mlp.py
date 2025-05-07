@@ -4,25 +4,24 @@ from loguru import logger
 import os
 import ttnn
 from models.experimental.mochi.tt.dit.mlp import FeedForward as TtFeedForward
-from models.experimental.mochi.tt.dit.config import MochiConfig
-from models.utility_functions import (
-    comp_allclose,
-)
-from models.utility_functions import skip_for_grayskull
-from genmo.mochi_preview.dit.joint_model.layers import FeedForward as RefFeedForward
 from models.experimental.mochi.tt.common import (
     get_mochi_dir,
     get_cache_path,
     compute_metrics,
     pad_vision_seq_parallel,
 )
+from models.experimental.mochi.tt.dit.config import MochiConfig
+from models.utility_functions import (
+    comp_allclose,
+)
+
+from genmo.mochi_preview.dit.joint_model.layers import FeedForward as RefFeedForward
 
 # Get model configuration
 CONFIG = MochiConfig()
 
 
 @torch.no_grad()
-@skip_for_grayskull("Requires wormhole_b0 to run")
 @pytest.mark.parametrize(
     "mesh_device",
     [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
@@ -35,8 +34,9 @@ CONFIG = MochiConfig()
         ("blocks.0.mlp_y", CONFIG.hidden_size_y, 118, False),
     ],
 )
+@pytest.mark.parametrize("real_weights", [True, False], ids=["real_weights", "random_weights"])
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
-def test_tt_feedforward_inference(mesh_device, seq_len, use_program_cache, reset_seeds, ff_path, in_feat, seq_shard):
+def test_tt_feedforward_inference(mesh_device, seq_len, use_program_cache, ff_path, in_feat, seq_shard, real_weights):
     # Fabric setup
     compute_grid_size = mesh_device.compute_with_storage_grid_size()
     ccl_sub_device_crs = ttnn.CoreRangeSet(
@@ -60,13 +60,6 @@ def test_tt_feedforward_inference(mesh_device, seq_len, use_program_cache, reset
 
     dtype = ttnn.bfloat16
 
-    from safetensors.torch import load_file
-
-    weights_path = os.path.join(get_mochi_dir(), "dit.safetensors")
-    state_dict = load_file(weights_path)
-    partial_state_dict = {k[len(ff_path) + 1 :]: v for k, v in state_dict.items() if k.startswith(ff_path)}
-    print(partial_state_dict.keys())
-
     multiple_of = 256
     mlp_ratio = CONFIG.mlp_ratio_x if "mlp_x" in ff_path else CONFIG.mlp_ratio_y
     mlp_hidden_dim = int(in_feat * mlp_ratio)
@@ -77,15 +70,24 @@ def test_tt_feedforward_inference(mesh_device, seq_len, use_program_cache, reset
         multiple_of=multiple_of,
         ffn_dim_multiplier=None,
     )
-    reference_model.load_state_dict(partial_state_dict)
+    if real_weights:
+        from safetensors.torch import load_file
 
-    weight_cache_path = get_cache_path(os.environ.get("MESH_DEVICE"))
+        weights_path = os.path.join(get_mochi_dir(), "dit.safetensors")
+        state_dict = load_file(weights_path)
+        partial_state_dict = {k[len(ff_path) + 1 :]: v for k, v in state_dict.items() if k.startswith(ff_path)}
+        reference_model.load_state_dict(partial_state_dict)
+        weight_cache_path = get_cache_path(os.environ.get("FAKE_DEVICE"))
+    else:
+        state_dict = reference_model.state_dict()
+        weight_cache_path = None
+        state_dict = {f"{ff_path}.{k}": v for k, v in state_dict.items()}
+
     tt_model = TtFeedForward(
         mesh_device=mesh_device,
         state_dict=state_dict,
         weight_cache_path=weight_cache_path,
         layer_num=0,
-        dtype=dtype,
         in_features=in_feat,
         hidden_size=mlp_hidden_dim,
         multiple_of=multiple_of,
@@ -128,7 +130,7 @@ def test_tt_feedforward_inference(mesh_device, seq_len, use_program_cache, reset
     # Compute metrics
     pcc, mse, mae = compute_metrics(reference_output, tt_output_torch)
     # Check if model meets requirements
-    pcc_required = 0.99
+    pcc_required = 0.999
     passing = pcc >= pcc_required
 
     logger.info(comp_allclose(reference_output, tt_output_torch))

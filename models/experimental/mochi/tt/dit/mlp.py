@@ -13,7 +13,6 @@ class FeedForward(LightweightModule):
         state_dict,
         weight_cache_path,
         layer_num,
-        dtype,
         in_features: int,
         hidden_size: int,
         multiple_of: int,
@@ -35,7 +34,7 @@ class FeedForward(LightweightModule):
         self.num_devices = mesh_device.get_num_devices()
         torch_weight = lambda name: torch.transpose(self.state_dict[f"{state_dict_prefix}.{name}.weight"], -2, -1)
 
-        cache_name = lambda name: weight_cache_path / (state_dict_prefix + f".{name}")
+        cache_name = lambda name: weight_cache_path / (state_dict_prefix + f".{name}") if weight_cache_path else None
 
         # TODO: Handle swizzling data when fracturing w1 on columns
         self.seq_shard = seq_shard
