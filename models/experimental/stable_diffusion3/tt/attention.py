@@ -9,10 +9,11 @@ from dataclasses import dataclass
 import torch
 import ttnn
 
+from ..reference.attention import Attention
 from .linear import TtLinear, TtLinearParameters
 from .normalization import TtRmsNorm, TtRmsNormParameters
 from .substate import has_substate, substate
-from .utils import all_gather
+from .utils import all_gather, from_torch_fast, to_torch
 
 
 @dataclass
@@ -38,7 +39,11 @@ class TtAttentionParameters:
         hidden_dim_padding: int,
         dtype: ttnn.DataType | None = None,
         device: ttnn.Device,
-    ) -> TtAttentionParameters:
+        use_cpu_fallback: bool = False,
+    ) -> TtAttentionParameters | dict[str, torch.Tensor]:
+        if use_cpu_fallback:
+            return state
+
         spatial_qkv_proj = _merge_qkv_proj(substate(state, "to_q"), substate(state, "to_k"), substate(state, "to_v"))
         prompt_qkv_proj = _merge_qkv_proj(
             substate(state, "add_q_proj"), substate(state, "add_k_proj"), substate(state, "add_v_proj")
@@ -198,16 +203,33 @@ class TtAttentionPart:
 
 
 class TtAttention:
-    def __init__(self, parameters: TtAttentionParameters, *, num_heads: int, device) -> None:
+    def __init__(self, parameters: TtAttentionParameters | dict[str, torch.Tensor], *, num_heads: int, device) -> None:
         super().__init__()
 
         self._device = device
         self._num_heads = num_heads
 
-        self._spatial_attn = TtAttentionPart(parameters.spatial, device=self._device)
-        self._prompt_attn = (
-            TtAttentionPart(parameters.prompt, device=self._device) if parameters.prompt is not None else None
-        )
+        if isinstance(parameters, dict):
+            with torch.device("meta"):
+                self._cpu_fallback = Attention(
+                    query_dim=parameters["to_q.weight"].shape[1],
+                    dim_head=parameters["norm_q.weight"].shape[0],
+                    heads=num_heads,
+                    out_dim=parameters["to_q.weight"].shape[0],
+                    qk_norm="rms_norm",
+                    added_kv_proj_dim=parameters["add_k_proj.weight"].shape[1],
+                    context_pre_only="to_add_out.weight" not in parameters,
+                )
+            self._cpu_fallback.load_state_dict(parameters, assign=True)
+            self._cpu_fallback.eval()
+            self._cpu_fallback.to(torch.float32)
+        else:
+            self._cpu_fallback = None
+
+            self._spatial_attn = TtAttentionPart(parameters.spatial, device=self._device)
+            self._prompt_attn = (
+                TtAttentionPart(parameters.prompt, device=self._device) if parameters.prompt is not None else None
+            )
 
     def __call__(
         self,
@@ -222,6 +244,31 @@ class TtAttention:
         spatial: N ⊗ S1 ⊗ (H * E1)
         prompt: N ⊗ S2 ⊗ (H * E2)
         """
+
+        if self._cpu_fallback is not None:
+            torch_spatial = to_torch(spatial).to(torch.float32).squeeze(1)
+            torch_prompt = to_torch(prompt).to(torch.float32).squeeze(1) if prompt is not None else None
+            torch_spatial, torch_prompt = self._cpu_fallback.forward(spatial=torch_spatial, prompt=torch_prompt)
+            spatial = from_torch_fast(
+                torch_spatial.unsqueeze(1),
+                device=self._device,
+                dtype=spatial.dtype,
+                layout=spatial.layout,
+                shard_dim=-1,
+            )
+            prompt = (
+                from_torch_fast(
+                    torch_prompt.unsqueeze(1),
+                    device=self._device,
+                    dtype=prompt.dtype,
+                    layout=prompt.layout,
+                    shard_dim=-1,
+                )
+                if torch_prompt is not None
+                else None
+            )
+            return spatial, prompt
+
         device = spatial.device()
 
         spatial = ttnn.squeeze(spatial, 1)
