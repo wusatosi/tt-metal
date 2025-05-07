@@ -571,11 +571,27 @@ BinaryNgDeviceOperation::ProgramFactory::cached_program_t BinaryNgDeviceOperatio
     writer_defines["SRC_SHARDED"] = b_sharded ? "1" : "0";
     writer_defines["DST_SHARDED"] = c_sharded ? "1" : "0";
 
+    // READER KERNEL
+    auto reader_defines = make_dataflow_defines(a_dtype, is_sfpu_op);
+    reader_defines["SRC_SHARDED"] = a_sharded ? "1" : "0";
+    reader_defines["SRC_SHARDED_B"] = b_sharded ? "1" : "0";
+
     // overwrite reader and write kernel names for the following specific case
     // so that reader reads of both and b and writer does not read b
-    if (b.has_value() && operation_attributes.subtile_broadcast_type == SubtileBroadcastType::NONE) {
-        kernel_config.reader_kernel = KernelName::ReaderNoBcastSplit;
-        writer_kernel = KernelName::WriterNoBcastSplit;
+    if (b.has_value()) {
+        if (operation_attributes.subtile_broadcast_type == SubtileBroadcastType::NONE) {
+            kernel_config.reader_kernel = KernelName::ReaderNoBcastSplit;
+            writer_kernel = KernelName::WriterNoBcastSplit;
+        } else if (
+            operation_attributes.subtile_broadcast_type == SubtileBroadcastType::ROW_A ||
+            operation_attributes.subtile_broadcast_type == SubtileBroadcastType::ROW_B) {
+            reader_defines["SRC_BCAST"] =
+                operation_attributes.subtile_broadcast_type == SubtileBroadcastType::ROW_A ? "1" : "0";
+            reader_defines["SRC_BCAST_B"] =
+                operation_attributes.subtile_broadcast_type == SubtileBroadcastType::ROW_B ? "1" : "0";
+            kernel_config.reader_kernel = KernelName::ReaderRowBcastSplit;
+            writer_kernel = KernelName::WriterNoBcastSplit;
+        }
     }
 
     auto writer_kernel_id = tt_metal::CreateKernel(
@@ -583,11 +599,6 @@ BinaryNgDeviceOperation::ProgramFactory::cached_program_t BinaryNgDeviceOperatio
         get_kernel_file_path(writer_kernel, is_sfpu_op),
         all_device_cores,
         tt_metal::WriterDataMovementConfig({b_is_dram, c_is_dram, has_sharding}, std::move(writer_defines)));
-
-    // READER KERNEL
-    auto reader_defines = make_dataflow_defines(a_dtype, is_sfpu_op);
-    reader_defines["SRC_SHARDED"] = a_sharded ? "1" : "0";
-    reader_defines["SRC_SHARDED_B"] = b_sharded ? "1" : "0";
 
     auto reader_kernel_id = tt_metal::CreateKernel(
         program,
