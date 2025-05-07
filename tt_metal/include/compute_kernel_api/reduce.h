@@ -36,14 +36,17 @@ ALWI void reduce_init_short(uint32_t icb, uint32_t icb_scaler, uint32_t ocb) {
     PACK((llk_pack_reduce_config_v2<reduce_dim, false, false, DST_ACCUM_MODE>(ocb)));
 }
 
-template <bool at_start, PoolType reduce_type = REDUCE_OP, ReduceDim reduce_dim = REDUCE_DIM>
-ALWI void reduce_init_delta(uint32_t icb0, uint32_t icb1, uint32_t ocb) {
+template <bool at_start, PoolType reduce_type = REDUCE_OP, ReduceDim reduce_dim = REDUCE_DIM, bool compact = false>
+ALWI void reduce_init_delta(uint32_t icb0, uint32_t icb1, uint32_t ocb, uint32_t block_ct_dim = 1) {
     // FIXME: API Update needed in compute kernel?
     UNPACK((llk_unpack_AB_reduce_init<reduce_dim>(icb0, icb1)));
 
     MATH((llk_math_reduce_init<reduce_type, reduce_dim, MATH_FIDELITY>()));
 
-    PACK((llk_pack_reduce_config_v2<reduce_dim, at_start, false, DST_ACCUM_MODE>(ocb)));
+    PACK((llk_pack_reduce_config_v2<reduce_dim, at_start, false, DST_ACCUM_MODE, compact>(ocb)));
+    if constexpr (compact) {
+        PACK((llk_pack_init<false, DST_ACCUM_MODE, compact, block_ct_dim>(ocb)));
+    }
 }
 
 template <PoolType reduce_type = REDUCE_OP, ReduceDim reduce_dim = REDUCE_DIM>

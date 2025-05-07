@@ -207,7 +207,7 @@ void run_single_core_copy_block_matmul_partials(
 // - matmul_pack_tile
 ////////////////////////////////////////////////////////////////////////////
 
-TEST_F(DeviceFixture, CopyPackCompact) {
+TEST_F(DeviceFixture, CopyPackCompact_8) {
     for (bool fp32_dest_acc_en : {false}) {
         // FP32 dest acc not possible for GS
         if ((fp32_dest_acc_en) && (this->arch_ == tt::ARCH::GRAYSKULL)) {
@@ -220,6 +220,69 @@ TEST_F(DeviceFixture, CopyPackCompact) {
                 .reader_ublock = 8,
                 .writer_ublock = 8,
                 .compute_ublock = 8,
+                .fp32_dest_acc_en = fp32_dest_acc_en,
+                .dst_full_sync_en = dst_full_sync_en};
+            unit_tests::compute::pack_compact::run_single_core_copy_block_matmul_partials(
+                this->devices_.at(0), test_config);
+        }
+    }
+}
+
+TEST_F(DeviceFixture, CopyPackCompact_1) {
+    for (bool fp32_dest_acc_en : {false}) {
+        // FP32 dest acc not possible for GS
+        if ((fp32_dest_acc_en) && (this->arch_ == tt::ARCH::GRAYSKULL)) {
+            continue;
+        }
+        for (bool dst_full_sync_en : {false}) {
+            log_info(LogTest, "FP32DestAcc = {}, DstSyncFull = {}", fp32_dest_acc_en, dst_full_sync_en);
+            unit_tests::compute::pack_compact::CopyBlockMatmulPartialsConfig test_config = {
+                .num_tiles = 1,
+                .reader_ublock = 1,
+                .writer_ublock = 1,
+                .compute_ublock = 1,
+                .fp32_dest_acc_en = fp32_dest_acc_en,
+                .dst_full_sync_en = dst_full_sync_en};
+            unit_tests::compute::pack_compact::run_single_core_copy_block_matmul_partials(
+                this->devices_.at(0), test_config);
+        }
+    }
+}
+
+TEST_F(DeviceFixture, CopyPackCompact_3) {
+    for (bool fp32_dest_acc_en : {false}) {
+        // FP32 dest acc not possible for GS
+        if ((fp32_dest_acc_en) && (this->arch_ == tt::ARCH::GRAYSKULL)) {
+            continue;
+        }
+        for (bool dst_full_sync_en : {false}) {
+            log_info(LogTest, "FP32DestAcc = {}, DstSyncFull = {}", fp32_dest_acc_en, dst_full_sync_en);
+            unit_tests::compute::pack_compact::CopyBlockMatmulPartialsConfig test_config = {
+                .num_tiles = 3,
+                .reader_ublock = 3,
+                .writer_ublock = 3,
+                .compute_ublock = 3,
+                .fp32_dest_acc_en = fp32_dest_acc_en,
+                .dst_full_sync_en = dst_full_sync_en};
+            unit_tests::compute::pack_compact::run_single_core_copy_block_matmul_partials(
+                this->devices_.at(0), test_config);
+        }
+    }
+}
+
+TEST_F(DeviceFixture, CopyPackCompact_6) {
+    for (bool fp32_dest_acc_en : {false}) {
+        // FP32 dest acc not possible for GS
+        if ((fp32_dest_acc_en) && (this->arch_ == tt::ARCH::GRAYSKULL)) {
+            continue;
+        }
+        for (bool dst_full_sync_en : {false}) {
+            log_info(LogTest, "FP32DestAcc = {}, DstSyncFull = {}", fp32_dest_acc_en, dst_full_sync_en);
+            unit_tests::compute::pack_compact::CopyBlockMatmulPartialsConfig test_config = {
+                .num_tiles = 6,
+                .reader_ublock = 6,
+                .writer_ublock = 6,
+                .compute_ublock = 6,
                 .fp32_dest_acc_en = fp32_dest_acc_en,
                 .dst_full_sync_en = dst_full_sync_en};
             unit_tests::compute::pack_compact::run_single_core_copy_block_matmul_partials(

@@ -23,8 +23,12 @@ void MAIN {
 
     unary_op_init_common(in_cb_id, out_cb_id);
     // Set the mop for the compact use case
-    PACK((llk_pack_init_compact<false /*untilize*/, false /*zero_output*/, false /*tilize*/, true /*compact*/>(
-        out_cb_id)));
+    PACK((llk_pack_init<
+          false /*untilize*/,
+          false /*zero_output*/,
+          false /*tilize*/,
+          true /*compact*/,
+          num_single_transfer /*block_ct_dim*/>(out_cb_id)));
     // Parity with SDPA case. Use only Packer 0/1
     PACK((llk_pack_reduce_config_v2<
           ReduceDim::REDUCE_COL,
@@ -47,7 +51,7 @@ void MAIN {
             dprint_tensix_dest_reg(t);
         }
         // Pack num_single_transfer tiles to out_cb
-        pack_tile_compact(0 /* start tile idx from DEST */, out_cb_id /* out_cb_id */, 0 /* output tile idx */);
+        pack_tile(0 /* start tile idx from DEST */, out_cb_id /* out_cb_id */, 0 /* output tile idx */);
         // for (uint32_t t = 0; t < num_single_transfer; ++t) {
         //     pack_tile(t, out_cb_id);
         // }

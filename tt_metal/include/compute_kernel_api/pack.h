@@ -45,21 +45,6 @@ ALWI void pack_tile(uint32_t ifrom_dst, uint32_t icb, std::uint32_t output_tile_
     PACK((llk_pack<out_of_order_output, false, DST_ACCUM_MODE>(ifrom_dst, icb, output_tile_index)));
 }
 
-/**
- * Maybe we should make ifrom_dst a start index of the tile in the DST register, have another parameter to be
- * the end or number of tiles to densely pack. This would be useful for the case of
- * packing a tile from the DST register to the CB in a compact way.
- * For now, let's make it  a fixed number of tiles, eight, just to make the test pass.
- * The number of tiles to pack densly will be between 1 and 32, but it depends on the tile shape, so maybe
- * leave it for another time.
- */
-template <bool out_of_order_output = false>
-ALWI void pack_tile_compact(uint32_t ifrom_dst, uint32_t icb, std::uint32_t output_tile_index = 0) {
-#if defined(ARCH_WORMHOLE)
-    PACK((llk_pack_compact<out_of_order_output, false, DST_ACCUM_MODE>(ifrom_dst, icb, output_tile_index)));
-#endif
-}
-
 // clang-format off
 /**
  * Copies a block of tiles from the DST register buffer at a start index to a
