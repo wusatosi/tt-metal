@@ -426,7 +426,7 @@ def test_fabric_reduce_scatter_tg_no_trace(mesh_device, trace_mode):
         {
             "trace_region_size": 269312,
             "dispatch_core_axis": ttnn.DispatchCoreAxis.COL,
-            "fabric_config": ttnn.FabricConfig.FABRIC_1D,
+            "fabric_config": ttnn.FabricConfig.FABRIC_1D_RING,
         }
     ],
     indirect=True,
@@ -480,7 +480,7 @@ def test_fabric_reduce_scatter_tg_trace_6u(mesh_device, trace_mode, num_links, t
 
 @pytest.mark.parametrize(
     "device_params",
-    [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL, "fabric_config": ttnn.FabricConfig.FABRIC_1D}],
+    [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL, "fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}],
     indirect=True,
 )
 @pytest.mark.parametrize("trace_mode", [False])
