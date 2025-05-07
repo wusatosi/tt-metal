@@ -188,23 +188,32 @@ void copy_sticks_async_local(
                 noc_async_write(src_addr, dst_addr, size);
                 DPRINT << "LOCAL copy, size: " << size << ENDL();
             } else {  // dst and src data overlaps, stick by stick copy is necessary
-                // bool is_forward_copy = dst_local_idx > src_local_idx + in_out_buffer_start_delta &&
-                //                        dst_local_idx <= src_local_idx + in_out_buffer_start_delta + nsticks;
-                // if (is_forward_copy) {  // dst data is being moved "in front" of the source data, reverse
-                //                         // ordering of stick by stick copy is necessary
-                //     for (int16_t k = nsticks - 1; k >= 0; k--) {
-                //         noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
-                //     }
-                //     DPRINT << "LOCAL copy, size: " << stick_nbytes << " x " << nsticks << ENDL();
-                // } else {
-                //     for (uint16_t k = 0; k < nsticks; k++) {
-                //         noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
-                //     }
-                //     DPRINT << "LOCAL copy, size: " << stick_nbytes << " x " << nsticks << ENDL();
-                // }
-                noc_async_write(src_addr, temp_addr, size);
-                noc_async_write(temp_base_l1_addr_read, dst_addr, size);
-                DPRINT << "LOCAL copy, size: " << size << " x 2" << ENDL();
+                if constexpr (stick_nbytes <= 256) {  // noc transfers with larger page sizes are faster, with a page
+                                                      // size of 256 bytes the tranfer rate is half of the maximum thus,
+                                                      // for stick sizes smaller that this it is faster to do a double
+                                                      // copy, doubling the total amount of data being copied but
+                                                      // avoiding the slow stick by stick copy, however with larger
+                                                      // stick sizes the stick by stick transfer is fast enough that it
+                                                      // is more efficient than the double copy.
+                    noc_async_write(src_addr, temp_addr, size);
+                    noc_async_write(temp_base_l1_addr_read, dst_addr, size);
+                    DPRINT << "LOCAL copy, size: " << size << " x 2" << ENDL();
+                } else {
+                    bool is_forward_copy = dst_local_idx > src_local_idx + in_out_buffer_start_delta &&
+                                           dst_local_idx <= src_local_idx + in_out_buffer_start_delta + nsticks;
+                    if (is_forward_copy) {  // dst data is being moved "in front" of the source data, reverse
+                                            // ordering of stick by stick copy is necessary
+                        for (int16_t k = nsticks - 1; k >= 0; k--) {
+                            noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
+                        }
+                        DPRINT << "LOCAL copy, size: " << stick_nbytes << " x " << nsticks << ENDL();
+                    } else {
+                        for (uint16_t k = 0; k < nsticks; k++) {
+                            noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
+                        }
+                        DPRINT << "LOCAL copy, size: " << stick_nbytes << " x " << nsticks << ENDL();
+                    }
+                }
             }
         }
 
