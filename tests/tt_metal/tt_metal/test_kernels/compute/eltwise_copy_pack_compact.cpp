@@ -63,5 +63,7 @@ void MAIN {
         // Move wr prt from out_cb by num_single_transfer places
         cb_push_back(out_cb_id, num_single_transfer);
     }
+    // Revert the changes back
+    reduce_revert_delta(out_cb_id);
 }
 }  // namespace NAMESPACE
