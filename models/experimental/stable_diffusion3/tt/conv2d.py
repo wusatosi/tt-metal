@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import torch
 import ttnn
 
-from .utils import from_torch_fast
+from .utils import from_torch_fast, to_torch
 
 
 @dataclass
@@ -28,8 +28,12 @@ class TtConv2dParameters:
         dtype: ttnn.DataType | None = None,
         hidden_dim_padding: int,
         out_channels: int,
-        device,
-    ) -> TtConv2dParameters:
+        device: ttnn.MeshDevice,
+        use_cpu_fallback: bool = False,
+    ) -> TtConv2dParameters | dict[str, torch.Tensor]:
+        if use_cpu_fallback:
+            return state
+
         weight = state["weight"]
         out_channels, in_c, kh, kw = weight.shape
         weight = torch.permute(weight, (2, 3, 1, 0))
@@ -70,21 +74,47 @@ class TtConv2dParameters:
 
 
 class TtConv2d:
-    def __init__(self, parameters: TtConv2dParameters, device) -> None:
-        self._weight = parameters.weight
-        self._bias = parameters.bias
-        self._unfold = torch.nn.Unfold(kernel_size=parameters.kernel_size, stride=parameters.kernel_size)
+    def __init__(self, parameters: TtConv2dParameters | dict[str, torch.Tensor], device: ttnn.MeshDevice) -> None:
         self._device = device
 
-        self.compute_kernel_config = ttnn.init_device_compute_kernel_config(
-            device.arch(),
-            math_fidelity=ttnn.MathFidelity.HiFi4,
-            math_approx_mode=False,
-            fp32_dest_acc_en=True,
-            packer_l1_acc=True,
-        )
+        if isinstance(parameters, dict):
+            with torch.device("meta"):
+                self._cpu_fallback = torch.nn.Conv2d(
+                    in_channels=parameters["weight"].shape[1],
+                    out_channels=parameters["weight"].shape[0],
+                    kernel_size=2,
+                    stride=2,
+                )
+            self._cpu_fallback.load_state_dict(parameters, assign=True)
+            self._cpu_fallback.eval()
+            self._cpu_fallback.to(torch.float32)
+        else:
+            self._cpu_fallback = None
+
+            self._weight = parameters.weight
+            self._bias = parameters.bias
+            self._unfold = torch.nn.Unfold(kernel_size=parameters.kernel_size, stride=parameters.kernel_size)
+
+            self.compute_kernel_config = ttnn.init_device_compute_kernel_config(
+                device.arch(),
+                math_fidelity=ttnn.MathFidelity.HiFi4,
+                math_approx_mode=False,
+                fp32_dest_acc_en=True,
+                packer_l1_acc=True,
+            )
 
     def __call__(self, x: ttnn.Tensor) -> ttnn.Tensor:
+        if self._cpu_fallback is not None:
+            torch_x = to_torch(x).to(torch.float32).permute(0, 3, 1, 2)
+            torch_out = self._cpu_fallback.forward(torch_x).permute([0, 2, 3, 1])
+            return from_torch_fast(
+                torch_out,
+                device=self._device,
+                dtype=x.dtype,
+                layout=x.layout,
+                shard_dim=-1,
+            )
+
         batch_size, img_h, img_w, img_c = x.shape  # permuted input NHWC
         patch_size = 2
         stride_h = patch_size
