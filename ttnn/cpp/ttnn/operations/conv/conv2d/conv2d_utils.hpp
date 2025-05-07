@@ -36,6 +36,7 @@ bool use_matmul_for_1x1_conv(
     const Conv2dConfig& conv_config);
 
 bool is_large_kernel_with_easy_matmul(
+    Layout input_tensor_layout,
     uint32_t input_height,
     uint32_t input_width,
     const std::array<uint32_t, 2>& kernel_size,

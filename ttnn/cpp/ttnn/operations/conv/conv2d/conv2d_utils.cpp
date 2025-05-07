@@ -411,6 +411,7 @@ bool use_matmul_for_1x1_conv(
 }
 
 bool is_large_kernel_with_easy_matmul(
+    Layout input_tensor_layout,
     uint32_t input_height,
     uint32_t input_width,
     const std::array<uint32_t, 2>& kernel_size,
@@ -421,7 +422,7 @@ bool is_large_kernel_with_easy_matmul(
     return (
         (stride[0] == kernel_size[0] && stride[1] == kernel_size[1]) && (stride[0] >= 16 && stride[1] >= 16) &&
         padding[0] == 0 && padding[1] == 0 && dilation[0] == 1 && dilation[1] == 1 && groups == 1 &&
-        (input_height % stride[0] == 0 && input_width % stride[1] == 0));
+        (input_height % stride[0] == 0 && input_width % stride[1] == 0) && input_tensor_layout == Layout::TILE);
 }
 
 bool is_1d_conv(uint32_t kernel_width, uint32_t image_width) { return kernel_width == 1 && image_width == 1; }

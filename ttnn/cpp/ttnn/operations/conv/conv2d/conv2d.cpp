@@ -372,8 +372,8 @@ Result conv2d_L1(
     std::array<uint32_t, 4> padding_n4 = sliding_window::get_pair_n4_padding(padding);
     auto input_tensor = input_tensor_;
     bool mm_conv = use_matmul_for_1x1_conv(kernel_size, stride, padding_n4, dilation, groups, conv_config);
-    bool is_large_kernel =
-        is_large_kernel_with_easy_matmul(input_height, input_width, kernel_size, stride, padding_n4, dilation, groups);
+    bool is_large_kernel = is_large_kernel_with_easy_matmul(
+        input_tensor.layout(), input_height, input_width, kernel_size, stride, padding_n4, dilation, groups);
     if (is_large_kernel) {
         input_tensor = convert_tensor_for_1x1_conv(input_tensor_, stride);
         input_height = input_height / stride[0];
