@@ -7,6 +7,13 @@ import ttnn
 from models.experimental.stable_diffusion_xl_base.tt.tt_resnetblock2d import TtResnetBlock2D
 from models.experimental.stable_diffusion_xl_base.tt.tt_downsample2d import TtDownsample2D
 
+try:
+    from tracy import signpost
+except ImportError:
+
+    def signpost(func):
+        pass
+
 
 class TtDownBlock2D(nn.Module):
     def __init__(self, device, state_dict, module_path):
@@ -26,11 +33,13 @@ class TtDownBlock2D(nn.Module):
         B, C, H, W = input_shape
         output_states = ()
 
-        for resnet in self.resnets:
+        for i, resnet in enumerate(self.resnets):
+            # signpost(f"tt_downblock2d.resnets.{i}")
             hidden_states, [C, H, W] = resnet.forward(hidden_states, temb, [B, C, H, W])
             residual = ttnn.to_memory_config(hidden_states, ttnn.DRAM_MEMORY_CONFIG)
             output_states = output_states + (residual,)
 
+        # signpost(f"tt_downblock2d.downsamplers.0")
         hidden_states, [C, H, W] = self.downsamplers.forward(hidden_states, [B, C, H, W])
         residual = ttnn.to_memory_config(hidden_states, ttnn.DRAM_MEMORY_CONFIG)
         output_states = output_states + (residual,)

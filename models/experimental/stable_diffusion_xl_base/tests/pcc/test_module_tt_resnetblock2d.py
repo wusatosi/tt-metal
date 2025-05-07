@@ -6,6 +6,7 @@ import pytest
 import ttnn
 from models.experimental.stable_diffusion_xl_base.tt.tt_resnetblock2d import TtResnetBlock2D
 from diffusers import DiffusionPipeline
+from loguru import logger
 from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.utility_functions import torch_random
 
@@ -42,7 +43,7 @@ def test_resnetblock2d(
     reset_seeds,
 ):
     pipe = DiffusionPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True, variant="fp16"
+        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True
     )
     unet = pipe.unet
     unet.eval()
@@ -85,4 +86,5 @@ def test_resnetblock2d(
     output_tensor = output_tensor.reshape(input_shape[0], output_shape[1], output_shape[2], output_shape[0])
     output_tensor = torch.permute(output_tensor, (0, 3, 1, 2))
 
-    assert_with_pcc(torch_output_tensor, output_tensor, pcc)
+    pcc_passed, pcc_message = assert_with_pcc(torch_output_tensor, output_tensor, pcc)
+    logger.info(f"{pcc_passed=}, {pcc_message=} {pcc=}")

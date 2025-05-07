@@ -38,6 +38,11 @@ class TtUpsample2D(nn.Module):
             device, weights, bias, ttnn.bfloat8_b
         )
 
+        # self.conv_config.enable_act_double_buffer = True
+        self.conv_config.enable_act_double_buffer = False
+        # self.conv_config.shard_layout = ttnn.TensorMemoryLayout.HEIGHT_SHARDED
+        self.conv_config.act_block_h_override = 32 * 2
+
     def interpolate(self, hidden_states):
         hidden_states = ttnn.upsample(hidden_states, (self.scale_factor, self.scale_factor))
         B, H, W, C = list(hidden_states.shape)

@@ -1,13 +1,14 @@
 # SPDX-FileCopyrightText: © 2025 Tenstorrent Inc.
 
 # SPDX-License-Identifier: Apache-2.0
-import torch
 import pytest
-import ttnn
-from models.experimental.stable_diffusion_xl_base.tt.tt_downblock2d import TtDownBlock2D
+import torch
 from diffusers import DiffusionPipeline
-from tests.ttnn.utils_for_testing import assert_with_pcc
+from loguru import logger
+from models.experimental.stable_diffusion_xl_base.tt.tt_downblock2d import TtDownBlock2D
 from models.utility_functions import torch_random
+from tests.ttnn.utils_for_testing import assert_with_pcc
+import ttnn
 
 
 @pytest.mark.parametrize(
@@ -19,7 +20,7 @@ from models.utility_functions import torch_random
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
 def test_downblock2d(device, temb_shape, input_shape, use_program_cache, reset_seeds):
     pipe = DiffusionPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True, variant="fp16"
+        "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True
     )
     unet = pipe.unet
     unet.eval()
@@ -51,4 +52,5 @@ def test_downblock2d(device, temb_shape, input_shape, use_program_cache, reset_s
     output_tensor = output_tensor.reshape(input_shape[0], output_shape[1], output_shape[2], output_shape[0])
     output_tensor = torch.permute(output_tensor, (0, 3, 1, 2))
 
-    assert_with_pcc(torch_output_tensor, output_tensor, 0.994)
+    pcc_passed, pcc_message = assert_with_pcc(torch_output_tensor, output_tensor, 0.994)  # it is 0.997
+    logger.info(f"{pcc_passed=}, {pcc_message=}")
