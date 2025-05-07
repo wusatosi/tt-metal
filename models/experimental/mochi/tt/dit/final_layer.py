@@ -61,7 +61,9 @@ class FinalLayer(LightweightModule):
         self.linear = as_replicated_tensor(
             weight,
             mesh_device,
-            cache_file_name=weight_cache_path / (state_dict_prefix + f".{linear_name}.weight"),
+            cache_file_name=weight_cache_path / (state_dict_prefix + f".{linear_name}.weight")
+            if weight_cache_path
+            else None,
         )
 
         bias_key = f"{state_dict_prefix}.{linear_name}.bias"
@@ -74,7 +76,9 @@ class FinalLayer(LightweightModule):
             self.linear_bias = as_replicated_tensor(
                 bias.reshape(1, -1),
                 mesh_device,
-                cache_file_name=weight_cache_path / (state_dict_prefix + f".{linear_name}.bias"),
+                cache_file_name=weight_cache_path / (state_dict_prefix + f".{linear_name}.bias")
+                if weight_cache_path
+                else None,
             )
         else:
             self.linear_bias = None

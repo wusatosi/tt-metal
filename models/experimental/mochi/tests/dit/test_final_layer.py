@@ -21,8 +21,9 @@ PCC_REQUIRED = 0.99
     [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
+@pytest.mark.parametrize("real_weights", [True, False], ids=["real_weights", "random_weights"])
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
-def test_tt_final_layer_inference(mesh_device, use_program_cache, reset_seeds):
+def test_tt_final_layer_inference(mesh_device, use_program_cache, reset_seeds, real_weights):
     dtype = ttnn.bfloat16
     hidden_size = CONFIG.hidden_size_x
     patch_size = CONFIG.patch_size
@@ -46,28 +47,31 @@ def test_tt_final_layer_inference(mesh_device, use_program_cache, reset_seeds):
     # create global semaphore handles
     ccl_semaphore_handles = {"final_layer_mod": ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0)}
 
-    from safetensors.torch import load_file
-
-    weights_path = os.path.join(get_mochi_dir(), "dit.safetensors")
-    state_dict = load_file(weights_path)
-
-    # Filter state dict for final layer
-    final_layer_path = "final_layer"
-    partial_state_dict = {
-        k[len(final_layer_path) + 1 :]: v for k, v in state_dict.items() if k.startswith(final_layer_path)
-    }
-    print(partial_state_dict.keys())
-
     # Create reference model
     reference_model = RefFinalLayer(
         hidden_size=hidden_size,
         patch_size=patch_size,
         out_channels=out_channels,
     )
-    reference_model.load_state_dict(partial_state_dict)
+
+    final_layer_path = "final_layer"
+
+    if real_weights:
+        from safetensors.torch import load_file
+
+        weights_path = os.path.join(get_mochi_dir(), "dit.safetensors")
+        state_dict = load_file(weights_path)
+        partial_state_dict = {
+            k[len(final_layer_path) + 1 :]: v for k, v in state_dict.items() if k.startswith(final_layer_path)
+        }
+        reference_model.load_state_dict(partial_state_dict)
+        weight_cache_path = get_cache_path(os.environ.get("MESH_DEVICE"))
+    else:
+        state_dict = reference_model.state_dict()
+        state_dict = {f"{final_layer_path}.{k}": v for k, v in state_dict.items()}
+        weight_cache_path = None
 
     # Create TT model
-    weight_cache_path = get_cache_path(os.environ.get("MESH_DEVICE"))
     tt_model = TtFinalLayer(
         mesh_device=mesh_device,
         state_dict=state_dict,
