@@ -165,14 +165,16 @@ class AsymmetricAttention(LightweightModule):
             shuffle_heads(w),
             self.mesh_device,
             dim=-1,
-            cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.weight"),
+            cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.weight") if weight_cache_path else None,
         )
         if b is not None:
             b = as_sharded_tensor(
                 shuffle_heads(b).reshape(1, -1),
                 self.mesh_device,
                 dim=-1,
-                cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.bias"),
+                cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.bias")
+                if weight_cache_path
+                else None,
             )
         return w, b
 
@@ -186,13 +188,15 @@ class AsymmetricAttention(LightweightModule):
             w,
             mesh_device=self.mesh_device,
             dim=-1,
-            cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.weight"),
+            cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.weight") if weight_cache_path else None,
         )
         if b is not None:
             b = as_replicated_tensor(
                 b.reshape(1, -1),
                 mesh_device=self.mesh_device,
-                cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.bias"),
+                cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.bias")
+                if weight_cache_path
+                else None,
             )
         return w, b
 

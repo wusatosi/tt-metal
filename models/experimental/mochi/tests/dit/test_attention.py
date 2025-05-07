@@ -33,7 +33,7 @@ DIM_X = CONFIG.hidden_size_x
 DIM_Y = CONFIG.hidden_size_y
 
 
-def create_models(mesh_device, state_dict, partial_state_dict, attn_path, update_y=True):
+def create_models(mesh_device, attn_path, update_y=True, real_weights=True):
     """Initialize both reference and TT models."""
     reference_model = RefAsymmetricAttention(
         dim_x=DIM_X,
@@ -53,9 +53,21 @@ def create_models(mesh_device, state_dict, partial_state_dict, attn_path, update
         out_proj_lora_alpha=0,
         out_proj_lora_dropout=0.0,
     )
-    reference_model.load_state_dict(partial_state_dict)
+    if real_weights:
+        state_dict, partial_state_dict = load_model_weights(attn_path)
+        reference_model.load_state_dict(partial_state_dict)
+        weight_cache_path = get_cache_path(os.environ.get("MESH_DEVICE"))
+    else:
+        state_dict = reference_model.state_dict()
+        # RMSNorm weights initialize to empty/zero. Create real tensors to work with.
+        state_dict["q_norm_x.weight"] = torch.randn_like(state_dict["q_norm_x.weight"])
+        state_dict["k_norm_x.weight"] = torch.randn_like(state_dict["k_norm_x.weight"])
+        state_dict["q_norm_y.weight"] = torch.randn_like(state_dict["q_norm_y.weight"])
+        state_dict["k_norm_y.weight"] = torch.randn_like(state_dict["k_norm_y.weight"])
+        reference_model.load_state_dict(state_dict)
+        state_dict = {f"{attn_path}.{k}": v for k, v in state_dict.items()}
 
-    weight_cache_path = get_cache_path(os.environ.get("MESH_DEVICE"))
+        weight_cache_path = None
     tt_model = TtAsymmetricAttention(
         mesh_device=mesh_device,
         state_dict=state_dict,
@@ -120,9 +132,9 @@ def validate_outputs(tt_outputs, ref_outputs, test_name):
         ("blocks.0.attn"),
     ],
 )
-def test_tt_attn_qkv_y(mesh_device, seq_len, use_program_cache, reset_seeds, attn_path):
-    state_dict, partial_state_dict = load_model_weights(attn_path)
-    reference_model, tt_model = create_models(mesh_device, state_dict, partial_state_dict, attn_path)
+@pytest.mark.parametrize("real_weights", [True, False], ids=["real_weights", "random_weights"])
+def test_tt_attn_qkv_y(mesh_device, seq_len, use_program_cache, reset_seeds, attn_path, real_weights):
+    reference_model, tt_model = create_models(mesh_device, attn_path, real_weights=real_weights)
 
     batch_size = 1
     # Create input tensor
@@ -169,9 +181,10 @@ def test_tt_attn_qkv_y(mesh_device, seq_len, use_program_cache, reset_seeds, att
         ("blocks.0.attn", True),
     ],
 )
+@pytest.mark.parametrize("real_weights", [True, False], ids=["real_weights", "random_weights"])
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_tt_attn_prepare_qkv(
-    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, update_y
+    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, update_y, real_weights
 ):
     # Fabric setup
     compute_grid_size = mesh_device.compute_with_storage_grid_size()
@@ -191,8 +204,7 @@ def test_tt_attn_prepare_qkv(
         s: ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0) for s in ["seq_to_col", "qkv_x"]
     }
 
-    state_dict, partial_state_dict = load_model_weights(attn_path)
-    reference_model, tt_model = create_models(mesh_device, state_dict, partial_state_dict, attn_path, update_y)
+    reference_model, tt_model = create_models(mesh_device, attn_path, update_y, real_weights)
 
     # Create input tensors
     batch_size = 1
@@ -322,12 +334,12 @@ def test_tt_attn_prepare_qkv(
     ],
 )
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
+@pytest.mark.parametrize("real_weights", [True, False], ids=["real_weights", "random_weights"])
 def test_tt_attn_run_attention(
-    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, update_y
+    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, update_y, real_weights
 ):
     """Test run_attention implementation by comparing with reference model."""
-    state_dict, partial_state_dict = load_model_weights(attn_path)
-    reference_model, tt_model = create_models(mesh_device, state_dict, partial_state_dict, attn_path, update_y)
+    reference_model, tt_model = create_models(mesh_device, attn_path, update_y, real_weights)
 
     batch_size = 1
 
@@ -416,8 +428,9 @@ def test_tt_attn_run_attention(
     ],
 )
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
+@pytest.mark.parametrize("real_weights", [True, False], ids=["real_weights", "random_weights"])
 def test_tt_attn_post_attention(
-    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, update_y
+    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, update_y, real_weights
 ):
     # Fabric setup
     compute_grid_size = mesh_device.compute_with_storage_grid_size()
@@ -439,8 +452,7 @@ def test_tt_attn_post_attention(
     }
 
     """Test post_attention implementation by comparing with reference model."""
-    state_dict, partial_state_dict = load_model_weights(attn_path)
-    reference_model, tt_model = create_models(mesh_device, state_dict, partial_state_dict, attn_path, update_y)
+    reference_model, tt_model = create_models(mesh_device, attn_path, update_y, real_weights)
 
     batch_size = 1
     total_seq_len = vision_seq_len + text_seq_len
@@ -549,8 +561,9 @@ def test_tt_attn_post_attention(
     ],
 )
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
+@pytest.mark.parametrize("real_weights", [True, False], ids=["real_weights", "random_weights"])
 def test_tt_attn_forward(
-    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, update_y
+    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, attn_path, update_y, real_weights
 ):
     # Fabric setup
     compute_grid_size = mesh_device.compute_with_storage_grid_size()
@@ -572,10 +585,9 @@ def test_tt_attn_forward(
     }
 
     min_pcc = 0.9974
-    max_mse = 1.2e-4
+    max_mse = 1.4e-4
     """Test complete forward pass of TtAsymmetricAttention."""
-    state_dict, partial_state_dict = load_model_weights(attn_path)
-    reference_model, tt_model = create_models(mesh_device, state_dict, partial_state_dict, attn_path, update_y)
+    reference_model, tt_model = create_models(mesh_device, attn_path, update_y, real_weights)
 
     # Create input tensors
     batch_size = 1

@@ -277,14 +277,14 @@ def col_parallel_linear(name, bias, weight_cache_path, state_dict, state_dict_pr
         w,
         mesh_device,
         dim=-1,
-        cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.weight"),
+        cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.weight") if weight_cache_path else None,
     )
     if b is not None:
         b = as_sharded_tensor(
             b.reshape(1, -1),
             mesh_device,
             dim=-1,
-            cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.bias"),
+            cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.bias") if weight_cache_path else None,
         )
     return w, b
 
@@ -296,13 +296,13 @@ def load_linear(name, bias, weight_cache_path, state_dict, state_dict_prefix, me
         w,
         mesh_device,
         dim=-1,
-        cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.weight"),
+        cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.weight") if weight_cache_path else None,
     )
     if b is not None:
         b = as_replicated_tensor(
             b.reshape(1, -1),
             mesh_device,
-            cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.bias"),
+            cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.bias") if weight_cache_path else None,
         )
     return w, b
 
@@ -345,7 +345,7 @@ def create_linear_layer(
     weight_tensor = as_replicated_tensor(
         weight,
         mesh_device,
-        cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.weight"),
+        cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.weight") if weight_cache_path else None,
     )
 
     # Create bias tensor if it exists
@@ -354,7 +354,7 @@ def create_linear_layer(
         bias_tensor = as_replicated_tensor(
             bias_pt.reshape(1, -1),
             mesh_device,
-            cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.bias"),
+            cache_file_name=weight_cache_path / (state_dict_prefix + f".{name}.bias") if weight_cache_path else None,
         )
 
     return weight_tensor, bias_tensor
