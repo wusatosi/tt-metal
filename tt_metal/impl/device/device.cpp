@@ -1127,6 +1127,7 @@ void Device::init_command_queue_host() {
         command_queues_.push_back(std::make_unique<HWCommandQueue>(
             this, worker_launch_message_buffer_state, cq_id, k_dispatch_downstream_noc, completion_queue_reader_core_));
     }
+    sysmem_manager().sub_device_cq_owner().resize(1);
 }
 
 void Device::init_command_queue_device() {

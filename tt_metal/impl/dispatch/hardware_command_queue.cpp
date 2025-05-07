@@ -133,6 +133,8 @@ SystemMemoryManager& HWCommandQueue::sysmem_manager() { return this->manager_; }
 void HWCommandQueue::reset_worker_state(
     bool reset_launch_msg_state, uint32_t num_sub_devices, const vector_aligned<uint32_t>& go_signal_noc_data) {
     TT_FATAL(!this->manager_.get_bypass_mode(), "Cannot reset worker state during trace capture");
+    device_->sysmem_manager().sub_device_cq_owner().clear();
+    device_->sysmem_manager().sub_device_cq_owner().resize(num_sub_devices);
     // TODO: This could be further optimized by combining all of these into a single prefetch entry
     // Currently each one will be pushed into its own prefetch entry
     program_dispatch::reset_worker_dispatch_state_on_device(
@@ -411,6 +413,19 @@ void HWCommandQueue::enqueue_program(Program& program, bool blocking) {
     ZoneScopedN("HWCommandQueue_enqueue_program");
     std::vector<SubDeviceId> sub_device_ids = {program.determine_sub_device_ids(device_)};
     TT_FATAL(sub_device_ids.size() == 1, "Programs must be executed on a single sub-device");
+
+    if (!this->manager_.get_bypass_mode()) {
+        auto& sub_device_cq_owner = device_->sysmem_manager().sub_device_cq_owner();
+        auto& sub_device = sub_device_cq_owner[*sub_device_ids[0]];
+        if (sub_device != std::nullopt && *sub_device != this->id_) {
+            TT_FATAL(
+                *sub_device == this->id_,
+                "Program is being executed on a different command queue than the one it was created on");
+        }
+        sub_device = this->id_;
+    }
+
+    std::vector<std::optional<uint32_t>> sub_device_cq_owner_;
     // Finalize Program: Compute relative offsets for data structures (semaphores, kernel binaries, etc) in L1
     program.finalize_offsets(device_);
 
@@ -546,6 +561,13 @@ void HWCommandQueue::enqueue_record_event(
     this->issued_completion_q_reads_.push(
         std::make_shared<CompletionReaderVariant>(std::in_place_type<ReadEventDescriptor>, event->event_id));
     this->increment_num_entries_in_completion_q();
+
+    auto& sub_device_cq_owner = device_->sysmem_manager().sub_device_cq_owner();
+    for (auto& sub_device_entry : sub_device_cq_owner) {
+        if (sub_device_entry.has_value() && sub_device_entry == this->id_) {
+            sub_device_entry = std::nullopt;
+        }
+    }
 }
 
 void HWCommandQueue::enqueue_wait_for_event(const std::shared_ptr<Event>& sync_event) {
@@ -560,6 +582,17 @@ void HWCommandQueue::enqueue_trace(const uint32_t trace_id, bool blocking) {
     auto descriptor = trace_inst->desc;
     auto buffer = trace_inst->buffer;
     uint32_t num_sub_devices = descriptor->sub_device_ids.size();
+
+    for (auto& sub_device_id : descriptor->sub_device_ids) {
+        auto& sub_device_cq_owner = device_->sysmem_manager().sub_device_cq_owner();
+        auto& sub_device = sub_device_cq_owner[*sub_device_id];
+        if (sub_device != std::nullopt && *sub_device != this->id_) {
+            TT_FATAL(
+                *sub_device == this->id_,
+                "Program is being executed on a different command queue than the one it was created on");
+        }
+        sub_device = this->id_;
+    }
 
     auto cmd_sequence_sizeB = trace_dispatch::compute_trace_cmd_size(num_sub_devices);
 
@@ -682,6 +715,12 @@ void HWCommandQueue::finish(tt::stl::Span<const SubDeviceId> sub_device_ids) {
         std::unique_lock<std::mutex> lock(this->reads_processed_cv_mutex_);
         this->reads_processed_cv_.wait(
             lock, [this] { return this->num_entries_in_completion_q_ == this->num_completed_completion_q_reads_; });
+    }
+    auto& sub_device_cq_owner = device_->sysmem_manager().sub_device_cq_owner();
+    for (auto& sub_device_entry : sub_device_cq_owner) {
+        if (sub_device_entry.has_value() && sub_device_entry == this->id_) {
+            sub_device_entry = std::nullopt;
+        }
     }
 }
 
