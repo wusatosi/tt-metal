@@ -54,6 +54,7 @@ def load_model(mesh_device):
     [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_generate_video(mesh_device, generation_args, use_program_cache):
     """Generate video using the provided mesh device and arguments."""
     load_model(mesh_device)
