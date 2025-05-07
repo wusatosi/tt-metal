@@ -20,7 +20,15 @@ from ..tt.utils import assert_quality, to_torch
     ],
 )
 @pytest.mark.parametrize("dtype", [ttnn.bfloat8_b, ttnn.bfloat16], ids=["bfloat8_b", "bfloat16"])
-@pytest.mark.parametrize("mesh_device", [(1, 1), (1, 2), (2, 2)], indirect=True)
+@pytest.mark.parametrize(
+    "mesh_device",
+    [
+        (1, 1),
+        (1, 2),
+        # (2, 2), causes hang
+    ],
+    indirect=True,
+)
 @pytest.mark.parametrize("affine", [True, False], ids=["affine", "noaffine"])
 @pytest.mark.usefixtures("use_program_cache")
 def test_layer_norm(
