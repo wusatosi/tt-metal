@@ -145,7 +145,11 @@ void copy_sticks_async_from_temp(
     }
 }
 
-template <uint32_t stick_nbytes, uint32_t input_aligned_page_size, uint32_t no_wait_pass>
+template <
+    uint32_t stick_nbytes,
+    uint32_t input_aligned_page_size,
+    uint32_t half_max_bandwidth_stick_size,
+    uint32_t no_wait_pass>
 void copy_sticks_async_local(
     const tt_l1_ptr uint16_t* config_data,
     const uint16_t my_noc_x,
@@ -188,13 +192,14 @@ void copy_sticks_async_local(
                 noc_async_write(src_addr, dst_addr, size);
                 DPRINT << "LOCAL copy, size: " << size << ENDL();
             } else {  // dst and src data overlaps, stick by stick copy is necessary
-                if constexpr (stick_nbytes <= 256) {  // noc transfers with larger page sizes are faster, with a page
-                                                      // size of 256 bytes the tranfer rate is half of the maximum thus,
-                                                      // for stick sizes smaller that this it is faster to do a double
-                                                      // copy, doubling the total amount of data being copied but
-                                                      // avoiding the slow stick by stick copy, however with larger
-                                                      // stick sizes the stick by stick transfer is fast enough that it
-                                                      // is more efficient than the double copy.
+                if constexpr (stick_nbytes <= half_max_bandwidth_stick_size) {  // noc transfers with larger page sizes
+                                                                                // are faster, with a page
+                    // size of 256 bytes on WH the transfer rate is half of the maximum
+                    // thus, for stick sizes smaller that this it is faster to do a
+                    // double copy, doubling the total amount of data being copied but
+                    // avoiding the slow stick by stick copy, however with larger
+                    // stick sizes the stick by stick transfer is fast enough that it
+                    // is more efficient than the double copy.
                     noc_async_write(src_addr, temp_addr, size);
                     noc_async_write(temp_base_l1_addr_read, dst_addr, size);
                     DPRINT << "LOCAL copy, size: " << size << " x 2" << ENDL();
@@ -270,7 +275,8 @@ void kernel_main() {
         get_compile_time_arg_val(28);  // temp buffer for in place untilize with wide tensors
     constexpr uint32_t tile_cols = get_compile_time_arg_val(29);
     constexpr uint32_t tile_rows = get_compile_time_arg_val(30);
-    constexpr uint32_t no_wait_remote = get_compile_time_arg_val(31);
+    constexpr uint32_t half_max_bandwidth_stick_size = get_compile_time_arg_val(31);
+    constexpr uint32_t no_wait_remote = get_compile_time_arg_val(32);
 
     constexpr uint32_t elem_nbytes = sizeof(uint16_t);
     constexpr uint16_t pad_core_id = 0xFFFF;
@@ -334,7 +340,8 @@ void kernel_main() {
         const uint32_t temp_base_l1_addr_read = get_read_ptr(local_temp_cb_id);
         uint32_t config_data_l1_addr = get_read_ptr(local_config_cb_id);
         const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
-        copy_sticks_async_local<stick_nbytes, input_aligned_page_size, 1>(  // no wait pass
+        copy_sticks_async_local<stick_nbytes, input_aligned_page_size, half_max_bandwidth_stick_size, 1>(  // no wait
+                                                                                                           // pass
             config_data,
             my_noc_x,
             my_noc_y,
@@ -356,7 +363,7 @@ void kernel_main() {
         const uint32_t temp_base_l1_addr_read = get_read_ptr(local_temp_cb_id);
         uint32_t config_data_l1_addr = get_read_ptr(local_config_cb_id);
         const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
-        copy_sticks_async_local<stick_nbytes, input_aligned_page_size, 0>(  // wait pass
+        copy_sticks_async_local<stick_nbytes, input_aligned_page_size, half_max_bandwidth_stick_size, 0>(  // wait pass
             config_data,
             my_noc_x,
             my_noc_y,

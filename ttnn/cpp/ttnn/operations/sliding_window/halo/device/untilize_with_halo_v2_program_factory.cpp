@@ -556,6 +556,9 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     printf("max_local_size = %d\n", max_local_size);
     printf("local_temp_cb_id = %d\n", local_temp_cb_id);
 
+    int half_max_bandwidth_stick_size =
+        device->arch() == tt::ARCH::WORMHOLE_B0 ? 256 : 512;  // 256 for wormhole, 512 for blackhole
+
     if (out_stick_nbytes % input_tensor.buffer()->alignment() != 0) {
         aligned_input_nstick_nbytes = tt::round_up(out_stick_nbytes, input_tensor.buffer()->alignment());
     }
@@ -592,6 +595,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         temp_cb_id,
         ntiles_per_block,
         input_nblocks_per_core,
+        half_max_bandwidth_stick_size,
         0};
 
     reader_ct_args[0] = 0;
@@ -609,7 +613,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     reader_ct_args[1] = 0;
     reader_ct_args[2] = cb_indices.remote_config_cb_id;
     reader_ct_args[3] = remote_temp_cb_id;
-    reader_ct_args[31] = 1;  // no wait remote
+    reader_ct_args[32] = 1;  // no wait remote
     KernelHandle reader_kernel_id1 = CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/sliding_window/halo/device/kernels/dataflow/halo_gather_in_place.cpp",
