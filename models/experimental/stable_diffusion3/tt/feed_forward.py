@@ -7,10 +7,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import torch
 import ttnn
 
+from ..reference.feed_forward import FeedForward
 from .linear import TtLinear, TtLinearParameters
 from .substate import substate
+from .utils import from_torch_fast, to_torch
 
 if TYPE_CHECKING:
     import torch
@@ -29,7 +32,11 @@ class TtFeedForwardParameters:
         *,
         dtype: ttnn.DataType | None = None,
         device: ttnn.MeshDevice,
-    ) -> TtFeedForwardParameters:
+        use_cpu_fallback: bool = False,
+    ) -> TtFeedForwardParameters | dict[str, torch.Tensor]:
+        if use_cpu_fallback:
+            return state
+
         return cls(
             in_proj=TtLinearParameters.from_torch(
                 substate(state, "net.0.proj"), dtype=dtype, device=device, shard_dim=-1
@@ -40,14 +47,43 @@ class TtFeedForwardParameters:
 
 
 class TtFeedForward:
-    def __init__(self, parameters: TtFeedForwardParameters) -> None:
+    def __init__(
+        self,
+        parameters: TtFeedForwardParameters | dict[str, torch.Tensor],
+        *,
+        device: ttnn.MeshDevice,
+    ) -> None:
         super().__init__()
 
-        self.in_proj = TtLinear(parameters.in_proj)
-        self.out_proj = TtLinear(parameters.out_proj)
-        self._distributed = parameters.distributed
+        if isinstance(parameters, dict):
+            with torch.device("meta"):
+                self._cpu_fallback = FeedForward(
+                    parameters["net.0.proj.weight"].shape[1], parameters["net.2.weight"].shape[0]
+                )
+            self._cpu_fallback.load_state_dict(parameters, assign=True)
+            self._cpu_fallback.eval()
+            self._cpu_fallback.to(torch.float32)
+        else:
+            self._cpu_fallback = None
+
+            self.in_proj = TtLinear(parameters.in_proj)
+            self.out_proj = TtLinear(parameters.out_proj)
+            self._distributed = parameters.distributed
+
+        self._device = device
 
     def __call__(self, x: ttnn.Tensor) -> ttnn.Tensor:
+        if self._cpu_fallback is not None:
+            torch_x = to_torch(x).to(torch.float32)
+            torch_out = self._cpu_fallback.forward(torch_x)
+            return from_torch_fast(
+                torch_out,
+                device=self._device,
+                dtype=x.dtype,
+                layout=x.layout,
+                shard_dim=-1,
+            )
+
         grid_size = x.device().compute_with_storage_grid_size()
         core_grid = ttnn.CoreGrid(x=grid_size.x, y=grid_size.y)
 

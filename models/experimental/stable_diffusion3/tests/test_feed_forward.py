@@ -42,7 +42,7 @@ def test_feed_forward(
     torch_model.eval()
 
     parameters = TtFeedForwardParameters.from_torch(torch_model.state_dict(), device=mesh_device, dtype=ttnn.bfloat8_b)
-    tt_model = TtFeedForward(parameters)
+    tt_model = TtFeedForward(parameters, device=mesh_device)
 
     torch_input_tensor = torch.randn((batch_size, 1, 1, input_dim), dtype=dtype)
 
