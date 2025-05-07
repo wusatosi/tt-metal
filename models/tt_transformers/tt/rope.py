@@ -51,6 +51,7 @@ class RotarySetup(LightweightModule):
             orig_context_len=orig_context_len,
             position_ids=torch.arange(max_seq_len),
         )
+
         self.set_cos_sin(cos_matrix, sin_matrix)
 
         self.batch_grid = (
