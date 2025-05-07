@@ -1303,7 +1303,7 @@ Tensor pad(
     TT_FATAL(!is_device_tensor(tensor), "pad only supports host tensors");
 
     // TODO: #15840 - Treat multi-device host vs owned/borrowed tensors uniformly.
-    if (is_multi_device_host_tensor(tensor)) {
+    if (ttnn::distributed::is_multi_device_host_tensor(tensor)) {
         return transform(tensor, [&](const Tensor& tensor_shard) {
             return pad<T>(tensor_shard, output_padded_shape, input_tensor_start, pad_value);
         });
@@ -1443,7 +1443,7 @@ Tensor unpad(const Tensor& tensor, const ttnn::Shape& output_tensor_start, const
     TT_FATAL(!is_device_tensor(tensor), "unpad only supports host tensors");
 
     // TODO: #15840 - Treat multi-device host vs owned/borrowed tensors uniformly.
-    if (is_multi_device_host_tensor(tensor)) {
+    if (ttnn::distributed::is_multi_device_host_tensor(tensor)) {
         return transform(tensor, [&](const Tensor& tensor_shard) {
             return unpad<T>(tensor_shard, output_tensor_start, output_tensor_end);
         });
