@@ -167,12 +167,7 @@ void copy_sticks_async_local(
         for (uint16_t j = 0; j < length; j += 4) {
             uint16_t no_wait = config_data[i + j + 3];
             if (no_wait != no_wait_pass) {  // only copy sticks matching the no_wait condition
-                if constexpr (no_wait_pass) {  // no wait copies must be contiguous in beginning of config so we are
-                                               // done if we hit an non-no_wait copy on a no_wait_pass
-                    break;
-                } else {
-                    continue;
-                }
+                continue;
             }
             uint16_t src_local_idx = config_data[i + j + 0];
             uint16_t dst_local_idx = config_data[i + j + 1];
@@ -186,13 +181,15 @@ void copy_sticks_async_local(
             uint64_t temp_addr = base_addr_temp;
             uint32_t src_addr = in_base_l1_addr + src_offset;
 
-            // bool is_forward_copy = dst_local_idx > src_local_idx + in_out_buffer_start_delta &&
-            //                        dst_local_idx <= src_local_idx + in_out_buffer_start_delta + nsticks;
-            bool is_overlap_copy = (dst_local_idx > src_local_idx + in_out_buffer_start_delta &&
-                                    dst_local_idx <= src_local_idx + in_out_buffer_start_delta + nsticks) ||
-                                   (dst_local_idx + nsticks >= src_local_idx + in_out_buffer_start_delta &&
-                                    dst_local_idx + nsticks < src_local_idx + in_out_buffer_start_delta + nsticks);
-            if (is_overlap_copy) {      // dst and src data overlaps, stick by stick copy is necessary
+            int dst_relative_src = src_local_idx + in_out_buffer_start_delta;
+            bool is_not_overlap_copy =
+                dst_local_idx + nsticks < dst_relative_src || dst_relative_src + nsticks < dst_local_idx;
+            if (is_not_overlap_copy) {
+                noc_async_write(src_addr, dst_addr, size);
+                DPRINT << "LOCAL copy, size: " << size << ENDL();
+            } else {  // dst and src data overlaps, stick by stick copy is necessary
+                // bool is_forward_copy = dst_local_idx > src_local_idx + in_out_buffer_start_delta &&
+                //                        dst_local_idx <= src_local_idx + in_out_buffer_start_delta + nsticks;
                 // if (is_forward_copy) {  // dst data is being moved "in front" of the source data, reverse
                 //                         // ordering of stick by stick copy is necessary
                 //     for (int16_t k = nsticks - 1; k >= 0; k--) {
@@ -207,9 +204,7 @@ void copy_sticks_async_local(
                 // }
                 noc_async_write(src_addr, temp_addr, size);
                 noc_async_write(temp_base_l1_addr_read, dst_addr, size);
-            } else {
-                noc_async_write(src_addr, dst_addr, size);
-                DPRINT << "LOCAL copy, size: " << size << ENDL();
+                DPRINT << "LOCAL copy, size: " << size << " x 2" << ENDL();
             }
         }
 
@@ -306,6 +301,7 @@ void kernel_main() {
         }
     }
     cb_wait_front(in_cb_id, in_npages);
+    // cb_push_back(in_cb_id, in_npages);
 
     // copy remote sticks to temp buffer or their final destinations
     if constexpr (no_wait_remote) {
