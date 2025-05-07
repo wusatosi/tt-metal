@@ -24,7 +24,7 @@ CONFIG = MochiConfig()
 PCC_REQUIRED = 0.99
 
 
-def create_models(mesh_device, n_layers: int = 48):
+def create_models(mesh_device, n_layers: int = 48, real_weights: bool = True):
     """Create and initialize both reference and TT models.
 
     Args:
@@ -56,26 +56,35 @@ def create_models(mesh_device, n_layers: int = 48):
         attention_mode=CONFIG.attention_mode,
     )
 
-    from safetensors.torch import load_file
-
-    weights_path = os.path.join(get_mochi_dir(), "dit.safetensors")
-    state_dict = load_file(weights_path)
-
-    if n_layers < 48:
-        # Filter state dict to only include the first n_layers
-        first_block_names = [f"blocks.{i}." for i in range(n_layers)]
-        state_dict = {
-            k: v
-            for k, v in state_dict.items()
-            if "blocks" not in k or any(k.startswith(lbn) for lbn in first_block_names)
-        }
-
     # Create reference model
     reference_model = RefAsymmDiTJoint(**config)
-    reference_model.load_state_dict(state_dict)
+
+    if real_weights:
+        from safetensors.torch import load_file
+
+        weights_path = os.path.join(get_mochi_dir(), "dit.safetensors")
+        state_dict = load_file(weights_path)
+
+        if n_layers < 48:
+            # Filter state dict to only include the first n_layers
+            first_block_names = [f"blocks.{i}." for i in range(n_layers)]
+            state_dict = {
+                k: v
+                for k, v in state_dict.items()
+                if "blocks" not in k or any(k.startswith(lbn) for lbn in first_block_names)
+            }
+        reference_model.load_state_dict(state_dict)
+        weight_cache_path = get_cache_path(os.environ.get("MESH_DEVICE"))
+    else:
+        state_dict = reference_model.state_dict()
+        for k in state_dict.keys():
+            if "norm" in k:
+                state_dict[k] = torch.randn_like(state_dict[k])
+        state_dict["pos_frequencies"] = torch.randn_like(state_dict["pos_frequencies"])
+        reference_model.load_state_dict(state_dict)
+        weight_cache_path = None
 
     # Create TT model
-    weight_cache_path = get_cache_path(os.environ.get("MESH_DEVICE"))
     tt_model = TtAsymmDiTJoint(
         mesh_device=mesh_device,
         state_dict=state_dict,
@@ -94,8 +103,9 @@ def create_models(mesh_device, n_layers: int = 48):
     [{"T3K": (1, 8)}.get(os.environ.get("MESH_DEVICE"), len(ttnn.get_device_ids()))],
     indirect=True,
 )
+@pytest.mark.parametrize("real_weights", [True, False], ids=["real_weights", "random_weights"])
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
-def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, reset_seeds):
+def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, reset_seeds, real_weights):
     dtype = ttnn.bfloat16
 
     # Create input tensors
@@ -107,7 +117,7 @@ def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, 
     num_visual_tokens = time_steps * height * width // (CONFIG.patch_size**2)
 
     # Create models using common function
-    reference_model, tt_model, _ = create_models(mesh_device, n_layers)
+    reference_model, tt_model, _ = create_models(mesh_device, n_layers, real_weights)
 
     max_seqlen_in_batch_kv = num_visual_tokens + tt_model.t5_token_length
 
@@ -167,7 +177,8 @@ def test_tt_asymm_dit_joint_inference(mesh_device, n_layers, use_program_cache, 
     indirect=True,
 )
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
-def test_tt_asymm_dit_joint_prepare(mesh_device, use_program_cache, reset_seeds):
+@pytest.mark.parametrize("real_weights", [True, False], ids=["real_weights", "random_weights"])
+def test_tt_asymm_dit_joint_prepare(mesh_device, use_program_cache, reset_seeds, real_weights):
     """Test that prepare() function produces identical outputs to reference implementation."""
 
     # Create input tensors
@@ -179,7 +190,7 @@ def test_tt_asymm_dit_joint_prepare(mesh_device, use_program_cache, reset_seeds)
     num_visual_tokens = time_steps * height * width // (CONFIG.patch_size**2)
 
     # Create models using common function with 0 layers since we only need prepare()
-    reference_model, tt_model, _ = create_models(mesh_device, n_layers=0)
+    reference_model, tt_model, _ = create_models(mesh_device, n_layers=0, real_weights=real_weights)
 
     x = torch.randn(batch_size, tt_model.in_channels, time_steps, height, width)
     sigma = torch.ones(batch_size)
@@ -225,8 +236,9 @@ def test_tt_asymm_dit_joint_prepare(mesh_device, use_program_cache, reset_seeds)
     indirect=True,
 )
 @pytest.mark.parametrize("n_layers", [1], ids=["L1"])
+@pytest.mark.parametrize("real_weights", [True, False], ids=["real_weights", "random_weights"])
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
-def test_tt_asymm_dit_joint_model_fn(mesh_device, use_program_cache, reset_seeds, n_layers):
+def test_tt_asymm_dit_joint_model_fn(mesh_device, use_program_cache, reset_seeds, n_layers, real_weights):
     """Test the model with real inputs processed just like in the pipeline."""
     dtype = ttnn.bfloat16
     cfg_scale = 6.0
@@ -359,7 +371,7 @@ def test_tt_asymm_dit_joint_model_fn(mesh_device, use_program_cache, reset_seeds
     num_visual_tokens = latent_t * latent_h * latent_w // (CONFIG.patch_size**2)
 
     # Create models using common function
-    reference_model, tt_model, _ = create_models(mesh_device, n_layers)
+    reference_model, tt_model, _ = create_models(mesh_device, n_layers, real_weights)
 
     # Create input latents
     z = torch.randn(

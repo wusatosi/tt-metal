@@ -41,7 +41,7 @@ class PatchEmbed(LightweightModule):
             mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             layout=ttnn.TILE_LAYOUT,
-            cache_file_name=weight_cache_path / (weight_name + "flattened"),
+            cache_file_name=weight_cache_path / (weight_name + "flattened") if weight_cache_path else None,
         )
         if bias:
             bias_name = f"{state_dict_prefix}.proj.bias" if state_dict_prefix else "proj.bias"
@@ -55,7 +55,7 @@ class PatchEmbed(LightweightModule):
                 mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
                 layout=ttnn.TILE_LAYOUT,
-                cache_file_name=weight_cache_path / (bias_name + "flattened"),
+                cache_file_name=weight_cache_path / (bias_name + "flattened") if weight_cache_path else None,
             )
         else:
             self.bias = None
