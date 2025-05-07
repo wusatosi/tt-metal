@@ -33,7 +33,7 @@ using CoreMapping = std::pair<CoreCoord, std::vector<DataChunk>>;
 std::vector<CoreMapping> calculate_core_mapping(
     const ttnn::CoreRangeSet& cores,
     int block_size,
-    uint32_t input_elements_per_core,
+    uint32_t input_sticks_per_core,
     uint32_t output_blocks_per_core,
     uint32_t num_cores_with_extra_block) {
     std::vector<CoreMapping> core_mappings;
@@ -44,7 +44,7 @@ std::vector<CoreMapping> calculate_core_mapping(
     auto grid_size = bounding_box.grid_size();
 
     // variables to track inputs
-    uint32_t inputs_remaining = input_elements_per_core * block_size;
+    uint32_t inputs_remaining = input_sticks_per_core * block_size;
     uint32_t input_core_index = 0;
     uint32_t input_start_index = 0;
 
@@ -74,7 +74,7 @@ std::vector<CoreMapping> calculate_core_mapping(
             if (inputs_remaining == 0) {
                 input_core_index++;
                 input_start_index = 0;
-                inputs_remaining = input_elements_per_core * block_size;
+                inputs_remaining = input_sticks_per_core * block_size;
             } else {
                 input_start_index = input_end_index;
             }
@@ -105,10 +105,11 @@ operation::ProgramWithCallbacks conv_distribute_multi_core(
 
     // TODO: process input and output tensor formats
     auto input_shard_spec = input_tensor.shard_spec().value();
-    uint32_t input_elements_per_core = input_shard_spec.numel();
+    uint32_t input_sticks_per_core = input_shard_spec.shape[0];
+    uint32_t input_stick_size = input_shard_spec.shape[1];
 
-    auto all_core_mappings = calculate_core_mapping(
-        cores, divisor, input_elements_per_core, num_blocks_per_core, num_cores_with_extra_block);
+    auto all_core_mappings =
+        calculate_core_mapping(cores, divisor, input_stick_per_core, num_blocks_per_core, num_cores_with_extra_block);
 
     // TODO: set up circular buffers
 
