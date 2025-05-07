@@ -40,7 +40,7 @@ block_kwargs = {
 }
 
 
-def create_models(mesh_device, state_dict, partial_state_dict, block_path, update_y=True):
+def create_models(mesh_device, block_path, update_y=True, real_weights=True):
     """Initialize both reference and TT models."""
     reference_model = AsymmetricJointBlock(
         hidden_size_x=CONFIG.hidden_size_x,
@@ -52,13 +52,25 @@ def create_models(mesh_device, state_dict, partial_state_dict, block_path, updat
         device="cpu",
         **block_kwargs,
     )
-    reference_model.load_state_dict(partial_state_dict)
+    if real_weights:
+        state_dict, partial_state_dict = load_model_weights(block_path)
+        reference_model.load_state_dict(partial_state_dict)
+        weight_cache_path = get_cache_path(os.environ.get("MESH_DEVICE"))
+    else:
+        state_dict = reference_model.state_dict()
+        # Initialize RMSNorm weights to random values
+        for k in state_dict.keys():
+            if "norm" in k:
+                state_dict[k] = torch.randn_like(state_dict[k])
+        reference_model.load_state_dict(state_dict)
+        state_dict = {f"{block_path}.{k}": v for k, v in state_dict.items()}
+        weight_cache_path = None
 
     tt_model = TtAsymmetricJointBlock(
         mesh_device=mesh_device,
         state_dict=state_dict,
         state_dict_prefix=block_path,
-        weight_cache_path=get_cache_path(os.environ.get("MESH_DEVICE")),
+        weight_cache_path=weight_cache_path,
         layer_num=0,
         dtype=ttnn.bfloat16,
         hidden_size_x=CONFIG.hidden_size_x,
@@ -94,7 +106,10 @@ def create_models(mesh_device, state_dict, partial_state_dict, block_path, updat
     ],
 )
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
-def test_tt_block(mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, block_path, update_y):
+@pytest.mark.parametrize("real_weights", [True, False], ids=["real_weights", "random_weights"])
+def test_tt_block(
+    mesh_device, vision_seq_len, text_seq_len, use_program_cache, reset_seeds, block_path, update_y, real_weights
+):
     """Test TtAsymmetricJointBlock implementation by comparing with reference model."""
 
     # Fabric setup
@@ -133,10 +148,9 @@ def test_tt_block(mesh_device, vision_seq_len, text_seq_len, use_program_cache, 
 
     min_pcc = 0.997
     max_mse = 0.0089
-    state_dict, partial_state_dict = load_model_weights(block_path)
 
     # Create reference model
-    reference_model, tt_model = create_models(mesh_device, state_dict, partial_state_dict, block_path, update_y)
+    reference_model, tt_model = create_models(mesh_device, block_path, update_y, real_weights)
     # Create input tensors
     batch_size = 1
     x_input = torch.randn(batch_size, vision_seq_len, CONFIG.hidden_size_x)
