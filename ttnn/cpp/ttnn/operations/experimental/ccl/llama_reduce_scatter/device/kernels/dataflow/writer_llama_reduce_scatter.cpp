@@ -29,7 +29,7 @@ FORCE_INLINE std::uint64_t static_noc_multicast_addr(
 }
 
 template <bool ring_topology>
-uint32_t distance(uint32_t chip_id, uint32_t target_device_id) {
+FORCE_INLINE uint32_t distance(uint32_t chip_id, uint32_t target_device_id, uint32_t num_devices) {
     if constexpr (ring_topology) {
         uint32_t line_distance = std::abs(int(target_device_id) - int(chip_id));
         return std::min(line_distance, num_devices - line_distance);
@@ -39,8 +39,8 @@ uint32_t distance(uint32_t chip_id, uint32_t target_device_id) {
 }
 
 template <bool ring_topology>
-uint32_t get_fabric_connection(
-    const FabricConnectionManager& fabric_connection, uint32_t chip_id, uint32_t target_device_id) {
+FORCE_INLINE tt::tt_fabric::WorkerToFabricEdmSender& get_fabric_connection(
+    FabricConnectionManager& fabric_connection, uint32_t chip_id, uint32_t target_device_id, uint32_t num_devices) {
     if constexpr (ring_topology) {
         uint32_t right_distance = (target_device_id - chip_id + num_devices) % num_devices;
         uint32_t left_distance = (chip_id - target_device_id + num_devices) % num_devices;
@@ -135,9 +135,10 @@ void kernel_main() {
         }
         for (uint32_t target_device_id : device_order) {
             // Calculate device-specific constants once per device
-            const uint32_t num_hops = distance<ring_topology>(chip_id, target_device_id);
+            const uint32_t num_hops = distance<ring_topology>(chip_id, target_device_id, num_devices);
             unicast_packet_header->to_chip_unicast(static_cast<uint8_t>(num_hops));
-            auto& fabric_conn = get_fabric_connection<ring_topology>(fabric_connection, chip_id, target_device_id);
+            auto& fabric_conn =
+                get_fabric_connection<ring_topology>(fabric_connection, chip_id, target_device_id, num_devices);
 
             uint32_t num_pages_sent = 0;
             uint32_t packet = sender_packet_start;
