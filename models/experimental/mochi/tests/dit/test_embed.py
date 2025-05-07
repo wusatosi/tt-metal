@@ -27,12 +27,11 @@ CONFIG = MochiConfig()
     [(CONFIG.patch_size, CONFIG.in_channels, CONFIG.hidden_size_x, CONFIG.patch_embed_bias)],
 )
 @pytest.mark.parametrize("B, T, H, W", [(1, 28, 60, 106)])
+@pytest.mark.parametrize("real_weights", [True, False], ids=["real_weights", "random_weights"])
 def test_tt_patch_embed_inference(
-    mesh_device, patch_size, in_chans, embed_dim, bias, B, T, H, W, use_program_cache, reset_seeds
+    mesh_device, patch_size, in_chans, embed_dim, bias, B, T, H, W, use_program_cache, reset_seeds, real_weights
 ):
     dtype = ttnn.bfloat16
-
-    state_dict, partial_state_dict = load_model_weights("x_embedder")
 
     # Create reference model
     reference_model = PatchEmbed(
@@ -41,14 +40,22 @@ def test_tt_patch_embed_inference(
         embed_dim=embed_dim,
         bias=bias,
     )
-    reference_model.load_state_dict(partial_state_dict)
+
+    state_dict_prefix = "x_embedder"
+    if real_weights:
+        state_dict, partial_state_dict = load_model_weights(state_dict_prefix)
+        reference_model.load_state_dict(partial_state_dict)
+        weight_cache_path = get_cache_path(os.environ.get("MESH_DEVICE"))
+    else:
+        state_dict = reference_model.state_dict()
+        state_dict = {f"{state_dict_prefix}.{k}": v for k, v in state_dict.items()}
+        weight_cache_path = None
 
     # Create TT model
-    weight_cache_path = get_cache_path(os.environ.get("MESH_DEVICE"))
     tt_model = TtPatchEmbed(
         mesh_device=mesh_device,
         state_dict=state_dict,
-        state_dict_prefix="x_embedder",
+        state_dict_prefix=state_dict_prefix,
         weight_cache_path=weight_cache_path,
         dtype=dtype,
         patch_size=patch_size,
