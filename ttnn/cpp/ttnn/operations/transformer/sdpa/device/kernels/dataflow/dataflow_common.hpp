@@ -144,7 +144,7 @@ void read_paged_chunk_with_padding(
 template <uint32_t tile_bytes>
 void copy_tile(uint64_t noc_read_addr_base, uint32_t q_write_ptr_base, uint32_t src_tile_id, uint32_t dst_tile_id) {
     // noc_async_read(
-        noc_read_addr_base + src_tile_id * tile_bytes, q_write_ptr_base + dst_tile_id * tile_bytes, tile_bytes);
+    //    noc_read_addr_base + src_tile_id * tile_bytes, q_write_ptr_base + dst_tile_id * tile_bytes, tile_bytes);
 }
 
 template <uint32_t tile_bytes>
