@@ -24,14 +24,16 @@ class TtTimesteps:
 
         self.emb = ttnn.from_torch(
             torch.exp(exponent),
-            dtype=ttnn.DataType.BFLOAT8_B,
+            dtype=ttnn.bfloat16,
             layout=ttnn.TILE_LAYOUT,
             device=device,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
 
     def forward(self, timesteps):
-        emb = ttnn.multiply(ttnn.unsqueeze(timesteps, -1), ttnn.unsqueeze(self.emb, 0))
+        t1 = ttnn.unsqueeze(timesteps, -1)
+        t2 = ttnn.unsqueeze(self.emb, 0)
+        emb = ttnn.multiply(t1, t2)
         emb = ttnn.multiply(emb, self.scale)
 
         emb = ttnn.concat([ttnn.sin(emb), ttnn.cos(emb)], dim=-1)

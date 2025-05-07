@@ -41,7 +41,7 @@ class TtCrossAttnUpBlock2D(nn.Module):
                     state_dict,
                     f"{module_path}.resnets.{i}",
                     True,
-                    split_in=2 if i == 1 else 1,
+                    split_in=2,
                     dram_norm=(has_dram_norm and i == 0),
                 )
             )
@@ -72,6 +72,7 @@ class TtCrossAttnUpBlock2D(nn.Module):
             hidden_states = ttnn.concat([hidden_states, res_hidden_states], dim=3)
             C = list(hidden_states.shape)[3]
 
+            hidden_states = ttnn.to_memory_config(hidden_states, ttnn.DRAM_MEMORY_CONFIG)
             hidden_states, [C, H, W] = resnet.forward(hidden_states, temb, [B, C, H, W])
             hidden_states = attn.forward(
                 hidden_states, [B, C, H, W], encoder_hidden_states=encoder_hidden_states, attention_mask=attention_mask

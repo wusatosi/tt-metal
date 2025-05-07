@@ -2,9 +2,7 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import torch.nn.functional as F
 import torch.nn as nn
-import torch
 import ttnn
 
 from models.experimental.stable_diffusion_xl_base.tt.tt_timesteps import TtTimesteps
@@ -20,6 +18,8 @@ from models.experimental.stable_diffusion_xl_base.tt.tt_upblock2d import TtUpBlo
 
 from models.experimental.stable_diffusion_xl_base.tt.sdxl_utility import (
     prepare_conv_params,
+    prepare_gn_mask,
+    prepare_gn_beta_gamma,
 )
 
 
@@ -57,8 +57,8 @@ class TtUNet2DConditionModel(nn.Module):
         conv_weights_in = state_dict["conv_in.weight"]
         conv_bias_in = state_dict["conv_in.bias"].unsqueeze(0).unsqueeze(0).unsqueeze(0)
 
-        self.norm_weights_out = state_dict["conv_norm_out.weight"]
-        self.norm_bias_out = state_dict["conv_norm_out.bias"]
+        norm_weights_out = state_dict["conv_norm_out.weight"]
+        norm_bias_out = state_dict["conv_norm_out.bias"]
 
         conv_weights_out = state_dict["conv_out.weight"]
         conv_bias_out = state_dict["conv_out.bias"].unsqueeze(0).unsqueeze(0).unsqueeze(0)
@@ -74,16 +74,16 @@ class TtUNet2DConditionModel(nn.Module):
             device, conv_weights_out, conv_bias_out, ttnn.bfloat8_b, act_block_h_override=32
         )
 
-        self.norm_core_grid = ttnn.CoreGrid(y=8, x=8)
+        self.norm_core_grid = ttnn.CoreGrid(y=4, x=8)
         self.norm_groups = 32
         self.norm_eps = 1e-5
 
-        # self.gamma_t, self.beta_t = prepare_gn_beta_gamma(
-        #     device, norm_weights_out, norm_bias_out, self.norm_core_grid.y
-        # )
-        # self.input_mask = prepare_gn_mask(
-        #     self.device, norm_weights_out.shape[0], self.norm_groups, self.norm_core_grid.y
-        # )
+        self.gamma_t, self.beta_t = prepare_gn_beta_gamma(
+            device, norm_weights_out, norm_bias_out, self.norm_core_grid.y
+        )
+        self.input_mask = prepare_gn_mask(
+            self.device, norm_weights_out.shape[0], self.norm_groups, self.norm_core_grid.y
+        )
 
     def forward(self, sample, input_shape, timestep, encoder_hidden_states, added_cond_kwargs):
         B, C, H, W = input_shape
@@ -168,54 +168,51 @@ class TtUNet2DConditionModel(nn.Module):
                     encoder_hidden_states=encoder_hidden_states,
                 )
 
-        sample = ttnn.to_layout(sample, ttnn.ROW_MAJOR_LAYOUT)
+        sample = ttnn.to_layout(sample, ttnn.TILE_LAYOUT)
 
-        sample = ttnn.to_torch(sample)
-        sample = sample.reshape(B, H, W, C)
-        sample = torch.permute(sample, (0, 3, 1, 2))
-        sample = F.group_norm(
-            sample,
-            num_groups=self.norm_groups,
-            weight=self.norm_weights_out,
-            bias=self.norm_bias_out,
-            eps=self.norm_eps,
-        )
-        sample = torch.permute(sample, (0, 2, 3, 1))
-        sample = sample.reshape(1, 1, B * H * W, C)
-        sample = ttnn.from_torch(
-            sample,
-            dtype=ttnn.bfloat16,
-            device=self.device,
-            layout=ttnn.TILE_LAYOUT,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
-        )
-
-        # grid_coord = ttnn.CoreCoord(self.norm_core_grid.x - 1, self.norm_core_grid.y - 1)
-        # shard_grid = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), grid_coord)})
-        # shard_shape = B * H * W // self.norm_core_grid.x, C // self.norm_core_grid.y
-        # shard_spec = ttnn.ShardSpec(shard_grid, shard_shape, ttnn.ShardOrientation.COL_MAJOR)
-        # sharded_mem_config = ttnn.MemoryConfig(
-        #     ttnn.types.TensorMemoryLayout.BLOCK_SHARDED, ttnn.types.BufferType.L1, shard_spec
-        # )
-        # sample = ttnn.to_memory_config(sample, sharded_mem_config)
-
-        # sample = ttnn.group_norm(
+        # sample = ttnn.to_torch(sample)
+        # sample = sample.reshape(B, H, W, C)
+        # sample = torch.permute(sample, (0, 3, 1, 2))
+        # sample = F.group_norm(
         #     sample,
         #     num_groups=self.norm_groups,
-        #     input_mask=self.input_mask,
-        #     weight=self.gamma_t,
-        #     bias=self.beta_t,
-        #     memory_config=sharded_mem_config,
-        #     core_grid=self.norm_core_grid,
-        #     epsilon=self.norm_eps,
+        #     weight=self.norm_weights_out,
+        #     bias=self.norm_bias_out,
+        #     eps=self.norm_eps,
         # )
-
+        # sample = torch.permute(sample, (0, 2, 3, 1))
+        # sample = sample.reshape(1, 1, B * H * W, C)
+        # sample = ttnn.from_torch(
+        #     sample,
+        #     dtype=ttnn.bfloat16,
+        #     device=self.device,
+        #     layout=ttnn.TILE_LAYOUT,
+        #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        # )
+        print("1")
+        sample = ttnn.reshape(sample, (B, 1, H * W, C))
+        sample = ttnn.to_memory_config(sample, ttnn.DRAM_MEMORY_CONFIG)
+        sample = ttnn.group_norm(
+            sample,
+            num_groups=self.norm_groups,
+            input_mask=self.input_mask,
+            weight=self.gamma_t,
+            bias=self.beta_t,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            core_grid=self.norm_core_grid,
+            epsilon=self.norm_eps,
+            inplace=False,
+            num_out_blocks=4,
+        )
+        print("2")
+        sample = ttnn.to_layout(sample, ttnn.TILE_LAYOUT)
         sample = ttnn.silu(sample)
 
         # sample = ttnn.sharded_to_interleaved(sample, ttnn.DRAM_MEMORY_CONFIG)
         self.conv_config.shard_layout = sample.memory_config().memory_layout if sample.is_sharded() else None
         self.conv_config.act_block_h_override = 32 if sample.is_sharded() else 0
-
+        print("3")
+        sample = ttnn.reshape(sample, (1, 1, B * H * W, C))
         [sample, [H, W], [d_w, d_b]] = ttnn.conv2d(
             input_tensor=sample,
             weight_tensor=self.tt_conv2_weights,
@@ -240,7 +237,7 @@ class TtUNet2DConditionModel(nn.Module):
         C = self.conv2_params["output_channels"]
         self.tt_conv2_weights = d_w
         self.tt_conv2_bias = d_b
-
+        print("4")
         self.conv_config.preprocess_weights_on_device = False
         self.conv_config.always_preprocess_weights = False
 

@@ -68,7 +68,7 @@ def prepare_ttnn_tensors(
         ((2, 4, 128, 128), (2,), (2, 77, 2048), (2, 1280), (2, 6)),
     ],
 )
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 4 * 16384}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 6 * 16384}], indirect=True)
 def test_unet(
     device,
     input_shape,
@@ -78,20 +78,22 @@ def test_unet(
     time_ids_shape,
     use_program_cache,
 ):
+    torch.manual_seed(213919)
     pipe = DiffusionPipeline.from_pretrained(
         "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float32, use_safetensors=True
     )
     unet = pipe.unet
     unet.eval()
     state_dict = unet.state_dict()
-
     torch_unet = unet
+    print("UNet loading..")
     tt_unet = TtUNet2DConditionModel(device, state_dict, "unet")
+    print("UNet loaded")
     torch_input_tensor = torch_random(input_shape, -0.1, 0.1, dtype=torch.float32)
-    torch_timestep_tensor = torch_random(timestep_shape, -0.1, 0.1, dtype=torch.float32)
+    torch_timestep_tensor = torch.tensor([500, 500])
     torch_temb_tensor = torch_random(temb_shape, -0.1, 0.1, dtype=torch.float32)
     torch_encoder_tensor = torch_random(encoder_shape, -0.1, 0.1, dtype=torch.float32)
-    torch_time_ids = torch.tensor([[1024, 1024, 0, 0, 1024, 1024], [1024, 1024, 0, 0, 1024, 1024]])
+    torch_time_ids = torch.tensor([1024, 1024, 0, 0, 1024, 1024, 1024, 1024, 0, 0, 1024, 1024])
 
     added_cond_kwargs = {
         "text_embeds": torch_temb_tensor,
