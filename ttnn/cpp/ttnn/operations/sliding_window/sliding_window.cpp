@@ -920,7 +920,7 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
                           max_len,
                           3 * (data.size() / 2 + 1));  // For split reader, each vector is (3 * data.size() / 2 + 1).
         }
-        max_len += in_place ? 7 : 6;  // account for the key tuple and null plug
+        max_len += in_place ? 3 : 6;  // account for the key tuple and null plug (no null plug for in place)
 
         std::vector<std::vector<std::vector<uint16_t>>> flattened_config(2);
 
@@ -1003,6 +1003,17 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
             flattened_config[0].emplace_back(std::move(flat_data[0]));
             flattened_config[1].emplace_back(std::move(flat_data[1]));
         }
+
+        printf("flattened_config[0].size(): %ld\n", flattened_config[0].size());
+        printf("flattened_config[0][0].size(): %ld\n", flattened_config[0][0].size());
+
+        for (int i = 0; i < flattened_config[0].size(); ++i) {
+            for (int j = 0; j < flattened_config[0][i].size(); ++j) {
+                printf("%d ", flattened_config[0][i][j]);
+            }
+            printf("\n");
+        }
+
         return std::make_tuple(flattened_config, max_local_size);
     };
 
