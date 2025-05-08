@@ -9,13 +9,15 @@ from dataclasses import dataclass
 import torch
 import ttnn
 
+from ..reference.normalization import RmsNorm
 from . import utils
-from .utils import from_torch_fast
+from .utils import from_torch_fast, to_torch
 
 
 @dataclass
 class TtRmsNormParameters:
     weight: ttnn.Tensor
+    device: ttnn.MeshDevice
 
     @classmethod
     def from_torch(
@@ -23,21 +25,59 @@ class TtRmsNormParameters:
         state: dict[str, torch.Tensor],
         *,
         dtype: ttnn.DataType | None = None,
-        device: ttnn.Device,
+        device: ttnn.MeshDevice,
     ) -> TtRmsNormParameters:
         return cls(
-            weight=from_torch_fast(state["weight"].unsqueeze(0), layout=ttnn.TILE_LAYOUT, dtype=dtype, device=device)
+            weight=from_torch_fast(state["weight"].unsqueeze(0), layout=ttnn.TILE_LAYOUT, dtype=dtype, device=device),
+            device=device,
         )
 
 
 class TtRmsNorm:
-    def __init__(self, parameters: TtRmsNormParameters, *, eps: float) -> None:
+    def __init__(
+        self,
+        parameters: TtRmsNormParameters,
+        *,
+        eps: float,
+        use_cpu_fallback: bool = False,
+    ) -> None:
         super().__init__()
 
-        self._eps = eps
-        self._weight = parameters.weight
+        self._device = parameters.device
+
+        if use_cpu_fallback:
+            with torch.device("meta"):
+                self._cpu_fallback = RmsNorm(
+                    dim=parameters.weight.shape[-1],
+                    eps=eps,
+                )
+            self._cpu_fallback.load_state_dict(
+                dict(
+                    weight=to_torch(parameters.weight).squeeze(0),
+                ),
+                assign=True,
+            )
+            self._cpu_fallback.eval()
+            self._cpu_fallback.to(torch.float32)
+        else:
+            self._cpu_fallback = None
+
+            self._eps = eps
+            self._weight = parameters.weight
 
     def __call__(self, x: ttnn.Tensor, *, deallocate: bool = False) -> ttnn.Tensor:
+        if self._cpu_fallback is not None:
+            torch_x = ttnn.to_torch(x, mesh_composer=ttnn.ConcatMeshToTensor(self._device, 0))
+            torch_result = self._cpu_fallback(torch_x)
+
+            return ttnn.from_torch(
+                torch_result,
+                device=self._device,
+                mesh_mapper=ttnn.ShardTensorToMesh(self._device, 0),
+                layout=ttnn.TILE_LAYOUT,
+                dtype=ttnn.bfloat16,
+            )
+
         output = ttnn.rms_norm(x, weight=self._weight, epsilon=self._eps)
 
         if deallocate:
@@ -116,23 +156,45 @@ class TtLayerNormParameters:
 
 
 class TtLayerNorm:
-    def __init__(self, parameters: TtLayerNormParameters, *, eps: float) -> None:
+    def __init__(
+        self,
+        parameters: TtLayerNormParameters,
+        *,
+        eps: float,
+        use_cpu_fallback: bool = False,
+    ) -> None:
         super().__init__()
 
-        self._eps = eps
-        self._distributed = parameters.distributed
-        self._weight = parameters.weight
-        self._bias = parameters.bias
         self._device = parameters.device
+        self._distributed = parameters.distributed
 
-        with torch.device("meta"):
-            self._torch_model = torch.nn.LayerNorm(
-                parameters.weight_shape, eps=eps, elementwise_affine="weight" in parameters.state
+        if use_cpu_fallback:
+            elementwise_affine = "weight" in parameters.state
+
+            with torch.device("meta"):
+                self._cpu_fallback = torch.nn.LayerNorm(
+                    parameters.weight_shape, eps=eps, elementwise_affine=elementwise_affine
+                )
+
+            shard_dim = -1 if parameters.distributed else None
+
+            self._cpu_fallback.load_state_dict(
+                dict(
+                    weight=to_torch(parameters.weight, shard_dim=shard_dim).reshape(-1),
+                    bias=to_torch(parameters.bias, shard_dim=shard_dim).reshape(-1),
+                )
+                if elementwise_affine
+                else {},
+                assign=True,
             )
+            self._cpu_fallback.eval()
+            self._cpu_fallback.to(torch.float32)
+        else:
+            self._cpu_fallback = None
 
-        self._torch_model.load_state_dict(parameters.state, assign=True)
-        self._torch_model.eval()
-        self._torch_model.to(torch.float32)
+            self._eps = eps
+            self._weight = parameters.weight
+            self._bias = parameters.bias
 
     def __call__(
         self,
@@ -143,16 +205,17 @@ class TtLayerNorm:
     ) -> ttnn.Tensor:
         shard_dim = -1 if self._distributed else 0
 
-        torch_x = ttnn.to_torch(x, mesh_composer=ttnn.ConcatMeshToTensor(self._device, shard_dim))
-        torch_result = self._torch_model(torch_x)
+        if self._cpu_fallback is not None:
+            torch_x = ttnn.to_torch(x, mesh_composer=ttnn.ConcatMeshToTensor(self._device, shard_dim))
+            torch_result = self._cpu_fallback(torch_x)
 
-        return ttnn.from_torch(
-            torch_result,
-            device=self._device,
-            mesh_mapper=ttnn.ShardTensorToMesh(self._device, shard_dim),
-            layout=ttnn.TILE_LAYOUT,
-            dtype=ttnn.bfloat16,
-        )
+            return ttnn.from_torch(
+                torch_result,
+                device=self._device,
+                mesh_mapper=ttnn.ShardTensorToMesh(self._device, shard_dim),
+                layout=ttnn.TILE_LAYOUT,
+                dtype=ttnn.bfloat16,
+            )
 
         if not self._distributed:
             return ttnn.layer_norm(
