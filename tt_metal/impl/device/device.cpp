@@ -730,7 +730,7 @@ void Device::reset_cores() {
         const int timeout_ms = 10000; // 10 seconds for now
         if (!id_and_cores.second.empty()) {
             try {
-                llrt::internal_::wait_until_cores_done(id_and_cores.first, RUN_MSG_GO, id_and_cores.second, timeout_ms);
+                llrt::internal_::wait_until_cores_done(id_and_cores.first, std::nullopt, id_and_cores.second, timeout_ms);
             } catch (std::runtime_error &e) {
                 log_warning(
                     "Detected dispatch kernels still running but failed to complete an early exit. This may happen "

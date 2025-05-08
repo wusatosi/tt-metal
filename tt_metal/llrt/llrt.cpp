@@ -178,7 +178,7 @@ CoreCoord get_core_for_dram_channel(int dram_channel_id, chip_id_t chip_id) {
 
 namespace internal_ {
 
-static bool check_if_riscs_on_specified_core_done(chip_id_t chip_id, const CoreCoord &core, int run_state) {
+static bool check_if_riscs_on_specified_core_done(chip_id_t chip_id, const CoreCoord &core, std::optional<int> run_state) {
     bool is_eth_core = tt::tt_metal::MetalContext::instance().get_cluster().is_ethernet_core(core, chip_id);
     bool is_active_eth_core = false;
     bool is_inactive_eth_core = false;
@@ -205,15 +205,15 @@ static bool check_if_riscs_on_specified_core_done(chip_id_t chip_id, const CoreC
         run_mailbox_read_val = read_hex_vec_from_core(chip_id, core, go_msg_addr & ~0x3, sizeof(uint32_t));
         go_msg_t* core_status = (go_msg_t*)(run_mailbox_read_val.data());
         uint8_t run = core_status->signal;
-        if (run != run_state && run != RUN_MSG_DONE) {
+        if (run_state.has_value() && (run != *run_state && run != RUN_MSG_DONE)) {
             fprintf(
                 stderr,
                 "Read unexpected run_mailbox value: 0x%x (expected 0x%x or 0x%x)\n",
                 run,
-                run_state,
+                *run_state,
                 RUN_MSG_DONE);
             TT_FATAL(
-                run == run_state || run == RUN_MSG_DONE, "Read unexpected run_mailbox value from core {}", core.str());
+                run == *run_state || run == RUN_MSG_DONE, "Read unexpected run_mailbox value from core {}", core.str());
         }
 
         return run == RUN_MSG_DONE;
@@ -222,7 +222,7 @@ static bool check_if_riscs_on_specified_core_done(chip_id_t chip_id, const CoreC
 }
 
 void wait_until_cores_done(
-    chip_id_t device_id, int run_state, std::unordered_set<CoreCoord> &not_done_phys_cores, int timeout_ms) {
+    chip_id_t device_id, std::optional<int> run_state, std::unordered_set<CoreCoord> &not_done_phys_cores, int timeout_ms) {
     // poll the cores until the set of not done cores is empty
     int loop_count = 1;
     auto start = std::chrono::high_resolution_clock::now();
