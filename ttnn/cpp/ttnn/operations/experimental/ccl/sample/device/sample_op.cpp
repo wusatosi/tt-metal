@@ -50,9 +50,10 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     const std::vector<Tensor>& input_tensors,
     std::vector<Tensor>& output_tensors,
     IDevice* device,
-    IDevice* fwd_device) {
+    IDevice* fwd_device,
+    bool should_read,
+    bool should_write) {
     tt::tt_metal::Program program{};
-    // Create a std::nullopt for the callback instead of trying to convert a lambda
     std::optional<tt::tt_metal::operation::OverrideRuntimeArgumentsCallback<std::vector<Tensor>>>
         override_runtime_arguments_callback = std::nullopt;
     std::cout << "DEBUG: sample program created" << std::endl;
@@ -75,12 +76,12 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     auto reader_cores = CoreCoord(0, 0);
 
     tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(1 * tile_size, {{src0_cb_index, data_format}})
+        tt::tt_metal::CircularBufferConfig(2 * tile_size, {{src0_cb_index, data_format}})
             .set_page_size(src0_cb_index, tile_size);
     tt::tt_metal::CBHandle cb_src0_workers = CreateCircularBuffer(program, {reader_cores}, cb_src0_config);
 
     tt::tt_metal::CircularBufferConfig cb_dst0_config =
-        tt::tt_metal::CircularBufferConfig(1 * tile_size, {{dst0_cb_index, data_format}})
+        tt::tt_metal::CircularBufferConfig(2 * tile_size, {{dst0_cb_index, data_format}})
             .set_page_size(dst0_cb_index, tile_size);
     tt::tt_metal::CBHandle cb_dst0_workers = CreateCircularBuffer(program, {reader_cores}, cb_dst0_config);
 
@@ -92,50 +93,57 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     auto reserved_packet_header_CB_handle =
         CreateCircularBuffer(program, {reader_cores}, cb_reserved_packet_header_config);
 
-    auto reader_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
-    reader_kernel_config.compile_args = {src0_cb_index, dst0_cb_index, tile_size};
+    auto semaphore = tt::tt_metal::CreateSemaphore(program, {reader_cores}, 0);
+    if (should_read) {
+        auto reader_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
+        reader_kernel_config.compile_args = {src0_cb_index, dst0_cb_index, tile_size};
 
-    auto reader_kernel_id = tt::tt_metal::CreateKernel(
-        program,
-        "ttnn/cpp/ttnn/operations/experimental/ccl/sample/device/kernels/"
-        "reader.cpp",
-        reader_cores,
-        reader_kernel_config);
+        auto reader_kernel_id = tt::tt_metal::CreateKernel(
+            program,
+            "ttnn/cpp/ttnn/operations/experimental/ccl/sample/device/kernels/"
+            "reader.cpp",
+            reader_cores,
+            reader_kernel_config);
 
-    std::vector<uint32_t> reader_rt_args = {
-        input_tensor.buffer()->address(),  // tensor_address0
-        1,
-        reserved_packet_header_CB_index};
+        std::vector<uint32_t> reader_rt_args = {
+            input_tensor.buffer()->address(),  // tensor_address0
+            semaphore,
+        };
 
-    // link is set to 0
-    tt::tt_fabric::append_fabric_connection_rt_args(
-        device->id(), fwd_device->id(), 0, program, {reader_cores}, reader_rt_args);
-
-    tt::tt_metal::SetRuntimeArgs(program, reader_kernel_id, {reader_cores}, reader_rt_args);
+        tt::tt_metal::SetRuntimeArgs(program, reader_kernel_id, reader_cores, reader_rt_args);
+    }
 
     // Writer
     auto writer_cores = CoreCoord(0, 0);
+    auto writer_core_range = CoreRange(writer_cores, writer_cores);
 
-    auto writer_kernel_config = tt::tt_metal::WriterDataMovementConfig{};
-    writer_kernel_config.compile_args = {
-        dst0_cb_index,
-        tile_size,
-    };
+    if (should_write) {
+        auto writer_kernel_config = tt::tt_metal::WriterDataMovementConfig{};
+        writer_kernel_config.compile_args = {src0_cb_index, dst0_cb_index, tile_size};
 
-    auto writer_kernel_id = tt::tt_metal::CreateKernel(
-        program,
-        "ttnn/cpp/ttnn/operations/experimental/ccl/sample/device/kernels/"
-        "writer.cpp",
-        writer_cores,
-        writer_kernel_config);
+        auto writer_kernel_id = tt::tt_metal::CreateKernel(
+            program,
+            "ttnn/cpp/ttnn/operations/experimental/ccl/sample/device/kernels/"
+            "writer.cpp",
+            writer_cores,
+            writer_kernel_config);
 
-    std::vector<uint32_t> writer_rt_args = {
-        output_tensor.buffer()->address(),  // tensor_address0
-        1,
-        reserved_packet_header_CB_index,
-    };
+        std::vector<uint32_t> writer_rt_args = {
+            input_tensor.buffer()->address(),  // tensor_address0
+            1,
+            reserved_packet_header_CB_index,
+            semaphore,
+            writer_cores.x,  // out_ready_sem_noc0_x
+            writer_cores.y   // out_ready_sem_noc0_y
+        };
 
-    tt::tt_metal::SetRuntimeArgs(program, writer_kernel_id, {writer_cores}, writer_rt_args);
+        // link is set to 0
+        writer_rt_args.push_back(1);
+        tt::tt_fabric::append_fabric_connection_rt_args(
+            device->id(), fwd_device->id(), 0, program, writer_cores, writer_rt_args);
+        writer_rt_args.push_back(0);
+        tt::tt_metal::SetRuntimeArgs(program, writer_kernel_id, writer_cores, writer_rt_args);
+    }
 
     return {.program = std::move(program), .override_runtime_arguments_callback = override_runtime_arguments_callback};
 }
@@ -152,14 +160,14 @@ tt::tt_metal::operation::ProgramWithCallbacks Sample::create_program_at(
         auto to_device = devices[1];
         std::cout << "DEBUG: device id: " << devices[0]->id() << std::endl;
         std::cout << "DEBUG: to_device id: " << to_device->id() << std::endl;
-        return sample(input_tensors, output_tensors, devices[0], to_device);
+        return sample(input_tensors, output_tensors, devices[0], to_device, false, true);
         // return tt::tt_metal::operation::ProgramWithCallbacks{};
     }
     if (coord[0] == 0 && coord[1] == 1) {
         auto to_device = devices[0];
         std::cout << "DEBUG: device id: " << devices[1]->id() << std::endl;
         std::cout << "DEBUG: to_device id: " << to_device->id() << std::endl;
-        return sample(input_tensors, output_tensors, devices[1], to_device);
+        return sample(input_tensors, output_tensors, devices[1], to_device, true, false);
     }
     return tt::tt_metal::operation::ProgramWithCallbacks{};
     // std::optional<IDevice*> forward_device = std::nullopt;
