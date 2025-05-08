@@ -7,6 +7,7 @@
 #include "compute_kernel_api/tile_move_copy.h"
 #include "compute_kernel_api/eltwise_unary/eltwise_unary.h"
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
+#include "debug/dprint.h"  // required in all kernels using DPRINT
 
 namespace NAMESPACE {
 void MAIN {
@@ -21,6 +22,9 @@ void MAIN {
 
             // Pop tile after tile, copy to DST and pack
             cb_wait_front(tt::CBIndex::c_0, 1);
+            DPRINT << "Input" << ENDL();
+            // DPRINT << TSLICE(tt::CBIndex::c_0, 0, SliceRange::hw0_32_16()) << ENDL();
+            DPRINT << TSLICE(tt::CBIndex::c_0, 0, SliceRange::h0_w0_32()) << ENDL();
 
             copy_tile(tt::CBIndex::c_0, 0, 0);
 
@@ -33,6 +37,9 @@ void MAIN {
             tile_regs_wait();
 
             pack_tile(0, tt::CBIndex::c_2);
+
+            DPRINT << "Output" << ENDL();
+            DPRINT << TSLICE(tt::CBIndex::c_2, 0, SliceRange::h0_w0_32()) << ENDL();
 
             cb_pop_front(tt::CBIndex::c_0, 1);
 

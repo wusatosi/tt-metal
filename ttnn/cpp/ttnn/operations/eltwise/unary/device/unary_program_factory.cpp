@@ -42,6 +42,12 @@ UnaryProgramFactory::cached_program_t UnaryProgramFactory::create(
     uint32_t num_cores_y = compute_with_storage_grid_size.y;
     auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
         tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_tiles);
+    tt::log_info(tt::LogOp, " ****** num_cores {}", num_cores);
+    // tt::log_info(tt::LogOp, " ****** all_cores {}", all_cores);
+    tt::log_info(tt::LogOp, " ****** core_group_1 {}", core_group_1);
+    // tt::log_info(tt::LogOp, " ****** core_group_2 {}", core_group_2);
+    tt::log_info(tt::LogOp, " ****** num_tiles_per_core_group_1 {}", num_tiles_per_core_group_1);
+    // tt::log_info(tt::LogOp, " ****** num_tiles_per_core_group_2 {}", num_tiles_per_core_group_2);
     uint32_t src0_cb_index = tt::CBIndex::c_0;
     uint32_t num_input_tiles = 2;
     tt::tt_metal::CircularBufferConfig cb_src0_config =
@@ -129,6 +135,8 @@ UnaryProgramFactory::cached_program_t UnaryProgramFactory::create(
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
         uint32_t num_tiles_per_core = 0;
         if (core_group_1.contains(core)) {
+            // tt::log_info(tt::LogOp, " ****** core_group_1 {}", core);
+            // tt::log_info(tt::LogOp, " ****** num_tiles_per_core_group_1 {}", num_tiles_per_core_group_1);
             num_tiles_per_core = num_tiles_per_core_group_1;
         } else if (core_group_2.contains(core)) {
             num_tiles_per_core = num_tiles_per_core_group_2;
@@ -143,6 +151,11 @@ UnaryProgramFactory::cached_program_t UnaryProgramFactory::create(
             program, unary_writer_kernel_id, core, {dst_buffer->address(), num_tiles_per_core, num_tiles_written});
         num_tiles_written += num_tiles_per_core;
     }
+
+    tt::log_info(tt::LogOp, " ****** num_cores {}", num_cores);
+    tt::log_info(tt::LogOp, " ****** num_cores_y {}", num_cores_y);
+    tt::log_info(tt::LogOp, " ****** i / num_cores_y, i % num_cores_y  {}  {}", (0 / num_cores_y), (0 % num_cores_y));
+    tt::log_info(tt::LogOp, " ****** i / num_cores_y, i % num_cores_y  {}  {}", (1 / num_cores_y), (1 % num_cores_y));
 
     return cached_program_t{
         std::move(program), {unary_reader_kernel_id, unary_writer_kernel_id, num_cores, num_cores_y}};

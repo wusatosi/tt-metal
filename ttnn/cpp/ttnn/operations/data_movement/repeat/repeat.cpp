@@ -178,13 +178,26 @@ ttnn::Tensor RepeatOperation::invoke(
     }
 
     if (working_tensor.get_dtype() == DataType::BFLOAT8_B) {
+        tt::log_info(
+            tt::LogOp,
+            " ****** before bf16 typecast - {} - {} ",
+            working_tensor.get_logical_shape(),
+            working_tensor.get_padded_shape());
+        working_tensor.print();
         working_tensor = ttnn::typecast(working_tensor, DataType::BFLOAT16);
+        tt::log_info(
+            tt::LogOp,
+            " ****** after bf16 typecast - {} - {} ",
+            working_tensor.get_logical_shape(),
+            working_tensor.get_padded_shape());
+        working_tensor.print();
     }
 
     // tiled -> RM
     if (working_tensor.layout() == ttnn::TILE_LAYOUT) {
         working_tensor =
             ttnn::to_layout(working_tensor, ttnn::ROW_MAJOR_LAYOUT, std::nullopt, std::nullopt, (IDevice*)nullptr);
+        // working_tensor.print();
     }
 
     // loop over dims in repetition vector, backwards because repeat pages first is faster
@@ -208,6 +221,7 @@ ttnn::Tensor RepeatOperation::invoke(
     if (tensor.layout() == ttnn::TILE_LAYOUT) {
         working_tensor =
             ttnn::to_layout(working_tensor, ttnn::TILE_LAYOUT, std::nullopt, std::nullopt, (IDevice*)nullptr);
+        // working_tensor.print();
     }
 
     if (tensor.get_dtype() == DataType::BFLOAT8_B) {
@@ -215,7 +229,7 @@ ttnn::Tensor RepeatOperation::invoke(
         // working_tensor = ttnn::fill_implicit_tile_padding(working_tensor, 0);
         tt::log_info(
             tt::LogOp,
-            " ****** before typecast- {} - {} ",
+            " ****** before typecast - {} - {} ",
             working_tensor.get_logical_shape(),
             working_tensor.get_padded_shape());
         working_tensor.print();
