@@ -189,8 +189,21 @@ inline __attribute__((always_inline)) void disable_relaxed_memory_ordering() {
 #endif
 }
 
+inline __attribute__((always_inline)) void disable_branch_prediction() {
+#if defined(ARCH_BLACKHOLE) && defined(ENABLE_DEBUG_MODE)
+    // Setting this bit will disable branch prediction, equivalent to always predicting not-taken. This will lower
+    // performance. Debug mode doesn't work with branch prediction enabled.
+    asm(R"ASM(
+        li t1, 0x2
+        csrrs zero, 0x7c0, t1
+            )ASM" ::
+            : "t1");
+#endif
+}
+
 inline __attribute__((always_inline)) void configure_csr() {
     disable_gathering();
     configure_l1_data_cache();
     disable_relaxed_memory_ordering();
+    disable_branch_prediction();
 }

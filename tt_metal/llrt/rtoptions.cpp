@@ -191,6 +191,11 @@ RunTimeOptions::RunTimeOptions() {
     if (getenv("TT_METAL_DISABLE_RELAXED_MEM_ORDERING")) {
         this->disable_relaxed_memory_ordering = true;
     }
+
+    const char* enable_trisc_debug_mode_str = std::getenv("TT_METAL_ENABLE_TRISC_DEBUG_MODE");
+    if (enable_trisc_debug_mode_str != nullptr) {
+        this->trisc_debug_mode = (uint32_t)std::strtoul(enable_trisc_debug_mode_str, NULL, 10);
+    }
 }
 
 const std::string& RunTimeOptions::get_root_dir() const {

@@ -153,6 +153,8 @@ class RunTimeOptions {
     // This option will disable the relaxed ordering
     bool disable_relaxed_memory_ordering = false;
 
+    std::optional<uint32_t> trisc_debug_mode = std::nullopt;
+
 public:
     RunTimeOptions();
     RunTimeOptions(const RunTimeOptions&) = delete;
@@ -340,6 +342,8 @@ public:
     inline bool get_hw_cache_invalidation_enabled() const { return this->enable_hw_cache_invalidation; }
 
     inline bool get_relaxed_memory_ordering_disabled() const { return this->disable_relaxed_memory_ordering; }
+
+    inline std::optional<uint32_t> get_enable_trisc_debug_mode() const { return this->trisc_debug_mode; }
 
     tt_metal::DispatchCoreConfig get_dispatch_core_config() const;
 

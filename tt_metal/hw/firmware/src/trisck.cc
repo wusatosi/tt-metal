@@ -57,11 +57,45 @@ void kernel_launch(uint32_t kernel_base_addr) {
 #if !defined(UCK_CHLKC_MATH) and defined ALIGN_LOCAL_CBS_TO_REMOTE_CBS
     ALIGN_LOCAL_CBS_TO_REMOTE_CBS
 #endif
+
+// Enter debug mode
+#if defined(ARCH_BLACKHOLE) && defined(ENABLE_DEBUG_MODE)
+    memory_write(RISCV_DEBUG_REG_RISC_DBG_CNTL_1, 0x80000000);
+#if ENABLE_DEBUG_MODE == 0
+    // Enable debug mode on trisc0
+    memory_write(RISCV_DEBUG_REG_RISC_DBG_CNTL_0, 0x80030001);
+#elif ENABLE_DEBUG_MODE == 1
+    // Enable debug mode on trisc1
+    memory_write(RISCV_DEBUG_REG_RISC_DBG_CNTL_0, 0x80050001);
+#elif ENABLE_DEBUG_MODE == 2
+    // Enable debug mode on trisc2
+    memory_write(RISCV_DEBUG_REG_RISC_DBG_CNTL_0, 0x80070001);
+#endif
+    memory_write(RISCV_DEBUG_REG_RISC_DBG_CNTL_0, 0x00000000);
+#endif
+
     wait_for_go_message();
     DeviceZoneScopedMainChildN("TRISC-KERNEL");
     EARLY_RETURN_FOR_DEBUG
     WAYPOINT("K");
     run_kernel();
     WAYPOINT("KD");
+
+// Exit debug mode
+#if defined(ARCH_BLACKHOLE) && defined(ENABLE_DEBUG_MODE)
+    memory_write(RISCV_DEBUG_REG_RISC_DBG_CNTL_1, 0x00000000);
+#if ENABLE_DEBUG_MODE == 0
+    // Enable debug mode on trisc0
+    memory_write(RISCV_DEBUG_REG_RISC_DBG_CNTL_0, 0x00030001);
+#elif ENABLE_DEBUG_MODE == 1
+    // Enable debug mode on trisc1
+    memory_write(RISCV_DEBUG_REG_RISC_DBG_CNTL_0, 0x00050001);
+#elif ENABLE_DEBUG_MODE == 2
+    // Enable debug mode on trisc2
+    memory_write(RISCV_DEBUG_REG_RISC_DBG_CNTL_0, 0x00070001);
+#endif
+    memory_write(RISCV_DEBUG_REG_RISC_DBG_CNTL_0, 0x00000000);
+#endif
+
 #endif
 }
