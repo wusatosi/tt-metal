@@ -618,6 +618,7 @@ void memcpy(
         .host_data = const_cast<void*>(src),
         .region = region,
     }};
+    std::cout << "Write to: " << queue.device()->get_device(distributed::MeshCoordinate(0, 0))->id() << std::endl;
     queue.enqueue_write_shards(dst.mesh_buffer(), shard_data_transfers, false);
 }
 
@@ -692,6 +693,8 @@ Tensor allocate_tensor_on_mesh(const TensorSpec& tensor_spec, distributed::MeshD
         specs.push_back(std::make_pair(coord, tensor_spec));
     }
     DeviceStorage device_storage(std::move(mesh_buffer), ReplicateTensor(), std::move(specs));
+    std::cout << "Allocate tensor on: " << mesh_device->get_device(distributed::MeshCoordinate(0, 0))->id()
+              << std::endl;
     return Tensor(std::move(device_storage), tensor_spec);
 }
 

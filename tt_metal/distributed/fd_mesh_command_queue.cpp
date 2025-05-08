@@ -427,6 +427,7 @@ MeshEvent FDMeshCommandQueue::enqueue_record_event_helper(
     };
 
     for (const auto& coord : event.device_range()) {
+        std::cout << "record event on: " << mesh_device_->get_device(coord)->id() << std::endl;
         dispatch_thread_pool_->enqueue(
             [&dispatch_lambda, coord]() { dispatch_lambda(coord); }, mesh_device_->get_device(coord)->id());
     }
@@ -452,6 +453,7 @@ void FDMeshCommandQueue::enqueue_wait_for_event(const MeshEvent& sync_event) {
     in_use_ = true;
     TT_FATAL(!trace_id_.has_value(), "Event Synchronization is not supported during trace capture.");
     for (const auto& coord : sync_event.device_range()) {
+        std::cout << "wait for event on: " << mesh_device_->get_device(coord)->id() << std::endl;
         event_dispatch::issue_wait_for_event_commands(
             id_, sync_event.mesh_cq_id(), mesh_device_->get_device(coord)->sysmem_manager(), sync_event.id());
     }
@@ -587,6 +589,7 @@ void FDMeshCommandQueue::write_program_cmds_to_subgrid(
     CoreType dispatch_core_type = dispatch_core_config.get_core_type();
     for (const auto& coord : sub_grid) {
         auto device = this->mesh_device_->get_device(coord);
+        std::cout << "Write programs to: " << device->id() << std::endl;
         this->update_launch_messages_for_device_profiler(program_cmd_seq, program_runtime_id, device);
         program_dispatch::write_program_command_sequence(
             program_cmd_seq, device->sysmem_manager(), id_, dispatch_core_type, stall_first, stall_before_program);
@@ -602,6 +605,7 @@ void FDMeshCommandQueue::write_go_signal_to_unused_sub_grids(
     bool unicast_go_signals) {
     for (auto& device : this->mesh_device_->get_devices()) {
         if (chip_ids_in_workload.find(device->id()) == chip_ids_in_workload.end()) {
+            std::cout << "Write Go signal to: " << device->id() << std::endl;
             write_go_signal(
                 id_,
                 mesh_device_,
