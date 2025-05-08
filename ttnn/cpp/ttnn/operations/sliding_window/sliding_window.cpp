@@ -924,12 +924,12 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
 
         std::vector<std::vector<std::vector<uint16_t>>> flattened_config(2);
 
-        if (in_place) {
-            printf("in_nsticks_per_core: %d\n", in_nsticks_per_core);
-            printf("max_out_nsticks_per_core: %d\n", max_out_nsticks_per_core);
-            printf("in_out_shard_size_delta: %d\n", in_out_shard_size_delta);
-        }
-        // printf("---LOCAL CONFIG---\n");
+        // if (in_place) {
+        //     printf("in_nsticks_per_core: %d\n", in_nsticks_per_core);
+        //     printf("max_out_nsticks_per_core: %d\n", max_out_nsticks_per_core);
+        //     printf("in_out_shard_size_delta: %d\n", in_out_shard_size_delta);
+        // }
+        printf("---LOCAL CONFIG---\n");
         int max_local_size = 0;
         int core = 0;
         for (const auto& [key, data] : config) {
@@ -1004,8 +1004,8 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
             flattened_config[1].emplace_back(std::move(flat_data[1]));
         }
 
-        printf("flattened_config[0].size(): %ld\n", flattened_config[0].size());
-        printf("flattened_config[0][0].size(): %ld\n", flattened_config[0][0].size());
+        // printf("flattened_config[0].size(): %ld\n", flattened_config[0].size());
+        // printf("flattened_config[0][0].size(): %ld\n", flattened_config[0][0].size());
 
         for (int i = 0; i < flattened_config[0].size(); ++i) {
             for (int j = 0; j < flattened_config[0][i].size(); ++j) {
@@ -1047,9 +1047,9 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
             printf("---REMOTE CONFIG---\n");
         }
         for (const auto& core_config : config) {
-            if (in_place) {
-                printf("    core: %d\n", core);
-            }
+            // if (in_place) {
+            //     printf("    core: %d\n", core);
+            // }
             std::vector<std::vector<uint16_t>> flat_data(2, std::vector<uint16_t>(max_len, 0));
             uint32_t idx1 = 0, idx2 = 0;
             uint32_t len_idx1 = 0, len_idx2 = 0;
@@ -1067,9 +1067,9 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
                 len_idx2 = idx2;
                 flat_data[1][idx2++] = 0;
                 int ref_ind = nocx - noc_00.x + (nocy - noc_00.y) * num_cores_x;
-                if (in_place) {
-                    printf("        ref ind: %d\n", ref_ind);
-                }
+                // if (in_place) {
+                //     printf("        ref ind: %d\n", ref_ind);
+                // }
                 int local_ref_count = flattened_local_config[0][ref_ind][2] / 4;
                 int local_core_count = flattened_local_config[0][core][2] / 4;
                 int first_local_dst_relative_src = flattened_local_config[0][ref_ind][3] + in_out_shard_size_delta;
@@ -1107,12 +1107,12 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
                             ref_size += length;  // TODO: we can reduce the size of the temp buffer now
                         }
 
-                        printf(
-                            "            src: %d, dst: %d, size: %d, no_wait: %d\n",
-                            src_start,
-                            dst_start,
-                            length,
-                            no_wait);
+                        // printf(
+                        //     "            src: %d, dst: %d, size: %d, no_wait: %d\n",
+                        //     src_start,
+                        //     dst_start,
+                        //     length,
+                        //     no_wait);
 
                         idx1 = flat_data[0][len_idx1] ? idx1 : idx1 - 4;  // TODO: should this be 3 or 4
 
@@ -1160,24 +1160,35 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
             max_ref_size = std::max(max_ref_size, ref_size);
         }
 
-        // print the local config with updated no wait conditions
-        if (in_place) {
-            printf("---LOCAL CONFIG---\n");
-            for (int core_id = 0; core_id < flattened_local_config[0].size(); ++core_id) {
-                printf("    core: %d\n", core_id);
-                int local_core_count = flattened_local_config[0][core_id][2] / 4;
-                for (int j = 0; j < local_core_count; ++j) {
-                    int local_src = flattened_local_config[0][core_id][3 + 4 * j];
-                    int local_dst = flattened_local_config[0][core_id][4 + 4 * j];
-                    int local_size = flattened_local_config[0][core_id][5 + 4 * j];
-                    int no_wait = flattened_local_config[0][core_id][6 + 4 * j];
-                    printf(
-                        "        src: %d, dst: %d, size: %d, no_wait: %d\n", local_src, local_dst, local_size, no_wait);
-                }
+        // printf("flattened_config[0].size(): %ld\n", flattened_config[0].size());
+        // printf("flattened_config[0][0].size(): %ld\n", flattened_config[0][0].size());
+
+        for (int i = 0; i < flattened_config[0].size(); ++i) {
+            for (int j = 0; j < flattened_config[0][i].size(); ++j) {
+                printf("%d ", flattened_config[0][i][j]);
             }
+            printf("\n");
         }
 
-        printf("max_ref_size: %d\n", max_ref_size);
+        // print the local config with updated no wait conditions
+        // if (in_place) {
+        //     printf("---LOCAL CONFIG---\n");
+        //     for (int core_id = 0; core_id < flattened_local_config[0].size(); ++core_id) {
+        //         printf("    core: %d\n", core_id);
+        //         int local_core_count = flattened_local_config[0][core_id][2] / 4;
+        //         for (int j = 0; j < local_core_count; ++j) {
+        //             int local_src = flattened_local_config[0][core_id][3 + 4 * j];
+        //             int local_dst = flattened_local_config[0][core_id][4 + 4 * j];
+        //             int local_size = flattened_local_config[0][core_id][5 + 4 * j];
+        //             int no_wait = flattened_local_config[0][core_id][6 + 4 * j];
+        //             printf(
+        //                 "        src: %d, dst: %d, size: %d, no_wait: %d\n", local_src, local_dst, local_size,
+        //                 no_wait);
+        //         }
+        //     }
+        // }
+
+        // printf("max_ref_size: %d\n", max_ref_size);
 
         return std::make_tuple(flattened_config, max_ref_size);
     };

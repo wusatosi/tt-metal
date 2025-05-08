@@ -38,7 +38,7 @@ void copy_sticks_async_to_temp_or_final(
     const uint32_t temp_base_l1_addr,
     const uint32_t out_base_l1_addr) {
     int i = 0;
-    int length = config_data[i + 2];
+    int length = config_data[2];
 
     const uint64_t base_addr_temp = get_noc_addr(my_noc_x, my_noc_y, temp_base_l1_addr);
     uint64_t dst_addr_temp = base_addr_temp;
@@ -167,7 +167,7 @@ void copy_sticks_async_local(
     DPRINT << "length: " << length << ENDL();
     for (int n = 0; n < length / 4; n++) {
         uint16_t no_wait = config_data[j + 6];
-        DPRINT << "no wait: " << no_wait << ENDL();
+        // DPRINT << "no wait: " << no_wait << ENDL();
         if (no_wait != no_wait_pass) {  // only copy sticks matching the no_wait condition
             j += 4;
             continue;
@@ -329,10 +329,6 @@ void kernel_main() {
             is_block_sharded,
             is_width_sharded,
             is_col_major>(config_data, my_noc_x, my_noc_y, in_base_l1_addr, temp_base_l1_addr, out_base_l1_addr);
-
-        noc_async_write_barrier();
-        cb_push_back(sync_cb_id, 1);
-        // DPRINT << "push" << ENDL();
     }
 
     // move the no wait local sticks
@@ -351,13 +347,11 @@ void kernel_main() {
             temp_base_l1_addr_read,
             out_base_l1_addr,
             in_out_buffer_start_delta);
-
-        noc_async_write_barrier();
-        cb_push_back(sync_cb_id, 1);
-        // DPRINT << "push" << ENDL();
     }
 
     // DPRINT << "waiting" << ENDL();
+    noc_async_write_barrier();
+    cb_push_back(sync_cb_id, 1);
     cb_wait_front(sync_cb_id, 2);
     // DPRINT << "waited" << ENDL();
 

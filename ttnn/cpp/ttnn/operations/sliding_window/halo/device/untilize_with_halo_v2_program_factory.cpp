@@ -555,9 +555,6 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         CBHandle local_temp_cb = CreateCircularBuffer(program, all_cores, local_temp_cb_config);
     }
 
-    printf("max_local_size = %d\n", max_local_size);
-    printf("local_temp_cb_id = %d\n", local_temp_cb_id);
-
     if (out_stick_nbytes % input_tensor.buffer()->alignment() != 0) {
         aligned_input_nstick_nbytes = tt::round_up(out_stick_nbytes, input_tensor.buffer()->alignment());
     }

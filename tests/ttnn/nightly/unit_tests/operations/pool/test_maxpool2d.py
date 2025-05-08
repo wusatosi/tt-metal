@@ -359,15 +359,16 @@ def run_max_pool(
             # # partial grid tests
             # [1, 32, 10, 10],  # BH
             # [1, 32, 6, 6],  # WH
-            [8, 256, 112, 112],
-            # [1, 128, 112, 112],
+            [8, 64, 112, 112],
+            [1, 128, 112, 112],
+            [32, 32, 264, 40],
         )
     ),
 )
 @pytest.mark.parametrize(
     "kernel_size",
     (
-        # (2, 2),
+        (2, 2),
         (3, 3),
         # (5, 5),
         # (9, 9),
@@ -377,7 +378,7 @@ def run_max_pool(
 @pytest.mark.parametrize(
     "padding",
     (
-        # (0, 0),
+        (0, 0),
         (1, 1),
         # (2, 2),
         # (4, 4),
@@ -402,7 +403,7 @@ def run_max_pool(
 @pytest.mark.parametrize(
     "ceil_mode",
     [
-        # False,
+        False,
         True,
     ],
 )
