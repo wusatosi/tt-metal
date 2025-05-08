@@ -53,7 +53,7 @@ std::string device_order_array_string(uint32_t ring_size, uint32_t ring_index, t
             uint32_t dist_b = std::min(diff_b, ring_size - diff_b);
 
             if (dist_a != dist_b) {
-                return dist_a < dist_b;
+                return dist_a > dist_b;
             }
             // Tie-breaking: if distances are equal, sort by the device ID itself.
             // This ensures a stable and predictable order for devices at the same distance.
