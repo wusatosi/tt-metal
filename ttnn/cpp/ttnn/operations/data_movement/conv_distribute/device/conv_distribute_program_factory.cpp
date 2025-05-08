@@ -20,6 +20,7 @@
 #include <tt-metalium/constants.hpp>
 #include <tt-metalium/tt_align.hpp>
 #include <tuple>
+#include <vector>
 #include "conv_distribute_program_factory.hpp"
 
 using namespace tt::constants;
@@ -99,21 +100,104 @@ operation::ProgramWithCallbacks conv_distribute_multi_core(
     uint32_t num_blocks_per_core,
     uint32_t num_cores_with_extra_block) {
     tt::tt_metal::Program program{};
+    auto device = input_tensor.device();
+    auto core_grid = cores.bounding_box().grid_size();
 
-    tt::DataFormat input_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(input_tensor.get_dtype());
-    tt::DataFormat output_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(output_tensor.get_dtype());
-
-    // TODO: process input and output tensor formats
+    // process input and output tensor formats
     auto input_shard_spec = input_tensor.shard_spec().value();
     uint32_t input_sticks_per_core = input_shard_spec.shape[0];
     uint32_t input_stick_size = input_shard_spec.shape[1];
 
+    auto output_shard_spec = output_tensor.shard_spec().value();
+    uint32_t output_sticks_per_core_max = output_shard_spec.shape[0];
+    uint32_t output_stick_size = output_shard_spec.shape[1];
+
     auto all_core_mappings =
-        calculate_core_mapping(cores, divisor, input_stick_per_core, num_blocks_per_core, num_cores_with_extra_block);
+        calculate_core_mapping(cores, divisor, input_sticks_per_core, num_blocks_per_core, num_cores_with_extra_block);
 
-    // TODO: set up circular buffers
+    // set up circular buffers
+    tt::DataFormat input_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(input_tensor.get_dtype());
+    tt::DataFormat output_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(output_tensor.get_dtype());
 
-    // TODO: create kernels
+    uint32_t src_cb_index = tt::CBIndex::c_0;
+    uint32_t out_cb_index = tt::CBIndex::c_1;
+
+    tt::tt_metal::CircularBufferConfig src_cb_config =
+        tt::tt_metal::CircularBufferConfig(
+            input_tensor.volume() * input_tensor.element_size(), {{src_cb_index, input_cb_data_format}})
+            .set_page_size(src_cb_index, input_stick_size * input_tensor.element_size())
+            .set_globally_allocated_address(*input_tensor.buffer());
+    auto cb_src = tt::tt_metal::CreateCircularBuffer(program, cores, src_cb_config);
+
+    tt::tt_metal::CircularBufferConfig out_cb_config =
+        tt::tt_metal::CircularBufferConfig(
+            output_tensor.volume() * output_tensor.element_size(), {{out_cb_index, output_cb_data_format}})
+            .set_page_size(out_cb_index, output_stick_size * output_tensor.element_size())
+            .set_globally_allocated_address(*output_tensor.buffer());
+    auto cb_output = tt::tt_metal::CreateCircularBuffer(program, cores, out_cb_config);
+
+    // create kernels
+    const std::string kernel_name =
+        "ttnn/cpp/ttnn/operations/data_movement/conv_distribute/device/kernels/conv_distribute_reader.cpp";
+    tt::tt_metal::KernelHandle kernel_id_0 =
+        tt::tt_metal::CreateKernel(program, kernel_name, cores, tt::tt_metal::ReaderDataMovementConfig({out_cb_index}));
+    tt::tt_metal::KernelHandle kernel_id_1 =
+        tt::tt_metal::CreateKernel(program, kernel_name, cores, tt::tt_metal::WriterDataMovementConfig({out_cb_index}));
+
+    uint32_t src_address = input_tensor.buffer()->address();
+    // Process CoreMapping to assign runtime arguments to cores
+    for (CoreMapping m : all_core_mappings) {
+        auto core = m.first;
+        auto data_chunks = m.second;
+
+        // we split each chunk in two so num_reads is the number of chunks
+        uint32_t num_reads = data_chunks.size();
+
+        std::vector<uint32_t> runtime_args_kernel_0;
+        std::vector<uint32_t> runtime_args_kernel_1;
+
+        // Runtime arg format:
+        // src_address
+        // num_reads
+        // For each chunk: bank_id, read_offset, write_offset, read_size
+        runtime_args_kernel_0.push_back(src_address);
+        runtime_args_kernel_0.push_back(num_reads);
+
+        runtime_args_kernel_1.push_back(src_address);
+        runtime_args_kernel_1.push_back(num_reads);
+
+        uint32_t write_offset = 0;  // Shared cumulative write offset for both kernels
+
+        for (auto chunk : data_chunks) {
+            auto input_core = std::get<0>(chunk);
+            auto start_index = std::get<1>(chunk);
+            auto end_index = std::get<2>(chunk);
+
+            auto bank_id = device->allocator()->get_bank_ids_from_logical_core(BufferType::L1, input_core)[0];
+
+            uint32_t element_size = input_tensor.element_size();
+            uint32_t read_offset = start_index * input_stick_size * element_size;
+            uint32_t read_size = (end_index - start_index) * input_stick_size * element_size;
+
+            uint32_t chunk_half_size = read_size / 2;
+
+            // Chunkwise kernel arguments
+            runtime_args_kernel_0.push_back(bank_id);
+            runtime_args_kernel_0.push_back(read_offset);
+            runtime_args_kernel_0.push_back(write_offset);
+            runtime_args_kernel_0.push_back(chunk_half_size);
+
+            runtime_args_kernel_1.push_back(bank_id);
+            runtime_args_kernel_1.push_back(read_offset + chunk_half_size);
+            runtime_args_kernel_1.push_back(write_offset + chunk_half_size);
+            runtime_args_kernel_1.push_back(read_size - chunk_half_size);
+
+            write_offset += read_size;
+        }
+
+        SetRuntimeArgs(program, kernel_id_0, core, runtime_args_kernel_0);
+        SetRuntimeArgs(program, kernel_id_1, core, runtime_args_kernel_1);
+    }
 
     return {.program = std::move(program), .override_runtime_arguments_callback = nullptr};
 }
