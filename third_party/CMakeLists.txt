@@ -142,7 +142,7 @@ CPMAddPackage(
 ############################################################################################################################
 
 if(NOT DEFINED USE_SYSTEM_PYBIND11)
-CPMAddPackage(NAME pybind11 GITHUB_REPOSITORY pybind/pybind11 GIT_TAG v2.13.6 OPTIONS "CMAKE_MESSAGE_LOG_LEVEL NOTICE")
+#CPMAddPackage(NAME pybind11 GITHUB_REPOSITORY pybind/pybind11 GIT_TAG v2.13.6 OPTIONS "CMAKE_MESSAGE_LOG_LEVEL NOTICE")
 endif()
 
 ############################################################################################################################
