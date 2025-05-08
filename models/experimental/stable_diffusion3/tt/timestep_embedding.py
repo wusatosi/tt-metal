@@ -11,7 +11,9 @@ import torch
 import ttnn
 from models.experimental.stable_diffusion3.tt.linear import TtLinear, TtLinearParameters
 
+from ..reference.timestep_embedding import CombinedTimestepTextProjEmbeddings
 from .substate import substate
+from .utils import from_torch_fast, to_torch
 
 
 @dataclass
@@ -49,7 +51,11 @@ class TtCombinedTimestepTextProjEmbeddingsParameters:
         *,
         dtype: ttnn.DataType | None = None,
         device: ttnn.Device,
-    ) -> TtCombinedTimestepTextProjEmbeddingsParameters:
+        use_cpu_fallback: bool = False,
+    ) -> TtCombinedTimestepTextProjEmbeddingsParameters | dict[str, torch.Tensor]:
+        if use_cpu_fallback:
+            return state
+
         return cls(
             timestep_embedder=TtEmbeddingParameters.from_torch(
                 substate(state, "timestep_embedder"), dtype=dtype, device=device
@@ -68,13 +74,41 @@ class TtCombinedTimestepTextProjEmbeddings:
         batch_size: int,
         device: ttnn.MeshDevice,
     ) -> None:
-        self._timestep_embedder = _TimestepEmbedding(parameters.timestep_embedder)
-        self._text_embedder = _TimestepEmbedding(parameters.text_embedder)
+        self._device = device
 
-        self._time_proj_factor = self._create_time_proj_factor(num_channels=256, batch_size=batch_size, device=device)
+        if isinstance(parameters, dict):
+            with torch.device("meta"):
+                self._cpu_fallback = CombinedTimestepTextProjEmbeddings(
+                    embedding_dim=parameters["timestep_embedder.linear_1.weight"].shape[0],
+                    pooled_projection_dim=parameters["text_embedder.linear_1.weight"].shape[1],
+                )
+            self._cpu_fallback.load_state_dict(parameters, assign=True)
+            self._cpu_fallback.eval()
+            self._cpu_fallback.to(torch.float32)
+        else:
+            self._cpu_fallback = None
+
+            self._timestep_embedder = _TimestepEmbedding(parameters.timestep_embedder)
+            self._text_embedder = _TimestepEmbedding(parameters.text_embedder)
+
+            self._time_proj_factor = self._create_time_proj_factor(
+                num_channels=256, batch_size=batch_size, device=device
+            )
 
     def __call__(self, *, timestep: ttnn.Tensor, pooled_projection: ttnn.Tensor) -> ttnn.Tensor:
         assert timestep.dtype == ttnn.float32
+
+        if self._cpu_fallback is not None:
+            torch_timestep = to_torch(timestep).to(torch.float32).squeeze(1)
+            torch_pooled_projection = to_torch(pooled_projection).to(torch.float32)
+            torch_out = self._cpu_fallback.forward(timestep=torch_timestep, pooled_projection=torch_pooled_projection)
+            return from_torch_fast(
+                torch_out,
+                device=self._device,
+                dtype=timestep.dtype,
+                layout=timestep.layout,
+                # shard_dim=-1,
+            )
 
         batch_size = timestep.shape[0]
 
