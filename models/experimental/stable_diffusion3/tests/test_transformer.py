@@ -85,7 +85,7 @@ def test_transformer(
     spatial = torch.randn((batch_size, 16, height // 8, width // 8)) * 0.75
     prompt = torch.randn((batch_size, prompt_sequence_length, 4096)) * 1.5
     pooled_projection = torch.randn((batch_size, 2048)) * 0.91
-    timestep = torch.full([batch_size], fill_value=200, dtype=torch_dtype)
+    timestep = torch.full([batch_size], fill_value=1000, dtype=torch_dtype)
 
     with torch.no_grad():
         torch_output = torch_model(
@@ -150,6 +150,81 @@ def test_transformer(
     # avg_time = total_time / num_measurement_iterations
     # print(f" TOTAL TIME: {total_time} AVG TIME: {avg_time}\n")
 
+    tt_output = tt_spatial - reshape_noise_pred_tt(
+        tt_output,
+        patch_size=2,
+        height=height // 8,
+        width=width // 8,
+    )
+    torch_output = spatial.permute([0, 2, 3, 1]) - reshape_noise_pred_torch(
+        torch_output,
+        patch_size=2,
+        height=height // 8,
+        width=width // 8,
+    )
+
     torch_output = torch.unsqueeze(torch_output, 1)
     print(f"tt_output shape {tt_output.shape} torch_output {torch_output.shape}")
     assert_quality(torch_output, tt_output, pcc=0.997, mse=0.06, shard_dim=0, num_devices=mesh_device.get_num_devices())
+
+
+def reshape_noise_pred_torch(
+    noise_pred: torch.Tensor,
+    *,
+    height: int,
+    width: int,
+    patch_size: int,
+) -> torch.Tensor:
+    # B, H * W, P * Q * C -> B, H * P, W * Q, C
+
+    patch_count_y = height // patch_size
+    patch_count_x = width // patch_size
+
+    shape1 = (
+        noise_pred.shape[0] * patch_count_y,
+        patch_count_x,
+        patch_size,
+        -1,
+    )
+
+    shape2 = (
+        noise_pred.shape[0],
+        patch_count_y * patch_size,
+        patch_count_x * patch_size,
+        -1,
+    )
+
+    noise_pred = noise_pred.reshape(shape1)
+    noise_pred = torch.transpose(noise_pred, 1, 2)
+    return noise_pred.reshape(shape2)
+
+
+def reshape_noise_pred_tt(
+    noise_pred: ttnn.Tensor,
+    *,
+    height: int,
+    width: int,
+    patch_size: int,
+) -> ttnn.Tensor:
+    # B, H * W, P * Q * C -> B, H * P, W * Q, C
+
+    patch_count_y = height // patch_size
+    patch_count_x = width // patch_size
+
+    shape1 = (
+        noise_pred.shape[0] * patch_count_y,
+        patch_count_x,
+        patch_size,
+        -1,
+    )
+
+    shape2 = (
+        noise_pred.shape[0],
+        patch_count_y * patch_size,
+        patch_count_x * patch_size,
+        -1,
+    )
+
+    noise_pred = noise_pred.reshape(shape1)
+    noise_pred = ttnn.transpose(noise_pred, 1, 2)
+    return noise_pred.reshape(shape2)
