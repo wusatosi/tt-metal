@@ -28,8 +28,8 @@ if TYPE_CHECKING:
 @pytest.mark.usefixtures("use_program_cache")
 def test_timestep_embedding(
     *,
-    device: ttnn.Device,
-    model_name,
+    mesh_device: ttnn.MeshDevice,
+    model_name: str,
     batch_size: int,
 ) -> None:
     dtype = torch.bfloat16
@@ -41,16 +41,16 @@ def test_timestep_embedding(
     torch_model.eval()
 
     parameters = TtCombinedTimestepTextProjEmbeddingsParameters.from_torch(
-        torch_model.state_dict(), device=device, dtype=ttnn.bfloat8_b
+        torch_model.state_dict(), device=mesh_device, dtype=ttnn.bfloat8_b
     )
-    tt_model = TtCombinedTimestepTextProjEmbeddings(parameters)
+    tt_model = TtCombinedTimestepTextProjEmbeddings(parameters, device=mesh_device, batch_size=1)
 
     torch.manual_seed(0)
     timestep = torch.randint(1000, (batch_size,), dtype=torch.float32)
     pooled_projection = torch.randn((batch_size, 2048), dtype=dtype)
 
-    tt_timestep = ttnn.from_torch(timestep.unsqueeze(1), device=device, layout=ttnn.TILE_LAYOUT)
-    tt_pooled_projection = ttnn.from_torch(pooled_projection, device=device, layout=ttnn.TILE_LAYOUT)
+    tt_timestep = ttnn.from_torch(timestep.unsqueeze(1), device=mesh_device, layout=ttnn.TILE_LAYOUT)
+    tt_pooled_projection = ttnn.from_torch(pooled_projection, device=mesh_device, layout=ttnn.TILE_LAYOUT)
 
     torch_output = torch_model(timestep, pooled_projection)
 

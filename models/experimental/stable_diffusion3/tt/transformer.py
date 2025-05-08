@@ -105,7 +105,11 @@ class TtSD3Transformer2DModel:
 
         self.mesh_device = device
         self._pos_embed = TtPatchEmbed(parameters.pos_embed, device)
-        self._time_text_embed = TtCombinedTimestepTextProjEmbeddings(guidance_cond, parameters.time_text_embed, device)
+        self._time_text_embed = TtCombinedTimestepTextProjEmbeddings(
+            parameters.time_text_embed,
+            device=device,
+            batch_size=guidance_cond,
+        )
         self._context_embedder = TtLinear(parameters.context_embedder)
         self._transformer_blocks = [
             TtTransformerBlock(block, num_heads=num_heads, device=device) for block in parameters.transformer_blocks

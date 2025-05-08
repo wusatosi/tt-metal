@@ -8,7 +8,6 @@ import math
 from dataclasses import dataclass
 
 import torch
-import os
 import ttnn
 from models.experimental.stable_diffusion3.tt.linear import TtLinear, TtLinearParameters
 
@@ -62,9 +61,13 @@ class TtCombinedTimestepTextProjEmbeddingsParameters:
 
 
 class TtCombinedTimestepTextProjEmbeddings:
-    def __init__(self, batch_size, parameters: TtCombinedTimestepTextProjEmbeddingsParameters, device) -> None:
-        super().__init__()
-
+    def __init__(
+        self,
+        parameters: TtCombinedTimestepTextProjEmbeddingsParameters,
+        *,
+        batch_size: int,
+        device: ttnn.MeshDevice,
+    ) -> None:
         self._timestep_embedder = _TimestepEmbedding(parameters.timestep_embedder)
         self._text_embedder = _TimestepEmbedding(parameters.text_embedder)
 
