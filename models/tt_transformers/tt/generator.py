@@ -80,6 +80,9 @@ class Generator:
                 last_token_idx = seq_len - 1
 
                 prefill_seq_len = get_padded_prefill_len(seq_len)
+                # it doesn't matter which value we pad with, we don't use these parts of the kv-cache or their outputs
+                # Handle both 2D (batch, seq) tokens and 3D (batch, seq, embedding_dim) embedding formats
+                assert tokens.dim() == 2, "tokens must be a 2D tensor"
                 prefill_ids = torch.cat(
                     [tokens[user_id : user_id + 1, :seq_len], torch.zeros(1, prefill_seq_len - seq_len).long()], dim=-1
                 )
