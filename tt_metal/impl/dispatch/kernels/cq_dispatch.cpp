@@ -10,13 +10,12 @@
 //  - # blocks must evenly divide the dispatch buffer size
 //  - dispatch buffer base must be page size aligned
 
+#include "dataflow_api.h"
 #include "debug/assert.h"
 #include "debug/dprint.h"
 #include "tt_metal/impl/dispatch/kernels/cq_commands.hpp"
 #include "tt_metal/impl/dispatch/kernels/cq_common.hpp"
-#include "tt_metal/impl/dispatch/kernels/packet_queue_ctrl.hpp"
-#include "fabric_edm_packet_header.hpp"
-#include "tt_metal/fabric/hw/inc/tt_fabric_mux_interface.hpp"
+#include "tt_metal/impl/dispatch/kernels/cq_relay.hpp"
 
 // The command queue write interface controls writes to the completion region, host owns the completion region read
 // interface Data requests from device and event states are written to the completion region
@@ -69,18 +68,19 @@ constexpr size_t fabric_mux_connection_handshake_address = get_compile_time_arg_
 constexpr size_t fabric_mux_flow_control_address = get_compile_time_arg_val(39);
 constexpr size_t fabric_mux_buffer_index_address = get_compile_time_arg_val(40);
 constexpr size_t fabric_mux_status_address = get_compile_time_arg_val(41);
-constexpr size_t fabric_worker_flow_control_sem = get_compile_time_arg_val(42);
-constexpr size_t fabric_worker_teardown_sem = get_compile_time_arg_val(43);
-constexpr size_t fabric_worker_buffer_index_sem = get_compile_time_arg_val(44);
+constexpr size_t fabric_mux_termination_signal_address = get_compile_time_arg_val(42);
+constexpr size_t fabric_worker_flow_control_sem = get_compile_time_arg_val(43);
+constexpr size_t fabric_worker_teardown_sem = get_compile_time_arg_val(44);
+constexpr size_t fabric_worker_buffer_index_sem = get_compile_time_arg_val(45);
 
-constexpr uint32_t first_stream_used = get_compile_time_arg_val(45);
+constexpr uint32_t first_stream_used = get_compile_time_arg_val(46);
 
-constexpr uint32_t virtualize_unicast_cores = get_compile_time_arg_val(46);
-constexpr uint32_t num_virtual_unicast_cores = get_compile_time_arg_val(47);
-constexpr uint32_t num_physical_unicast_cores = get_compile_time_arg_val(48);
+constexpr uint32_t virtualize_unicast_cores = get_compile_time_arg_val(47);
+constexpr uint32_t num_virtual_unicast_cores = get_compile_time_arg_val(48);
+constexpr uint32_t num_physical_unicast_cores = get_compile_time_arg_val(49);
 
-constexpr uint32_t is_d_variant = get_compile_time_arg_val(49);
-constexpr uint32_t is_h_variant = get_compile_time_arg_val(50);
+constexpr uint32_t is_d_variant = get_compile_time_arg_val(50);
+constexpr uint32_t is_h_variant = get_compile_time_arg_val(51);
 
 constexpr uint8_t upstream_noc_index = UPSTREAM_NOC_INDEX;
 constexpr uint32_t upstream_noc_xy = uint32_t(NOC_XY_ENCODING(UPSTREAM_NOC_X, UPSTREAM_NOC_Y));
@@ -191,7 +191,8 @@ void notify_host_of_completion_queue_write_pointer() {
         cq_write_interface.completion_fifo_wr_ptr | (cq_write_interface.completion_fifo_wr_toggle << 31);
     volatile tt_l1_ptr uint32_t* completion_wr_ptr_addr = get_cq_completion_write_ptr();
     completion_wr_ptr_addr[0] = completion_wr_ptr_and_toggle;
-    cq_noc_async_write_with_state<CQ_NOC_SnDL>(dev_completion_q_wr_ptr, completion_queue_write_ptr_addr, 4);
+    // cq_noc_async_write_with_state<CQ_NOC_SnDL>(dev_completion_q_wr_ptr, completion_queue_write_ptr_addr, 4);
+    noc_async_write(dev_completion_q_wr_ptr, completion_queue_write_ptr_addr, 4);
 }
 
 FORCE_INLINE
@@ -220,7 +221,10 @@ void process_write_host_h(uint32_t& block_noc_writes_to_clear, uint32_t block_ne
     uint32_t length = cmd->write_linear_host.length;
     // DPRINT << "process_write_host_h: " << length << ENDL();
     uint32_t data_ptr = cmd_ptr;
-    cq_noc_async_write_init_state<CQ_NOC_sNdl>(0, pcie_noc_xy, 0);
+    // auto init_state = []() {
+    //     cq_noc_async_write_init_state<CQ_NOC_sNdl>(0, pcie_noc_xy, 0);
+    // };
+    // init_state();
     while (length != 0) {
         // Get a page if needed
         if (cb_fence == data_ptr) {
@@ -231,12 +235,25 @@ void process_write_host_h(uint32_t& block_noc_writes_to_clear, uint32_t block_ne
                     cb_fence = dispatch_cb_base;
                     data_ptr = dispatch_cb_base;
                 }
-                move_rd_to_next_block_and_release_pages<
-                    upstream_noc_index,
-                    upstream_noc_xy,
-                    upstream_dispatch_cb_sem_id,
-                    dispatch_cb_pages_per_block,
-                    dispatch_cb_blocks>(block_noc_writes_to_clear, rd_block_idx);
+
+                if constexpr (is_h_variant && is_d_variant) {
+                    move_rd_to_next_block_and_release_pages<
+                        upstream_noc_index,
+                        upstream_noc_xy,
+                        upstream_dispatch_cb_sem_id,
+                        dispatch_cb_pages_per_block,
+                        dispatch_cb_blocks>(block_noc_writes_to_clear, rd_block_idx);
+                } else {
+                    move_rd_to_next_block_and_release_pages_remote<
+                        upstream_noc_index,
+                        upstream_noc_xy,
+                        upstream_dispatch_cb_sem_id,
+                        dispatch_cb_pages_per_block,
+                        dispatch_cb_blocks,
+                        fabric_mux_num_buffers_per_channel,
+                        fabric_header_rb_base>(edm_sender, block_noc_writes_to_clear, rd_block_idx);
+                    // init_state();
+                }
             }
             // Wait for dispatcher to supply a page (this won't go beyond the buffer end)
             uint32_t n_pages = cb_acquire_pages<my_dispatch_cb_sem_id, dispatch_cb_log_page_size>(
@@ -254,24 +271,26 @@ void process_write_host_h(uint32_t& block_noc_writes_to_clear, uint32_t block_ne
         // transactions
         if (completion_queue_write_addr + xfer_size > completion_queue_end_addr) {
             uint32_t last_chunk_size = completion_queue_end_addr - completion_queue_write_addr;
-            cq_noc_async_write_with_state_any_len(data_ptr, completion_queue_write_addr, last_chunk_size);
+            // cq_noc_async_write_with_state_any_len(data_ptr, completion_queue_write_addr, last_chunk_size);
+            noc_async_write(data_ptr, completion_queue_write_addr, last_chunk_size);
             completion_queue_write_addr = completion_queue_base_addr;
             data_ptr += last_chunk_size;
             length -= last_chunk_size;
             xfer_size -= last_chunk_size;
-            uint32_t num_noc_packets_written = div_up(last_chunk_size, NOC_MAX_BURST_SIZE);
-            noc_nonposted_writes_num_issued[noc_index] += num_noc_packets_written;
-            noc_nonposted_writes_acked[noc_index] += num_noc_packets_written;
+            // uint32_t num_noc_packets_written = div_up(last_chunk_size, NOC_MAX_BURST_SIZE);
+            // noc_nonposted_writes_num_issued[noc_index] += num_noc_packets_written;
+            // noc_nonposted_writes_acked[noc_index] += num_noc_packets_written;
         }
-        cq_noc_async_write_with_state_any_len(data_ptr, completion_queue_write_addr, xfer_size);
+        // cq_noc_async_write_with_state_any_len(data_ptr, completion_queue_write_addr, xfer_size);
+        noc_async_write(data_ptr, completion_queue_write_addr, xfer_size);
 
         // This will update the write ptr on device and host
         // We flush to ensure the ptr has been read out of l1 before we update it again
         completion_queue_push_back(npages);
         // completion_queue_push_back will do a write to host, so we add 1 to the number of data packets written
-        uint32_t num_noc_packets_written = div_up(xfer_size, NOC_MAX_BURST_SIZE) + 1;
-        noc_nonposted_writes_num_issued[noc_index] += num_noc_packets_written;
-        noc_nonposted_writes_acked[noc_index] += num_noc_packets_written;
+        // uint32_t num_noc_packets_written = div_up(xfer_size, NOC_MAX_BURST_SIZE) + 1;
+        // noc_nonposted_writes_num_issued[noc_index] += num_noc_packets_written;
+        // noc_nonposted_writes_acked[noc_index] += num_noc_packets_written;
 
         length -= xfer_size;
         data_ptr += xfer_size;
@@ -299,35 +318,9 @@ void process_exec_buf_end_h() {
 template <uint32_t preamble_size>
 void relay_to_next_cb(
     uint32_t data_ptr, uint32_t length, uint32_t& block_noc_writes_to_clear, uint32_t block_next_start_addr[]) {
-    // TODO: Size for fabric
-    static_assert(
-        preamble_size == 0 || preamble_size == sizeof(tt::packet_queue::dispatch_packet_header_t),
-        "Dispatcher preamble size must be 0 or sizeof(dispatch_packet_header_t)");
-
-    // DPRINT << "relay_to_next_cb: " << data_ptr << " " << cb_fence << " " << length << ENDL();
-
     // First page should be valid since it has the command
     ASSERT(data_ptr <= dispatch_cb_end - dispatch_cb_page_size);
     ASSERT(data_ptr <= cb_fence - dispatch_cb_page_size);
-
-    // regular write, inline writes, and atomic writes use different cmd bufs, so we can init state for each
-    // TODO: Add support for stateful atomics. We can preserve state once cb_acquire_pages is changed to a free running
-    // counter so we would only need to inc atomics downstream
-    uint64_t dst = get_noc_addr_helper(downstream_noc_xy, downstream_cb_data_ptr);
-    cq_noc_async_write_init_state<CQ_NOC_sNdl>(0, dst, 0);
-#ifdef ARCH_BLACKHOLE
-    // On Blackhole inline writes are disabled so use cq_noc_async_write_init_state with inline write cmd buf
-    // See comment in `noc_inline_dw_write` for more details
-    uint32_t inline_l1_src_addr = noc_get_interim_inline_value_addr(noc_index, dst);
-    volatile tt_l1_ptr uint32_t* inline_l1_src_addr_ptr =
-        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(inline_l1_src_addr);
-    cq_noc_async_write_init_state<CQ_NOC_sNdl, false, false, NCRISC_WR_REG_CMD_BUF>(0, dst, 0);
-#else
-    cq_noc_inline_dw_write_init_state<CQ_NOC_INLINE_Ndvb>(dst);
-#endif
-
-    // Max relay size is determined by the fabric mux
-    // Sending more than the relay size is UB
 
     while (length > 0) {
         ASSERT(downstream_cb_end > downstream_cb_data_ptr);
@@ -335,30 +328,12 @@ void relay_to_next_cb(
         cb_acquire_pages<my_noc_xy, my_downstream_cb_sem_id>(1);
 
         uint32_t xfer_size;
-        bool not_end_of_cmd;
-        if (length > dispatch_cb_page_size - preamble_size) {
-            xfer_size = dispatch_cb_page_size - preamble_size;
-            not_end_of_cmd = true;
+        if (length > dispatch_cb_page_size) {
+            xfer_size = dispatch_cb_page_size;
         } else {
             xfer_size = length;
-            not_end_of_cmd = false;
         }
 
-        if constexpr (preamble_size > 0) {
-            uint32_t flag;
-#ifdef ARCH_BLACKHOLE
-            *inline_l1_src_addr_ptr = xfer_size + preamble_size + not_end_of_cmd;
-            cq_noc_async_write_with_state<CQ_NOC_SnDL, CQ_NOC_WAIT, CQ_NOC_SEND, NCRISC_WR_REG_CMD_BUF>(
-                inline_l1_src_addr, downstream_cb_data_ptr, 4);
-#else
-            cq_noc_inline_dw_write_with_state<CQ_NOC_INLINE_nDVB>(
-                downstream_cb_data_ptr, xfer_size + preamble_size + not_end_of_cmd);
-#endif
-            noc_nonposted_writes_num_issued[noc_index]++;
-            noc_nonposted_writes_acked[noc_index]++;
-            downstream_cb_data_ptr += preamble_size;
-            ASSERT(downstream_cb_data_ptr < downstream_cb_end);
-        }
         // Get a page if needed
         if (data_ptr + xfer_size > cb_fence) {
             // Check for block completion
@@ -370,9 +345,14 @@ void relay_to_next_cb(
                 if (rd_block_idx == dispatch_cb_blocks - 1) {
                     ASSERT(cb_fence == dispatch_cb_end);
                     if (orphan_size != 0) {
-                        cq_noc_async_write_with_state<CQ_NOC_SnDL>(data_ptr, downstream_cb_data_ptr, orphan_size);
-                        noc_nonposted_writes_num_issued[noc_index]++;
-                        noc_nonposted_writes_acked[noc_index]++;
+                        cq_fabric_write_any_len<
+                            fabric_mux_channel_buffer_size_bytes,
+                            fabric_mux_num_buffers_per_channel,
+                            fabric_header_rb_base>(
+                            edm_sender,
+                            data_ptr,
+                            get_noc_addr_helper(downstream_noc_xy, downstream_cb_data_ptr),
+                            orphan_size);
                         length -= orphan_size;
                         xfer_size -= orphan_size;
                         downstream_cb_data_ptr += orphan_size;
@@ -400,10 +380,16 @@ void relay_to_next_cb(
             cb_fence += n_pages * dispatch_cb_page_size;
         }
 
-        cq_noc_async_write_with_state<CQ_NOC_SnDL>(data_ptr, downstream_cb_data_ptr, xfer_size);
-        noc_nonposted_writes_num_issued[noc_index]++;
-        noc_nonposted_writes_acked[noc_index]++;
-        cb_release_pages<my_noc_index, downstream_noc_xy, downstream_cb_sem_id>(1);
+        cq_fabric_write_any_len<
+            fabric_mux_channel_buffer_size_bytes,
+            fabric_mux_num_buffers_per_channel,
+            fabric_header_rb_base>(
+            edm_sender, data_ptr, get_noc_addr_helper(downstream_noc_xy, downstream_cb_data_ptr), xfer_size);
+        cq_fabric_release_pages<
+            downstream_noc_xy,
+            downstream_cb_sem_id,
+            fabric_mux_num_buffers_per_channel,
+            fabric_header_rb_base>(edm_sender, 1);
 
         length -= xfer_size;
         data_ptr += xfer_size;
@@ -937,6 +923,7 @@ static void process_wait() {
         do {
             IDLE_ERISC_HEARTBEAT_AND_RETURN(heartbeat);
         } while (!stream_wrap_ge(*sem_addr, count));
+        DPRINT << " DISPATCH WAIT STREAM " << HEX() << stream << " DONE" << ENDL();
     }
     WAYPOINT("PWD");
 
@@ -1271,13 +1258,12 @@ static inline bool process_cmd_h(
 }
 
 void kernel_main() {
-    DPRINT << "Dispatch Init. My cb = 0x" << HEX() << dispatch_cb_base << ENDL();
-    if (!(is_h_variant && !is_d_variant)) {
-        return;
+    // Initialize local state of any additional nocs used instead of the default
+    if constexpr (my_noc_index != upstream_noc_index) {
+        noc_local_state_init(upstream_noc_index);
     }
-    // Send data to D variant via MUX
-    edm_sender.init(
-        true,
+
+    FDFabricMuxConnectionScope<
         fabric_mux_x,
         fabric_mux_y,
         fabric_mux_channel_base_address,
@@ -1287,43 +1273,19 @@ void kernel_main() {
         fabric_mux_connection_info_address,
         fabric_mux_channel_buffer_size_bytes,
         fabric_mux_buffer_index_address,
-        (volatile uint32_t* const)get_semaphore<fd_core_type>(fabric_worker_flow_control_sem),
-        (volatile uint32_t* const)get_semaphore<fd_core_type>(fabric_worker_teardown_sem),
-        get_semaphore<fd_core_type>(fabric_worker_buffer_index_sem));
+        fabric_worker_flow_control_sem,
+        fabric_worker_teardown_sem,
+        fabric_worker_buffer_index_sem,
+        fabric_mux_status_address,
+        my_fabric_sync_status_addr,
+        is_h_variant && is_d_variant>
+        mux_connection_scope(edm_sender);
 
-    auto packet_header = reinterpret_cast<volatile tt_l1_ptr PACKET_HEADER_TYPE*>(fabric_header_rb_base);
-    packet_header->to_chip_unicast(static_cast<uint8_t>(1));
-
-    tt::tt_fabric::wait_for_fabric_endpoint_ready(
-        fabric_mux_x, fabric_mux_y, fabric_mux_status_address, my_fabric_sync_status_addr);
-
-    tt::tt_fabric::fabric_client_connect<fabric_mux_num_buffers_per_channel>(edm_sender);
-
-    DPRINT << "Fabric Client Connected" << ENDL();
-
-    auto src_data = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(dispatch_cb_base);
-    src_data[0] = 0x1;
-    src_data[1] = 0x2;
-    src_data[2] = 0x3;
-    src_data[3] = 0x4;
-
-    uint64_t noc_dest_addr = get_noc_addr_helper(upstream_noc_xy, dispatch_cb_base);
-    packet_header->to_noc_unicast_write(
-        tt::tt_fabric::NocUnicastCommandHeader{noc_dest_addr}, 16 + sizeof(PACKET_HEADER_TYPE));
-
-    tt::tt_fabric::fabric_async_write<fabric_mux_num_buffers_per_channel>(
-        edm_sender, packet_header, (uint32_t)src_data, 16 + sizeof(PACKET_HEADER_TYPE));
-    noc_async_write_barrier();
-    DPRINT << "Send data done" << ENDL();
-
-    return;
-
-    // DPRINT << "dispatch_" << is_h_variant << is_d_variant << ": start" << ENDL();
-    // Initialize local state of any additional nocs used instead of the default
-    static_assert(my_noc_index != upstream_noc_index);
-    if constexpr (my_noc_index != upstream_noc_index) {
-        noc_local_state_init(upstream_noc_index);
-    }
+    DPRINT << "dispatcher_" << is_h_variant << is_d_variant << ": Ch Base 0x" << HEX()
+           << (uint32_t)fabric_mux_channel_base_address << "  Ch Buf Size " << DEC()
+           << (uint32_t)sizeof(PACKET_HEADER_TYPE) << "  Ch Buf Flow Ctrl Addr 0x" << HEX()
+           << (uint32_t)fabric_mux_flow_control_address << "  Ch Info Addr 0x" << HEX()
+           << (uint32_t)fabric_mux_connection_info_address << ENDL();
 
     for (size_t i = 0; i < max_num_worker_sems; i++) {
         uint32_t index = i + first_stream_used;
@@ -1335,7 +1297,7 @@ void kernel_main() {
                 << REMOTE_DEST_BUF_WORDS_FREE_INC);
     }
 
-    static_assert(is_d_variant || split_dispatch_page_preamble_size == 0);
+    static_assert(split_dispatch_page_preamble_size == 0);
 
     upstream_total_acquired_page_count = 0;
 
@@ -1365,21 +1327,44 @@ void kernel_main() {
     uint32_t heartbeat = 0;
     while (!done) {
         if (cmd_ptr == cb_fence) {
-            get_cb_page_and_release_pages<
-                dispatch_cb_base,
-                dispatch_cb_blocks,
-                dispatch_cb_log_page_size,
-                my_dispatch_cb_sem_id,
-                upstream_noc_index,
-                upstream_noc_xy,
-                upstream_dispatch_cb_sem_id,
-                dispatch_cb_pages_per_block>(
-                cmd_ptr,
-                cb_fence,
-                block_noc_writes_to_clear,
-                block_next_start_addr,
-                rd_block_idx,
-                upstream_total_acquired_page_count);
+            if constexpr (is_h_variant && !is_d_variant) {
+                // Upstream is remote
+                DPRINT << "Get page release remote " << ENDL();
+                get_cb_page_and_release_pages_remote<
+                    dispatch_cb_base,
+                    dispatch_cb_blocks,
+                    dispatch_cb_log_page_size,
+                    my_dispatch_cb_sem_id,
+                    upstream_noc_index,
+                    upstream_noc_xy,
+                    upstream_dispatch_cb_sem_id,
+                    dispatch_cb_pages_per_block,
+                    fabric_mux_num_buffers_per_channel,
+                    fabric_header_rb_base>(
+                    edm_sender,
+                    cmd_ptr,
+                    cb_fence,
+                    block_noc_writes_to_clear,
+                    block_next_start_addr,
+                    rd_block_idx,
+                    upstream_total_acquired_page_count);
+            } else {
+                get_cb_page_and_release_pages<
+                    dispatch_cb_base,
+                    dispatch_cb_blocks,
+                    dispatch_cb_log_page_size,
+                    my_dispatch_cb_sem_id,
+                    upstream_noc_index,
+                    upstream_noc_xy,
+                    upstream_dispatch_cb_sem_id,
+                    dispatch_cb_pages_per_block>(
+                    cmd_ptr,
+                    cb_fence,
+                    block_noc_writes_to_clear,
+                    block_next_start_addr,
+                    rd_block_idx,
+                    upstream_total_acquired_page_count);
+            }
         }
 
         DeviceZoneScopedN("CQ-DISPATCH");
@@ -1392,35 +1377,48 @@ void kernel_main() {
         cmd_ptr = round_up_pow2(cmd_ptr, dispatch_cb_page_size);
     }
 
+    DPRINT << "dispatcher_" << is_h_variant << is_d_variant << ": begin terminate" << ENDL();
+
     noc_async_write_barrier();
 
-    if (is_h_variant && !is_d_variant) {
-        // Set upstream semaphore MSB to signal completion and path teardown
-        // in case dispatch_h is connected to a depacketizing stage.
-        // TODO: This should be replaced with a signal similar to what packetized
-        // components use.
-        noc_semaphore_inc(
-            get_noc_addr_helper(upstream_noc_xy, get_semaphore<fd_core_type>(upstream_dispatch_cb_sem_id)),
-            0x80000000,
-            upstream_noc_index);
-    }
-
     // Release any held pages from the previous block
-    cb_block_release_pages<
-        upstream_noc_index,
-        upstream_noc_xy,
-        upstream_dispatch_cb_sem_id,
-        dispatch_cb_pages_per_block>(block_noc_writes_to_clear);
+    if constexpr (is_h_variant && !is_d_variant) {
+        cb_block_release_pages_remote<
+            upstream_noc_index,
+            upstream_noc_xy,
+            upstream_dispatch_cb_sem_id,
+            dispatch_cb_pages_per_block,
+            fabric_mux_num_buffers_per_channel,
+            fabric_header_rb_base>(edm_sender, block_noc_writes_to_clear);
+    } else {
+        cb_block_release_pages<
+            upstream_noc_index,
+            upstream_noc_xy,
+            upstream_dispatch_cb_sem_id,
+            dispatch_cb_pages_per_block>(block_noc_writes_to_clear);
+    }
 
     // Release any held pages from the current block
     uint32_t npages =
         dispatch_cb_pages_per_block - ((block_next_start_addr[rd_block_idx] - cmd_ptr) >> dispatch_cb_log_page_size);
-    cb_release_pages<upstream_noc_index, upstream_noc_xy, upstream_dispatch_cb_sem_id>(npages);
+    if constexpr (is_h_variant && !is_d_variant) {
+        cq_fabric_release_pages<
+            upstream_noc_xy,
+            upstream_dispatch_cb_sem_id,
+            fabric_mux_num_buffers_per_channel,
+            fabric_header_rb_base>(edm_sender, npages);
+    } else {
+        cb_release_pages<upstream_noc_index, upstream_noc_xy, upstream_dispatch_cb_sem_id>(npages);
+    }
 
     // Confirm expected number of pages, spinning here is a leak
     cb_wait_all_pages<my_dispatch_cb_sem_id>(upstream_total_acquired_page_count);
 
     noc_async_full_barrier();
 
-    // DPRINT << "dispatch_" << is_h_variant << is_d_variant << ": out" << ENDL();
+    if constexpr (is_h_variant ^ is_d_variant) {
+        cq_fabric_terminate<fabric_mux_x, fabric_mux_y, fabric_mux_termination_signal_address>();
+    }
+
+    DPRINT << "dispatch_" << is_h_variant << is_d_variant << ": out" << ENDL();
 }

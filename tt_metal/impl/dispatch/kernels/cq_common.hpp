@@ -8,6 +8,7 @@
 #include "risc_attribs.h"
 #include "dataflow_api.h"
 #include "cq_helpers.hpp"
+#include "cq_relay.hpp"
 
 // The command queue read interface controls reads from the issue region, host owns the issue region write interface
 // Commands and data to send to device are pushed into the issue region
@@ -396,21 +397,38 @@ cb_acquire_pages(uint32_t cb_fence, uint32_t block_next_start_addr[], uint32_t r
     return usable;
 }
 
+// Do not release pages on the first call to cb_block_release functions
+// This is because the first call means we don't have a previous block to release
+static bool cb_block_released_prev_block = false;
+
 template <uint8_t noc_idx, uint32_t noc_xy, uint32_t sem_id, uint32_t cb_pages_per_block>
 FORCE_INLINE void cb_block_release_pages(uint32_t& block_noc_writes_to_clear, uint8_t noc = noc_index) {
-    // Do not release pages on the first call to this function
-    // This is because the first call means we don't have a previous block to release
-    static bool prev_block = false;
-    if (prev_block) {
+    if (cb_block_released_prev_block) {
         WAYPOINT("CBRW");
-        uint32_t sem_addr = get_semaphore<fd_core_type>(sem_id);
         while (!wrap_ge(NOC_STATUS_READ_REG(noc, NIU_MST_NONPOSTED_WR_REQ_SENT), block_noc_writes_to_clear));
-        noc_semaphore_inc(get_noc_addr_helper(noc_xy, sem_addr), cb_pages_per_block, noc_idx);
+        noc_semaphore_inc(
+            get_noc_addr_helper(noc_xy, get_semaphore<fd_core_type>(sem_id)), cb_pages_per_block, noc_idx);
         WAYPOINT("CBRD");
     } else {
-        prev_block = true;
+        cb_block_released_prev_block = true;
     }
     block_noc_writes_to_clear = noc_nonposted_writes_num_issued[noc];
+}
+
+template <
+    uint8_t noc_idx,
+    uint32_t noc_xy,
+    uint32_t sem_id,
+    uint32_t cb_pages_per_block,
+    uint32_t fabric_mux_num_buffers_per_channel,
+    uint32_t header_rb,
+    typename T>
+FORCE_INLINE void cb_block_release_pages_remote(T& edm, uint32_t& block_noc_writes_to_clear, uint8_t noc = noc_index) {
+    if (cb_block_released_prev_block) {
+        cq_fabric_release_pages<noc_xy, sem_id, fabric_mux_num_buffers_per_channel, header_rb>(edm, cb_pages_per_block);
+    } else {
+        cb_block_released_prev_block = true;
+    }
 }
 
 template <uint32_t cb_blocks>
@@ -424,6 +442,27 @@ template <uint8_t noc_idx, uint32_t noc_xy, uint32_t sem_id, uint32_t cb_pages_p
 FORCE_INLINE void move_rd_to_next_block_and_release_pages(
     uint32_t& block_noc_writes_to_clear, uint32_t& rd_block_idx, uint8_t noc = noc_index) {
     cb_block_release_pages<noc_idx, noc_xy, sem_id, cb_pages_per_block>(block_noc_writes_to_clear, noc);
+    move_rd_to_next_block<cb_blocks>(rd_block_idx);
+}
+
+template <
+    uint8_t noc_idx,
+    uint32_t noc_xy,
+    uint32_t sem_id,
+    uint32_t cb_pages_per_block,
+    uint32_t cb_blocks,
+    uint32_t fabric_mux_num_buffers_per_channel,
+    uint32_t header_rb,
+    typename T>
+inline void move_rd_to_next_block_and_release_pages_remote(
+    T& edm, uint32_t& block_noc_writes_to_clear, uint32_t& rd_block_idx) {
+    cb_block_release_pages_remote<
+        noc_idx,
+        noc_xy,
+        sem_id,
+        cb_pages_per_block,
+        fabric_mux_num_buffers_per_channel,
+        header_rb>(edm, block_noc_writes_to_clear);
     move_rd_to_next_block<cb_blocks>(rd_block_idx);
 }
 
@@ -456,6 +495,51 @@ FORCE_INLINE uint32_t get_cb_page_and_release_pages(
             upstream_cb_sem,
             cb_pages_per_block,
             cb_blocks>(block_noc_writes_to_clear, rd_block_idx, noc);
+    }
+
+    // Wait for dispatcher to supply a page
+    uint32_t n_pages =
+        cb_acquire_pages<local_cb_sem, cb_log_page_size>(cb_fence, block_next_start_addr, rd_block_idx, local_count);
+    cb_fence += n_pages << cb_log_page_size;
+
+    return n_pages;
+}
+
+template <
+    uint32_t cb_base,
+    uint32_t cb_blocks,
+    uint32_t cb_log_page_size,
+    uint32_t local_cb_sem,
+    uint8_t upstream_noc_idx,
+    uint32_t upstream_noc_xy,
+    uint32_t upstream_cb_sem,
+    uint32_t cb_pages_per_block,
+    uint32_t fabric_mux_num_buffers_per_channel,
+    uint32_t header_rb,
+    typename T>
+FORCE_INLINE uint32_t get_cb_page_and_release_pages_remote(
+    T& edm,
+    uint32_t& cmd_ptr,
+    uint32_t& cb_fence,
+    uint32_t& block_noc_writes_to_clear,
+    uint32_t block_next_start_addr[],
+    uint32_t& rd_block_idx,
+    uint32_t& local_count,
+    uint8_t noc = noc_index) {
+    // Strided past the data that has arrived, get the next page
+    if (cb_fence == block_next_start_addr[rd_block_idx]) {
+        if (rd_block_idx == cb_blocks - 1) {
+            cmd_ptr = cb_base;
+            cb_fence = cb_base;
+        }
+        move_rd_to_next_block_and_release_pages_remote<
+            upstream_noc_idx,
+            upstream_noc_xy,
+            upstream_cb_sem,
+            cb_pages_per_block,
+            cb_blocks,
+            fabric_mux_num_buffers_per_channel,
+            header_rb>(edm, block_noc_writes_to_clear, rd_block_idx);
     }
 
     // Wait for dispatcher to supply a page

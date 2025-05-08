@@ -199,7 +199,7 @@ static const std::vector<DispatchKernelNode> two_chip_arch_1cq_fabric = {
     {4, 0, 1, 0, DISPATCH_H, {7, x, x, x}, {3, 5, x, x}, k_dispatcher_noc},
 
     // H2D via MUX
-    {5, 0, 1, 0, FABRIC_MUX, /*Full size*/ {3, x, x, x}, /*Header Only*/ {6, x, x, x}, k_fabric_mux_noc},
+    {5, 0, 1, 0, FABRIC_MUX, /*Full size*/ {3, x, x, x}, /*Header Only*/ {4, x, x, x}, k_fabric_mux_noc},
 
     {6, 1, x, 0, PREFETCH_D, {3, x, x, x}, {7, 8, 9, x}, k_prefetcher_noc},
     {7, 1, x, 0, DISPATCH_D, {6, x, x, x}, {8, 4, 9, x}, k_dispatcher_noc},

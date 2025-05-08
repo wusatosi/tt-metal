@@ -14,7 +14,7 @@
 namespace tt::tt_metal {
 
 void FabricMux::GenerateStaticConfigs() {
-    constexpr uint32_t k_NumSlotsPerBuffer = 8;
+    constexpr uint32_t k_NumSlotsPerChannel = 8;
 
     const auto& hal = tt::tt_metal::MetalContext::instance().hal();
     const auto l1_base = hal.get_dev_addr(
@@ -27,8 +27,15 @@ void FabricMux::GenerateStaticConfigs() {
     logical_core_ =
         MetalContext::instance().get_dispatch_core_manager().mux_d_core(device_->id(), channel, this->cq_id_);
 
-    const auto kernels_requiring_full_size_channel = this->upstream_kernels_.size();
-    const auto kernels_requiring_header_only_channel = this->downstream_kernels_.size();
+    // Count number of value kernels that need the channels
+    const auto kernels_requiring_full_size_channel =
+        std::count_if(upstream_kernels_.begin(), upstream_kernels_.end(), [](const FDKernel* kernel) {
+            return kernel->GetNodeId() != -1;
+        });
+    const auto kernels_requiring_header_only_channel =
+        std::count_if(downstream_kernels_.begin(), downstream_kernels_.end(), [](const FDKernel* kernel) {
+            return kernel->GetNodeId() != -1;
+        });
 
     // Setup the buffer sizes depending on how many upstream/downstream kernels are connected
     static_config_.num_full_size_channels = kernels_requiring_full_size_channel;
@@ -38,8 +45,8 @@ void FabricMux::GenerateStaticConfigs() {
     mux_kernel_config_ = std::make_shared<tt::tt_fabric::FabricMuxConfig>(
         static_config_.num_full_size_channels.value(),
         static_config_.num_header_only_channels.value(),
-        k_NumSlotsPerBuffer,
-        k_NumSlotsPerBuffer,
+        k_NumSlotsPerChannel,
+        k_NumSlotsPerChannel,
         static_config_.buffer_size_bytes.value(),
         static_config_.buffer_base_address.value());
     mux_ct_args = mux_kernel_config_->get_fabric_mux_compile_time_args();
@@ -97,7 +104,7 @@ void assemble_fabric_mux_client_config_args(
     config.virtual_x = fabric_mux_core.x;
     config.virtual_y = fabric_mux_core.y;
     config.num_buffers_per_channel = fabric_mux->GetMuxKernelConfig()->num_buffers_header_only_channel;
-    config.channel_buffer_size_bytes = fabric_mux->GetStaticConfig().buffer_size_bytes.value();
+    config.channel_buffer_size_bytes = fabric_mux->GetMuxKernelConfig()->get_channel_buffer_size_bytes(ch_type);
     config.channel_base_address = fabric_mux->GetMuxKernelConfig()->get_channel_base_address(ch_type, ch_index);
     config.connection_info_address = fabric_mux->GetMuxKernelConfig()->get_connection_info_address(ch_type, ch_index);
     config.connection_handshake_address =
@@ -105,6 +112,7 @@ void assemble_fabric_mux_client_config_args(
     config.flow_control_address = fabric_mux->GetMuxKernelConfig()->get_flow_control_address(ch_type, ch_index);
     config.buffer_index_address = fabric_mux->GetMuxKernelConfig()->get_buffer_index_address(ch_type, ch_index);
     config.status_address = fabric_mux->GetMuxKernelConfig()->get_status_address();
+    config.termination_signal_address = fabric_mux->GetMuxKernelConfig()->get_termination_signal_address();
 }
 
 }  // namespace tt::tt_metal

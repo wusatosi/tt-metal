@@ -318,7 +318,7 @@ void set_go_signal_noc_data() {
 }
 
 void kernel_main() {
-    DPRINT << "dispatch_s : start" << ENDL();
+    DPRINT << "dispatch_s: in" << ENDL();
     // Initialize customized command buffers.
     dispatch_s_wr_reg_cmd_buf_init();
     dispatch_s_atomic_cmd_buf_init();
@@ -373,5 +373,5 @@ void kernel_main() {
     // skip this for now.
     noc_async_full_barrier();
 #endif
-    DPRINT << "dispatch_s : done" << ENDL();
+    DPRINT << "dispatch_s: out" << ENDL();
 }
