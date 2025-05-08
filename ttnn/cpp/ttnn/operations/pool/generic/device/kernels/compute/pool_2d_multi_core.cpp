@@ -70,8 +70,7 @@ void MAIN {
     constexpr uint32_t in_scalar_cb_id = get_compile_time_arg_val(12);
     constexpr uint32_t out_cb_id = get_compile_time_arg_val(13);
 
-    constexpr bool is_partial_tile = in_c < 32;
-    static_assert((!is_partial_tile || (in_c == 16)), "Partial tile must have c_dim 16");
+    constexpr bool is_partial_tile = in_c % 32 != 0;
     constexpr uint32_t num_faces_in_tile = is_partial_tile ? 1 : 2;
     constexpr uint32_t num_out_rows = 1;
 
@@ -94,7 +93,7 @@ void MAIN {
     for (uint32_t i = 0; i < nsticks_per_core; ++i) {
         // perform the reduction over the first N - 1 whole chunks
         for (uint32_t b_i = 0; b_i < in_nblocks_c - 1; ++b_i) {
-            reduce_h_fused<max_tiles_per_iter, is_partial_tile, split_reader, window_size_hw>(
+            reduce_h_fused<max_tiles_per_iter, false, split_reader, window_size_hw>(
                 in_cb_id_0, in_cb_id_1, in_scalar_cb_id, i, out_cb_id);
         }
         // perform the reduction over the either whole or partial chunk N

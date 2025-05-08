@@ -32,11 +32,6 @@ void validate_pool2d(
     TT_FATAL(out_mem_config.is_sharded(), "Output memory config needs to be sharded");
 
     const auto input_shape = input.get_padded_shape();
-    TT_FATAL(
-        (input_shape[3] % tt::constants::TILE_WIDTH == 0) || (input_shape[3] == 16),
-        "Input channels ({}) should be padded to nearest TILE_WIDTH ({}) or should be 16",
-        input_shape[3],
-        tt::constants::TILE_WIDTH);
 
     // check that C dimnenion is a multiple of num_shards_c for all but height sharding
     TensorMemoryLayout in_memory_layout = input.memory_config().memory_layout;

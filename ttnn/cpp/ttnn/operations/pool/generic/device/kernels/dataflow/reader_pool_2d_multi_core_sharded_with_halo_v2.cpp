@@ -25,6 +25,15 @@ ALWI bool fill_with_val(uint32_t begin_addr, uint32_t n, uint16_t val) {
     return true;
 }
 
+inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
+    DPRINT << "======" << ENDL();
+    for (uint32_t r = 0; r < 32; ++r) {
+        SliceRange sr = SliceRange{.h0 = (uint8_t)r, .h1 = (uint8_t)(r + 1), .hs = 1, .w0 = 0, .w1 = 32, .ws = 1};
+        DPRINT_DATA0({ DPRINT << r << " " << TileSlice(cb_id, tile_id, sr, true, untilize) << ENDL(); });
+    }
+    DPRINT << "++++++" << ENDL();
+}
+
 /**
  * Pool 2D (Max pool 2D and Avg pool 2D)
  */
@@ -58,7 +67,7 @@ void kernel_main() {
     constexpr uint32_t in_shard_cb_id = get_compile_time_arg_val(18);
     constexpr uint32_t in_reader_indices_cb_id = get_compile_time_arg_val(19);
     constexpr uint32_t in_scalar_cb_id = get_compile_time_arg_val(20);
-
+    DPRINT << "in_nbytes_c " << in_nbytes_c << ENDL();
     if (reader_id == 0) {
         cb_reserve_back(in_scalar_cb_id, 1);
         fill_with_val(get_write_ptr(in_scalar_cb_id), TILE_WIDTH, bf16_scalar >> 16);
@@ -90,5 +99,6 @@ void kernel_main() {
         }
         noc_async_read_barrier();
         cb_push_back(in_cb_id, npages_to_reserve);
+        print_full_tile(in_cb_id, 0);
     }
 }  // kernel_main()
