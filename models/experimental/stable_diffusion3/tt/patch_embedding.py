@@ -11,9 +11,10 @@ from dataclasses import dataclass
 import torch
 import ttnn
 
+from ..reference.patch_embedding import PatchEmbed
 from .conv2d import TtConv2d, TtConv2dParameters
 from .substate import substate
-from .utils import from_torch_fast
+from .utils import from_torch_fast, to_torch
 
 
 @dataclass
@@ -26,10 +27,14 @@ class TtPatchEmbedParameters:
         cls,
         state: dict[str, torch.Tensor],
         *,
-        device: ttnn.Device,
+        device: ttnn.MeshDevice,
         hidden_dim_padding: int,
         out_channels: int,
-    ) -> TtPatchEmbedParameters:
+        use_cpu_fallback: bool = False,
+    ) -> TtPatchEmbedParameters | dict[str, torch.Tensor]:
+        if use_cpu_fallback:
+            return state
+
         pos_embed_param = state["pos_embed"]
         if os.environ["FAKE_DEVICE"] == "T3K":
             pos_embed_param = torch.nn.functional.pad(
@@ -55,21 +60,51 @@ class TtPatchEmbedParameters:
 
 
 class TtPatchEmbed:
-    def __init__(self, parameters: TtPatchEmbedParameters, mesh_device) -> None:
+    def __init__(self, parameters: TtPatchEmbedParameters, *, device: ttnn.MeshDevice) -> None:
         super().__init__()
 
-        self._pos_embed_max_size = parameters.pos_embed_max_size
-        self._proj = TtConv2d(parameters.proj, device=mesh_device)
-        self._pos_embed = parameters.pos_embed
         self._patch_size = 2
 
+        if isinstance(parameters, dict):
+            pos_embed_max_size = math.isqrt(parameters["pos_embed"].shape[1])
+
+            with torch.device("meta"):
+                self._cpu_fallback = PatchEmbed(
+                    patch_size=self._patch_size,
+                    in_channels=parameters["proj.weight"].shape[1],
+                    embed_dim=parameters["proj.weight"].shape[0],
+                    pos_embed_max_size=pos_embed_max_size,
+                )
+            self._cpu_fallback.load_state_dict(parameters, assign=True)
+            self._cpu_fallback.eval()
+            self._cpu_fallback.to(torch.float32)
+        else:
+            self._cpu_fallback = None
+
+            self._pos_embed_max_size = parameters.pos_embed_max_size
+            self._proj = TtConv2d(parameters.proj, device=device)
+            self._pos_embed = parameters.pos_embed
+
+        self._device = device
+
     def __call__(self, latent: ttnn.Tensor) -> ttnn.Tensor:
-        batch_size_, in_height, in_width, c_ = latent.shape
+        if self._cpu_fallback is not None:
+            torch_latent = to_torch(latent).permute([0, 3, 1, 2]).to(torch.float32).squeeze(1)
+            torch_out = self._cpu_fallback.forward(torch_latent)
+            return from_torch_fast(
+                torch_out,
+                device=self._device,
+                dtype=latent.dtype,
+                layout=latent.layout,
+                shard_dim=-1,
+            )
+
+        batch_size, in_height, in_width, _c = latent.shape
         out_height = in_height // self._patch_size
         out_width = in_width // self._patch_size
 
         latent = self._proj(latent)
-        latent = ttnn.reshape(latent, (batch_size_, out_height * out_width, -1))
+        latent = ttnn.reshape(latent, (batch_size, out_height * out_width, -1))
         pos_embed = self._cropped_pos_embed(out_height, out_width)
         return latent + pos_embed
 

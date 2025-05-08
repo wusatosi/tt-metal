@@ -67,7 +67,7 @@ def test_patch_embedding(
     parameters = TtPatchEmbedParameters.from_torch(
         torch_model.state_dict(), device=mesh_device, hidden_dim_padding=hidden_dim_padding, out_channels=embedding_dim
     )
-    tt_model = TtPatchEmbed(parameters, mesh_device=mesh_device)
+    tt_model = TtPatchEmbed(parameters, device=mesh_device)
 
     torch_input_tensor = torch.randn((batch_size, 16, 128, 128), dtype=torch.bfloat16)
 

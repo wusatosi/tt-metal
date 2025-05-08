@@ -104,7 +104,7 @@ class TtSD3Transformer2DModel:
         super().__init__()
 
         self.mesh_device = device
-        self._pos_embed = TtPatchEmbed(parameters.pos_embed, device)
+        self._pos_embed = TtPatchEmbed(parameters.pos_embed, device=device)
         self._time_text_embed = TtCombinedTimestepTextProjEmbeddings(
             parameters.time_text_embed,
             device=device,
