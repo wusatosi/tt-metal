@@ -68,7 +68,7 @@ std::vector<chan_id_t> get_ordered_fabric_eth_chans(chip_id_t chip_id, const std
 
 void set_routing_mode(uint16_t routing_mode) {
     // override for forced routing mode
-    if (routing_mode != ROUTING_MODE_UNDEFINED) {
+    if (routing_mode == ROUTING_MODE_UNDEFINED) {
         return;
     }
 
