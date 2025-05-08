@@ -62,18 +62,11 @@ class Generator:
             prefill_seq_len = get_padded_prefill_len(seq_len)
             # it doesn't matter which value we pad with, we don't use these parts of the kv-cache or their outputs
             # Handle both 2D (batch, seq) tokens and 3D (batch, seq, embedding_dim) embedding formats
-            if tokens.dim() == 2:
-                # For 2D tokens (token IDs)
-                prefill_ids = torch.cat(
-                    [tokens[user_id : user_id + 1, :seq_len], torch.zeros(1, prefill_seq_len - seq_len).long()], dim=-1
-                )
-            else:
-                # For 3D tokens (embeddings)
-                embed_dim = tokens.shape[-1]
-                prefill_ids = torch.cat(
-                    [tokens[user_id : user_id + 1, :seq_len], torch.zeros(1, prefill_seq_len - seq_len, embed_dim)],
-                    dim=1,
-                )
+            assert tokens.dim() == 2, "tokens must be a 2D tensor"
+            # For 2D tokens (token IDs)
+            prefill_ids = torch.cat(
+                [tokens[user_id : user_id + 1, :seq_len], torch.zeros(1, prefill_seq_len - seq_len).long()], dim=-1
+            )
             if page_table is not None:
                 page_table_user = self._get_prefill_user_page_table(page_table, kv_cache, seq_len)
 
@@ -216,9 +209,19 @@ class Generator:
         Performs text decode step.
         Returns tt_logits on device
         """
+        # tokens.shape: torch.Size([1, 1]), dtype: torch.int64
+        # current_pos.shape: tensor([3602]), dtype: torch.int64
+        # page_table.shape: torch.Size([1, 1024]), dtype: torch.int64
         tt_tokens, tt_current_pos, tt_rot_mats, tt_page_table = self.model.prepare_inputs_decode(
             tokens, current_pos, page_table
         )
+        # tt_tokens.shape, dtype, is_sharded(): (Shape([1, 1, 32, 1024]), <DataType.BFLOAT16: 0>), True
+        # tt_current_pos.shape, dtype, is_sharded(): (Shape([1]), <DataType.INT32: 7>), False
+        # tt_rot_mats[0].shape, dtype, is_sharded(): (Shape([1, 1, 1, 128]), <DataType.BFLOAT16: 0>), True
+        # tt_rot_mats[1].shape, dtype, is_sharded(): (Shape([1, 1, 1, 128]), <DataType.BFLOAT16: 0>), True
+        # tt_page_table.shape, dtype, is_sharded(): (Shape([1, 1024]), <DataType.INT32: 7>), False
+        # kv_cache[0][0].shape, dtype, is_sharded(): (Shape([1024, 1, 32, 128]), <DataType.BFLOAT8_B: 3>), False
+        # [INFO] len(kv_cache): 36; len(kv_cache[0]): 2
         tt_logits = self.model.ttnn_decode_forward(
             tt_tokens,
             tt_current_pos,
