@@ -7,8 +7,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import torch
 import ttnn
 
+from ..reference.transformer_block import TransformerBlock
 from . import utils
 from .attention import TtAttention, TtAttentionParameters
 from .feed_forward import TtFeedForward, TtFeedForwardParameters
@@ -44,7 +46,11 @@ class TtTransformerBlockParameters:
         hidden_dim_padding: int,
         dtype: ttnn.DataType | None = None,
         device: ttnn.Device,
-    ) -> TtTransformerBlockParameters:
+        use_cpu_fallback: bool = False,
+    ) -> TtTransformerBlockParameters | dict[str, torch.Tensor]:
+        if use_cpu_fallback:
+            return state
+
         embedding_dim = state["norm1.linear.weight"].shape[1]
 
         def norm(state: dict[str, torch.Tensor]) -> TtLayerNormParameters:
@@ -112,32 +118,53 @@ class TtTransformerBlock:
         parameters: TtTransformerBlockParameters,
         *,
         num_heads: int,
-        device,
+        device: ttnn.MeshDevice,
     ) -> None:
-        eps = 1e-6
+        self._device = device
 
-        self._dual_attn = TtAttention(parameters.dual_attn, num_heads=num_heads, device=device)
-        self._spatial_attn = (
-            TtAttention(parameters.spatial_attn, num_heads=num_heads, device=device)
-            if parameters.spatial_attn is not None
-            else None
-        )
+        if isinstance(parameters, dict):
+            has_spatial_attn = has_substate(parameters, "attn2")
+            has_ff_context = has_substate(parameters, "ff_context")
 
-        self._spatial_norm_1 = TtLayerNorm(parameters.spatial_norm_1, eps=eps)
-        self._spatial_norm_2 = TtLayerNorm(parameters.spatial_norm_2, eps=eps)
-        self._prompt_norm_1 = TtLayerNorm(parameters.prompt_norm_1, eps=eps)
-        self._prompt_norm_2 = TtLayerNorm(parameters.prompt_norm_2, eps=eps)
+            with torch.device("meta"):
+                self._cpu_fallback = TransformerBlock(
+                    dim=2432,
+                    num_heads=num_heads,
+                    head_dim=64,
+                    context_pre_only=not has_ff_context,
+                    qk_norm="rms_norm",
+                    use_dual_attention=has_spatial_attn,
+                )
+            self._cpu_fallback.load_state_dict(parameters, assign=True)
+            self._cpu_fallback.eval()
+            self._cpu_fallback.to(torch.float32)
+        else:
+            self._cpu_fallback = None
 
-        self._spatial_ff = TtFeedForward(parameters.spatial_ff, device=device)
-        self._prompt_ff = (
-            TtFeedForward(parameters.prompt_ff, device=device) if parameters.prompt_ff is not None else None
-        )
+            eps = 1e-6
 
-        self._spatial_time_embed = TtLinear(parameters.spatial_time_embed)
-        self._prompt_time_embed = TtLinear(parameters.prompt_time_embed)
+            self._dual_attn = TtAttention(parameters.dual_attn, num_heads=num_heads, device=device)
+            self._spatial_attn = (
+                TtAttention(parameters.spatial_attn, num_heads=num_heads, device=device)
+                if parameters.spatial_attn is not None
+                else None
+            )
 
-        self._context_pre_only = self._prompt_ff is None
-        self._distributed = parameters.distributed
+            self._spatial_norm_1 = TtLayerNorm(parameters.spatial_norm_1, eps=eps)
+            self._spatial_norm_2 = TtLayerNorm(parameters.spatial_norm_2, eps=eps)
+            self._prompt_norm_1 = TtLayerNorm(parameters.prompt_norm_1, eps=eps)
+            self._prompt_norm_2 = TtLayerNorm(parameters.prompt_norm_2, eps=eps)
+
+            self._spatial_ff = TtFeedForward(parameters.spatial_ff, device=device)
+            self._prompt_ff = (
+                TtFeedForward(parameters.prompt_ff, device=device) if parameters.prompt_ff is not None else None
+            )
+
+            self._spatial_time_embed = TtLinear(parameters.spatial_time_embed)
+            self._prompt_time_embed = TtLinear(parameters.prompt_time_embed)
+
+            self._context_pre_only = self._prompt_ff is None
+            self._distributed = parameters.distributed
 
     def _spatial_attn_block(
         self, inp: ttnn.Tensor, *, gate: ttnn.Tensor, scale: ttnn.Tensor, shift: ttnn.Tensor
@@ -204,6 +231,47 @@ class TtTransformerBlock:
     def __call__(  # noqa: PLR0915
         self, *, spatial: ttnn.Tensor, prompt: ttnn.Tensor, time_embed: ttnn.Tensor, N: int, L: int
     ) -> tuple[ttnn.Tensor, ttnn.Tensor | None]:
+        if self._cpu_fallback is not None:
+            mc = ttnn.ConcatMeshToTensor(self._device, -1)
+
+            torch_spatial = ttnn.to_torch(spatial, mesh_composer=mc).to(torch.float32).squeeze(1)
+            torch_prompt = (
+                ttnn.to_torch(prompt, mesh_composer=mc).to(torch.float32).squeeze(1) if prompt is not None else None
+            )
+            torch_time_embed = (
+                ttnn.to_torch(time_embed, mesh_composer=mc)[..., 0 : time_embed.shape[-1]]
+                .to(torch.float32)
+                .squeeze(1)
+                .squeeze(1)
+            )
+
+            with torch.no_grad():
+                torch_spatial, torch_prompt = self._cpu_fallback(
+                    spatial=torch_spatial,
+                    prompt=torch_prompt,
+                    time_embed=torch_time_embed,
+                )
+
+            spatial = ttnn.from_torch(
+                torch_spatial.unsqueeze(1),
+                device=self._device,
+                mesh_mapper=ttnn.ShardTensorToMesh(self._device, -1),
+                layout=ttnn.TILE_LAYOUT,
+                dtype=ttnn.bfloat16,
+            )
+            prompt = (
+                ttnn.from_torch(
+                    torch_prompt.unsqueeze(1),
+                    device=self._device,
+                    mesh_mapper=ttnn.ShardTensorToMesh(self._device, -1),
+                    layout=ttnn.TILE_LAYOUT,
+                    dtype=ttnn.bfloat16,
+                )
+                if torch_prompt is not None
+                else None
+            )
+            return spatial, prompt
+
         t = ttnn.silu(time_embed, memory_config=ttnn.DRAM_MEMORY_CONFIG)
         spatial_time = self._spatial_time_embed(t, memory_config=ttnn.DRAM_MEMORY_CONFIG)
         prompt_time = self._prompt_time_embed(t, memory_config=ttnn.DRAM_MEMORY_CONFIG)
