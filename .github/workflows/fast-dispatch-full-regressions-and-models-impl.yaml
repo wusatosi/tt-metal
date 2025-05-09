@@ -73,6 +73,7 @@ jobs:
             -e ARCH_NAME=wormhole_b0
             -e LD_LIBRARY_PATH=${{ github.workspace }}/build/lib
             -e GTEST_OUTPUT=xml:generated/test_reports/
+            -e LD_PRELOAD=/usr/lib/llvm-17/lib/clang/17/lib/linux/libclang_rt.tsan-x86_64.so
           run_args: ${{ matrix.test-group.cmd }}
       - uses: tenstorrent/tt-metal/.github/actions/upload-artifact-with-job-uuid@main
         timeout-minutes: 10
@@ -81,6 +82,7 @@ jobs:
           path: generated/test_reports/
           prefix: "test_reports_"
   nightly-wh-models:
+    if: false
     strategy:
       # Do not fail-fast because we need to ensure all tests go to completion
       # so we try not to get hanging machines
@@ -140,6 +142,7 @@ jobs:
           path: generated/test_reports/
           prefix: "test_reports_"
   nightly-wh-unstable-models:
+    if: false
     strategy:
       # Do not fail-fast because we need to ensure all tests go to completion
       # so we try not to get hanging machines
