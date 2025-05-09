@@ -167,7 +167,6 @@ target_link_libraries(
 
 add_compile_options(
     "$<$<STREQUAL:${CMAKE_SYSTEM_PROCESSOR},x86_64>:-mavx2>"
-    -fno-lto # FIXME: This seems to be here for ttnn; it should go to TTNN, then.
     -fPIC
     -fvisibility-inlines-hidden
     -Wall
