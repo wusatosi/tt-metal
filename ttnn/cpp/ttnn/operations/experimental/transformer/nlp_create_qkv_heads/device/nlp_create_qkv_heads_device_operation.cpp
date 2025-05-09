@@ -207,7 +207,7 @@ NlpCreateHeadsDeviceOperation::program_factory_t NlpCreateHeadsDeviceOperation::
     const operation_attributes_t& operation_attributes, const tensor_args_t& tensor_args) {
     const auto& input_tensor = tensor_args.input_tensor_q;
     if (input_tensor.is_sharded()) {
-        return Sharded{};
+        return Sharded{};  // note leave out assert for sharding
     } else {
         return Interleaved{};
     }

@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include "dataflow_api.h"
+#include "debug/dprint.h"
 
 void kernel_main() {
     // READER RUNTIME ARGS
@@ -60,6 +61,7 @@ void kernel_main() {
         }
 
         // K
+        DPRINT << "Printing reading out " << kv_num_tiles << ENDL();
         for (uint32_t i = 0; i < kv_num_tiles; i++) {
             cb_reserve_back(cb_id_k, onetile);
             uint32_t l1_write_addr = get_write_ptr(cb_id_k);

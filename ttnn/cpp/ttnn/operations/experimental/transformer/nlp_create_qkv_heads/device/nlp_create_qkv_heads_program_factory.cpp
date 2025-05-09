@@ -19,6 +19,7 @@ NlpCreateHeadsDeviceOperation::Interleaved::cached_program_t NlpCreateHeadsDevic
     tensor_return_value_t& tensor_return_value) {
     const Tensor& input_tensor = tensor_args.input_tensor_q;
     std::optional<const Tensor> input_tensor_kv = tensor_args.input_tensor_kv;
+
     const uint32_t num_q_heads = operation_attributes.num_q_heads;
     const uint32_t num_kv_heads = operation_attributes.num_kv_heads;
     const uint32_t head_dim = operation_attributes.head_dim;
@@ -33,6 +34,17 @@ NlpCreateHeadsDeviceOperation::Interleaved::cached_program_t NlpCreateHeadsDevic
     tt::DataFormat cb_data_format = tt_metal::datatype_to_dataformat_converter(input_tensor.get_dtype());
 
     const bool read_from_input_tensor_kv = input_tensor_kv.has_value();
+
+    tt::log_info(tt::LogOp, "Hello");
+    tt::log_info(
+        tt::LogOp,
+        "Input Q Shape: {} Input KV Shape: {} read_from_input_tensor_kv: {} Input Q PaddedShape: {} Input KV "
+        "PaddedShape: {}",
+        input_tensor.get_logical_shape(),
+        input_tensor_kv.value().get_logical_shape(),
+        read_from_input_tensor_kv,
+        input_tensor.get_padded_shape(),
+        input_tensor_kv.value().get_padded_shape());
 
     uint32_t single_tile_size = tt_metal::detail::TileSize(cb_data_format);
     tt_metal::Buffer* in0_buffer = input_tensor.buffer();
