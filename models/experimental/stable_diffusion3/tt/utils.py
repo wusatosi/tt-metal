@@ -216,3 +216,16 @@ def all_gather(
         x = ttnn.reshape(x, shape, x.padded_shape)
 
     return x
+
+
+def silu_cpu(x: ttnn.Tensor, *, device: ttnn.MeshDevice) -> ttnn.Tensor:
+    torch_x = to_torch(x, shard_dim=0).to(torch.float32)
+    torch_result = torch.nn.functional.silu(torch_x)
+    return from_torch_fast(
+        torch_result,
+        device=device,
+        shard_dim=0,
+        layout=x.layout,
+        dtype=x.dtype,
+        memory_config=x.memory_config(),
+    )

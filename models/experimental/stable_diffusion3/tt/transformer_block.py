@@ -17,6 +17,7 @@ from .feed_forward import TtFeedForward, TtFeedForwardParameters
 from .linear import TtLinear, TtLinearParameters
 from .normalization import TtLayerNorm, TtLayerNormParameters
 from .substate import has_substate, substate
+from .utils import from_torch_fast, to_torch
 
 if TYPE_CHECKING:
     import torch
@@ -272,7 +273,8 @@ class TtTransformerBlock:
             )
             return spatial, prompt
 
-        t = ttnn.silu(time_embed, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+        t = utils.silu_cpu(time_embed, device=self._device)
+
         spatial_time = self._spatial_time_embed(t, memory_config=ttnn.DRAM_MEMORY_CONFIG)
         prompt_time = self._prompt_time_embed(t, memory_config=ttnn.DRAM_MEMORY_CONFIG)
         ttnn.deallocate(t)
