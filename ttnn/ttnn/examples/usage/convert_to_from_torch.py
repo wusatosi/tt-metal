@@ -4,6 +4,7 @@
 
 
 import torch
+
 import ttnn
 
 torch_input_tensor = torch.zeros(2, 4, dtype=torch.float32)

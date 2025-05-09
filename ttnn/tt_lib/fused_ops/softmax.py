@@ -2,12 +2,11 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import math
 
 import torch
+from tt_lib.utils import print_diff_argmax, tilize_to_list, untilize
 
 import ttnn
-from tt_lib.utils import pad_activation, pad_weight, tilize, untilize, tilize_to_list, print_diff_argmax
 
 
 def softmax(x: ttnn.Tensor, stable=False):

@@ -2,19 +2,19 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Tuple, Union, List, Optional
 import math
-
-import ttnn
+from typing import List, Optional, Tuple, Union
 
 from ttnn.types import (
     DEVICE_STORAGE_TYPE,
-    MemoryConfig,
-    ShardStrategy,
-    ShardOrientation,
-    TensorMemoryLayout,
     BufferType,
+    MemoryConfig,
+    ShardOrientation,
+    ShardStrategy,
+    TensorMemoryLayout,
 )
+
+import ttnn
 
 set_printoptions = ttnn._ttnn.core.set_printoptions
 

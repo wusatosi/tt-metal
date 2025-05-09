@@ -3,9 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-import torch
-import ttnn
 import time
+
+import torch
+
+import ttnn
 
 device_id = 0
 device = ttnn.open_device(device_id=device_id)

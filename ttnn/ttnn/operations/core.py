@@ -4,7 +4,7 @@
 
 import math
 import pathlib
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, Optional, Tuple, Union
 
 import torch
 import ttnn.decorators

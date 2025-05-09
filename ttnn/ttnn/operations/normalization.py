@@ -3,12 +3,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-from typing import Optional, Union
-
-import ttnn
+import math
+from typing import Optional
 
 from tt_lib.utils import find_closest_largest_divisor
-import math
+
+import ttnn
 
 
 def _golden_function(input_tensor: ttnn.Tensor, dim: Optional[int] = None, **_):

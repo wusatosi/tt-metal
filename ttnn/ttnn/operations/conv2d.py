@@ -2,11 +2,9 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-from loguru import logger
 
-from typing import Tuple, Union, Dict, Optional
-import warnings
-import math
+from typing import Tuple, Union
+
 import ttnn
 
 Conv2dConfig = ttnn._ttnn.operations.conv.Conv2dConfig

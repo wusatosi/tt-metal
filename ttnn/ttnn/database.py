@@ -3,11 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import dataclasses
-import sqlite3
 import json
+import sqlite3
 
-from loguru import logger
 import networkx as nx
+from loguru import logger
 
 import ttnn
 

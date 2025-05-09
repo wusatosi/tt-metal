@@ -2,10 +2,13 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
+from typing import List, Optional, Tuple, Union
+
 import torch
-from typing import List, Tuple, Union, Optional
-from .conversion_wrapper import convert_tt_tensors_wrapper
+
 import ttnn
+
+from .conversion_wrapper import convert_tt_tensors_wrapper
 
 # python 3.10 has types.EllipsisType
 EllipsisType = type(Ellipsis)

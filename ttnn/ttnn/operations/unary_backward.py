@@ -843,7 +843,7 @@ ttnn.attach_golden_function(ttnn.polygamma_bw, golden_function=_golden_function)
 
 
 def _golden_function(grad_tensor, input_tensor, sizes, *args, **kwargs):
-    import torch
+    pass
 
     input_tensor.retain_grad()
 

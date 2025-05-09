@@ -4,15 +4,15 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 import dataclasses
 import io
 import math
 import shutil
+from contextlib import contextmanager
 from typing import Any
 
-from loguru import logger
 import networkx as nx
+from loguru import logger
 
 logger.disable("ttnn.torch_tracer")
 

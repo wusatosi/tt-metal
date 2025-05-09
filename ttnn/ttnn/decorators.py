@@ -9,17 +9,16 @@ import sys
 import time
 import traceback
 import types
-
 from contextlib import contextmanager
 from functools import wraps
 from importlib.machinery import ModuleSpec
 from importlib.util import module_from_spec
 from typing import Callable
 
+import ttnn.database
 from loguru import logger
 
 import ttnn
-import ttnn.database
 
 
 def compare_tensors_using_pcc(
@@ -681,7 +680,6 @@ def query_registered_operations(include_experimental=False):
 
 
 def dump_operations(csv_file, include_experimental=False):
-    import csv
     import pandas as pd
 
     apis = query_registered_operations(include_experimental)

@@ -3,10 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-from pathlib import Path
-from loguru import logger
-from importlib.metadata import version
 import sys
+from importlib.metadata import version
+from pathlib import Path
+
+from loguru import logger
 
 from .download_sfpi import download_sfpi
 

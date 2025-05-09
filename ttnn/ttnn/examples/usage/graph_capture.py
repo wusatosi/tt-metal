@@ -2,12 +2,10 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import pytest
 
 import torch
 
 import ttnn
-
 
 torch.manual_seed(0)
 

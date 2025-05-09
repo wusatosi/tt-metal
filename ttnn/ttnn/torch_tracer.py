@@ -4,19 +4,18 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 import dataclasses
 import inspect
 import math
 import pathlib
 import time
-from typing import Any, Callable, Optional, Union, Tuple
+from contextlib import contextmanager
+from typing import Any, Callable, Optional, Tuple, Union
 
 import graphviz
 import networkx as nx
-from loguru import logger
 import torch
-
+from loguru import logger
 
 GRAPH_STACK = None
 

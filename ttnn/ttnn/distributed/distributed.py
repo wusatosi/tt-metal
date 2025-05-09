@@ -4,8 +4,7 @@
 
 import contextlib
 import functools
-
-from typing import List, Dict, Optional, Callable, Tuple, Optional, Callable, Union, List
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import ttnn
 
@@ -23,11 +22,11 @@ DispatchCoreType = ttnn._ttnn.device.DispatchCoreType
 def _get_rich_table(
     mesh_device: "ttnn.MeshDevice", style_cell: Optional[Callable] = None, annotate_cell: Optional[Callable] = None
 ):
-    from rich import box, padding
+    from loguru import logger
+    from rich import box
     from rich.align import Align
     from rich.table import Table
     from rich.text import Text
-    from loguru import logger
 
     CELL_SIZE = 30
 
@@ -85,9 +84,9 @@ def visualize_mesh_device(mesh_device: "ttnn.MeshDevice", tensor: "ttnn.Tensor" 
     """
     Visualize the device mesh and the given tensor (if specified).
     """
+    from loguru import logger
     from rich.console import Console
     from rich.style import Style
-    from loguru import logger
 
     style_cell, annotate_cell = None, None
     if tensor is not None:

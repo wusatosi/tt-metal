@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ttnn
-from typing import Union, List
 
 
 def compute_max_pool_shape(kernel_size, stride, padding, x_shape):

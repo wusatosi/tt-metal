@@ -2,9 +2,6 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import List, Union, Optional
-
-import sys
 
 import ttnn
 
@@ -118,7 +115,7 @@ ttnn.attach_golden_function(ttnn.le, golden_function=_golden_function)
 
 
 def _golden_function(input_tensor_a, input_tensor_b, *args, **kwargs):
-    import torch
+    pass
 
     return input_tensor_a.logical_and_(input_tensor_b)
 
@@ -127,7 +124,7 @@ ttnn.attach_golden_function(ttnn.logical_and_, golden_function=_golden_function)
 
 
 def _golden_function(input_tensor_a, input_tensor_b, *args, **kwargs):
-    import torch
+    pass
 
     return input_tensor_a.logical_or_(input_tensor_b)
 
@@ -136,7 +133,7 @@ ttnn.attach_golden_function(ttnn.logical_or_, golden_function=_golden_function)
 
 
 def _golden_function(input_tensor_a, input_tensor_b, *args, **kwargs):
-    import torch
+    pass
 
     return input_tensor_a.logical_xor_(input_tensor_b)
 
@@ -195,7 +192,7 @@ ttnn.attach_golden_function(ttnn.bias_gelu_, golden_function=_golden_function)
 
 
 def _golden_function_squared_difference(input_tensor_a, input_tensor_b, *args, **kwargs):
-    import torch
+    pass
 
     return torch_squared_difference(input_tensor_a, input_tensor_b)
 
@@ -426,7 +423,7 @@ ttnn.attach_golden_function(ttnn.polyval, golden_function=_golden_function_polyv
 
 
 def _golden_function_gt_(input_tensor_a, input_tensor_b, *args, **kwargs):
-    import torch
+    pass
 
     return input_tensor_a.gt_(input_tensor_b)
 
@@ -435,7 +432,7 @@ ttnn.attach_golden_function(ttnn.gt_, golden_function=_golden_function_gt_)
 
 
 def _golden_function_le_(input_tensor_a, input_tensor_b, *args, **kwargs):
-    import torch
+    pass
 
     return input_tensor_a.le_(input_tensor_b)
 
@@ -444,7 +441,7 @@ ttnn.attach_golden_function(ttnn.le_, golden_function=_golden_function_le_)
 
 
 def _golden_function_lt_(input_tensor_a, input_tensor_b, *args, **kwargs):
-    import torch
+    pass
 
     return input_tensor_a.lt_(input_tensor_b)
 
@@ -453,7 +450,7 @@ ttnn.attach_golden_function(ttnn.lt_, golden_function=_golden_function_lt_)
 
 
 def _golden_function_ge_(input_tensor_a, input_tensor_b, *args, **kwargs):
-    import torch
+    pass
 
     return input_tensor_a.ge_(input_tensor_b)
 
@@ -462,7 +459,7 @@ ttnn.attach_golden_function(ttnn.ge_, golden_function=_golden_function_ge_)
 
 
 def _golden_function_eq_(input_tensor_a, input_tensor_b, *args, **kwargs):
-    import torch
+    pass
 
     return input_tensor_a.eq_(input_tensor_b)
 
@@ -471,7 +468,7 @@ ttnn.attach_golden_function(ttnn.eq_, golden_function=_golden_function_eq_)
 
 
 def _golden_function_ne_(input_tensor_a, input_tensor_b, *args, **kwargs):
-    import torch
+    pass
 
     return input_tensor_a.ne_(input_tensor_b)
 

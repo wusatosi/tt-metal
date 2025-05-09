@@ -2,9 +2,9 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import ttnn
-
 from typing import Tuple
+
+import ttnn
 
 
 def golden_maxpool2d(

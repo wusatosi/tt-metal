@@ -2,8 +2,6 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import sys
-from typing import Union
 
 import ttnn
 

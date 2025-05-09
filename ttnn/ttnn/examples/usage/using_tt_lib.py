@@ -4,8 +4,8 @@
 
 
 import torch
-import ttnn
 
+import ttnn
 
 device_id = 0
 device = ttnn.open_device(device_id=device_id)

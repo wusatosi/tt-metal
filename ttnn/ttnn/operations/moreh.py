@@ -2,8 +2,9 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import ttnn
 import ttnn._ttnn
+
+import ttnn
 
 abs = ttnn._ttnn.operations.moreh.moreh_abs_pow
 adam = ttnn._ttnn.operations.moreh.moreh_adam

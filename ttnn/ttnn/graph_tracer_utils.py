@@ -2,8 +2,8 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import re
 import json
+import re
 
 
 class GraphTracerUtils:

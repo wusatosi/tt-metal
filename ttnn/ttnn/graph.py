@@ -3,12 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import contextlib
-from typing import Callable, Union
-from loguru import logger
 import pathlib
-import graphviz
+from typing import Callable, Union
 
-from ttnn._ttnn.graph import RunMode, begin_graph_capture, end_graph_capture, extract_calltrace
+import graphviz
+from loguru import logger
 
 
 class ExitStackWithPop(contextlib.ExitStack):

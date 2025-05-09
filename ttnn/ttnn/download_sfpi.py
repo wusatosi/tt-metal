@@ -2,12 +2,13 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
+import hashlib
+import json
 import os
 import sys
-import json
-import hashlib
-import urllib.request
 import tarfile
+import urllib.request
+
 from loguru import logger
 
 

@@ -2,12 +2,8 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import List, Union, Optional
-
-import sys
 
 import ttnn
-
 
 __all__ = []
 

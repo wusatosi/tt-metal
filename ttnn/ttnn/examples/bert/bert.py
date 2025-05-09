@@ -5,9 +5,9 @@
 
 import torch
 import transformers
+from ttnn.model_preprocessing import preprocess_model
 
 import ttnn
-from ttnn.model_preprocessing import preprocess_model
 
 
 def embedding(input_ids, *, parameters):

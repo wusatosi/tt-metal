@@ -2,20 +2,19 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import io
 import inspect
+import io
 import pathlib
-import shutil
 import pickle
-from typing import Optional, Union, Callable
+import shutil
+from typing import Callable, Optional, Union
 
-from ttnn.dot_access import make_dot_access_dict
-
-from loguru import logger
 import torch
+from loguru import logger
+from ttnn.dot_access import make_dot_access_dict
+from ttnn.torch_tracer import trace, visualize
 
 import ttnn
-from ttnn.torch_tracer import trace, visualize
 
 
 def preprocess_linear_weight(weight, *, dtype, layout=ttnn.TILE_LAYOUT):

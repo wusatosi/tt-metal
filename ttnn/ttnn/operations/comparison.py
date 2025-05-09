@@ -10,8 +10,8 @@ import ttnn
 
 @ttnn.register_python_operation(name="ttnn.pearson_correlation_coefficient")
 def pearson_correlation_coefficient(expected, actual):
-    import torch
     import numpy as np
+    import torch
 
     if isinstance(actual, ttnn.Tensor):
         actual = ttnn.to_torch(actual)

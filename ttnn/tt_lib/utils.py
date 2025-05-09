@@ -5,9 +5,8 @@
 import math
 import struct
 
-import torch
 import numpy as np
-
+import torch
 from typing_extensions import deprecated
 
 

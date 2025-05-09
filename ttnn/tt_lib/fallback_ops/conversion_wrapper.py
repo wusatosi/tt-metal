@@ -2,11 +2,13 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import ttnn
-import torch
-from functools import wraps
-from loguru import logger
 from contextlib import contextmanager
+from functools import wraps
+
+import torch
+from loguru import logger
+
+import ttnn
 
 
 # Log only once to not pollute output

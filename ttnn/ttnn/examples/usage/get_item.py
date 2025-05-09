@@ -6,6 +6,7 @@
 # Note that this not a view, unlike torch tensor
 
 import torch
+
 import ttnn
 
 device_id = 0

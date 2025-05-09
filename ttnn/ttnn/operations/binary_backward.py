@@ -4,14 +4,14 @@
 
 import sys
 
-import ttnn
 from ttnn.operations.complex_binary_backward import (
     _golden_function_complex_add,
-    _golden_function_complex_sub,
-    _golden_function_complex_mul,
     _golden_function_complex_div,
+    _golden_function_complex_mul,
+    _golden_function_complex_sub,
 )
 
+import ttnn
 
 THIS_MODULE = sys.modules[__name__]
 
@@ -94,7 +94,7 @@ def _golden_function_backward_with_dim(
 def _golden_function_backward_with_float(
     torch_op, grad_tensor, input_tensor_a, input_tensor_b, alpha=None, *args, **kwargs
 ):
-    import torch
+    pass
 
     if alpha == None:
         pyt_y = torch_op(input_tensor_a, input_tensor_b)
@@ -284,7 +284,7 @@ ttnn.attach_golden_function(ttnn.rsub_bw, golden_function=_golden_function_bw)
 
 
 def _golden_function_bw(grad, a, b, value="none", *args, **kwargs):
-    import torch
+    pass
 
     return _golden_function_backward_with_string("bias_gelu_bw", grad, a, b, value, *args, **kwargs)
 

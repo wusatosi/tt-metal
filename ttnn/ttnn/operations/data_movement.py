@@ -2,10 +2,11 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Tuple, Union, List
+from typing import Tuple
+
+import ttnn.decorators
 
 import ttnn
-import ttnn.decorators
 
 
 def _preprocess_golden_function_inputs(args, kwargs):

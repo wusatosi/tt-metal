@@ -487,7 +487,7 @@ ttnn.attach_golden_function(ttnn.swiglu, golden_function=_golden_function_swiglu
 
 
 def _golden_function_logical_not_(input_tensor_a, *args, **kwargs):
-    import torch
+    pass
 
     return input_tensor_a.logical_not_()
 
