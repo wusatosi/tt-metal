@@ -1227,3 +1227,29 @@ def test_resnet50_fold(device, n, c, h, w, dim0, dim1):
     tt_output = ttnn.to_torch(tt_output.cpu())
 
     assert_with_pcc(torch_output, tt_output, 0.9999)
+
+
+def test_transpose_bug(device):
+    # Test parameters
+    torch.set_printoptions(threshold=4096)
+    dim1, dim2, dim3, dim4, dim5 = 1, 1, 1, 32, 64
+    dtype = ttnn.bfloat8_b
+
+    for i in range(100):
+        torch_input = torch.randn(dim1, dim2, dim3, dim4, dim5, dtype=torch.bfloat16)
+        ttnn_input = ttnn.from_torch(torch_input, dtype, layout=ttnn.Layout.TILE, device=device)
+        ttnn_output = ttnn.permute(ttnn_input, [0, 1, 2, 4, 3])
+
+        torch_output = ttnn.to_torch(ttnn_output, dtype=torch.bfloat16)
+
+        if torch.any(torch.isnan(torch_input)) or torch.any(torch.isinf(torch_input)):
+            return
+
+        if torch.any(torch.isinf(torch_output)) or (torch.any(torch.isnan(torch_output))):
+            # Save the torch_input tensor to a file
+            print("Torch Result:")
+            print(torch.permute(torch_input, [0, 1, 2, 4, 3])[0, 0, 0, 31, :])
+            print("TTNN Result:")
+            print(torch_output[0, 0, 0, 63, :])
+            torch.save(torch_input, "tensor.torch")
+            assert False, f"Found infinity values at iteration {i} in ttnn but not in pytorch"
