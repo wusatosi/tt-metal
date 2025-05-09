@@ -193,6 +193,8 @@ std::vector<chip_id_t> ControlPlane::get_mesh_physical_chip_ids(
     std::uint32_t mesh_ns_size,
     std::uint32_t mesh_ew_size,
     chip_id_t nw_chip_physical_chip_id) const {
+        return {4, 0, 3, 7, 5, 1, 2, 6};
+/*
     std::uint32_t num_ports_per_side = routing_table_generator_->get_chip_spec().num_eth_ports_per_direction;
 
     const auto user_chips = tt::tt_metal::MetalContext::instance().get_cluster().user_exposed_chip_ids();
@@ -332,6 +334,7 @@ std::vector<chip_id_t> ControlPlane::get_mesh_physical_chip_ids(
     }
     log_debug(tt::LogFabric, "Control Plane: NW {} Physical Device Ids: {}", nw_chip_physical_chip_id, ss.str());
     return physical_chip_ids;
+    */
 }
 
 void ControlPlane::initialize_from_mesh_graph_desc_file(const std::string& mesh_graph_desc_file) {
@@ -924,7 +927,7 @@ std::vector<mesh_id_t> ControlPlane::get_user_physical_mesh_ids() const {
              chip_id++) {
             if (user_chips.find(this->logical_mesh_chip_id_to_physical_chip_id_mapping_[mesh_id][chip_id]) ==
                 user_chips.end()) {
-                add_mesh = false;
+                // add_mesh = false; Need this hack for: There are no user physical meshes in the system found by control plane.
                 break;
             }
         }

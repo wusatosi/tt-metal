@@ -104,7 +104,8 @@ public:
 
     size_t number_of_devices() const { return this->cluster_desc_->get_number_of_chips(); }
 
-    size_t number_of_pci_devices() const { return this->cluster_desc_->get_chips_with_mmio().size(); }
+    //size_t number_of_pci_devices() const { return this->cluster_desc_->get_chips_with_mmio().size(); }
+    size_t number_of_pci_devices() const { return this->driver_->get_target_device_ids().size(); }
 
     // TODO: UMD will eventually consolidate ethernet coordinates and unique ids, we can remove the ethernet coord
     // getter after that change is in

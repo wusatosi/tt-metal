@@ -89,3 +89,5 @@ endforeach()
 
 # Create thread pool benchmark executable
 create_thread_pool_benchmark_executable()
+
+add_subdirectory(mpi_tests)

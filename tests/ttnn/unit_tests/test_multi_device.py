@@ -660,8 +660,9 @@ def test_validate_as_tensor(tmp_path, mesh_device, height, width):
     assert ttnn.get_memory_config(tensor) == memory_config
 
 
-def test_visualize_mesh_device(t3k_mesh_device):
-    ttnn.visualize_mesh_device(t3k_mesh_device)
+@pytest.mark.parametrize("mesh_device", [pytest.param((2, 4), id="2x4_grid")], indirect=True)
+def test_visualize_mesh_device(mesh_device):
+    ttnn.visualize_mesh_device(mesh_device)
 
 
 @pytest.mark.parametrize("mesh_device", [pytest.param((2, 4), id="2x2_grid")], indirect=True)

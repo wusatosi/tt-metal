@@ -228,7 +228,7 @@ void Cluster::generate_cluster_descriptor() {
         this->devices_grouped_by_assoc_mmio_device_[0] = dummy_card;
         this->device_to_mmio_device_[0] = 0;
     } else {
-        for (chip_id_t device_id : this->cluster_desc_->get_all_chips()) {
+        for (chip_id_t device_id : this->driver_->get_target_device_ids()) {
             chip_id_t closest_mmio_device_id = this->cluster_desc_->get_closest_mmio_capable_chip(device_id);
             std::set<chip_id_t> &device_ids = this->devices_grouped_by_assoc_mmio_device_[closest_mmio_device_id];
             device_ids.insert(device_id);
@@ -258,7 +258,7 @@ void Cluster::generate_cluster_descriptor() {
 
     if (this->arch_ == tt::ARCH::WORMHOLE_B0 and not this->is_galaxy_cluster()) {
         // Give UMD Limited access to eth cores 8 and 9 for Non-Galaxy Wormhole Clusters
-        for (const auto& [mmio_device_id, _] : this->cluster_desc_->get_chips_with_mmio()) {
+        for (const auto& mmio_device_id : this->driver_->get_target_mmio_device_ids()) {
             driver_->configure_active_ethernet_cores_for_mmio_device(mmio_device_id, {});
         }
     }
@@ -267,7 +267,7 @@ void Cluster::generate_cluster_descriptor() {
 void Cluster::validate_harvesting_masks() const {
     // Metal expects all chips to have same number of harvested cores for a given core type
     std::optional<tt::umd::HarvestingMasks> harvesting_mask_tracker = std::nullopt;
-    for (const auto device_id : this->user_exposed_chip_ids()) {
+    for (const auto device_id : this->driver_->get_target_device_ids()) {
         tt::umd::HarvestingMasks masks = sdesc_per_chip_.at(device_id).harvesting_masks;
         if (!harvesting_mask_tracker.has_value()) {
             harvesting_mask_tracker = masks;
@@ -345,12 +345,22 @@ void Cluster::open_driver(const bool &skip_driver_allocs) {
         // This is the target/desired number of mem channels per arch/device.
         // Silicon driver will attempt to open this many hugepages as channels per mmio chip,
         // and assert if workload uses more than available.
-        uint32_t num_devices = tt::umd::Cluster::create_cluster_descriptor()->get_all_chips().size();
-        uint32_t num_host_mem_ch_per_mmio_device = std::min(HOST_MEM_CHANNELS, num_devices);
-        device_driver = std::make_unique<tt::umd::Cluster>(tt::umd::ClusterOptions{
-            .num_host_mem_ch_per_mmio_device = num_host_mem_ch_per_mmio_device,
-            .sdesc_path = get_soc_description_file(this->arch_, this->target_type_),
-        });
+        const auto& target_chip_ids = rtoptions_.get_target_chip_ids();
+        if (not target_chip_ids.empty()) {
+            uint32_t num_host_mem_ch_per_mmio_device = std::min(HOST_MEM_CHANNELS, uint32_t(target_chip_ids.size()));
+            device_driver = std::make_unique<tt::umd::Cluster>(tt::umd::ClusterOptions{
+                .num_host_mem_ch_per_mmio_device = num_host_mem_ch_per_mmio_device,
+                .sdesc_path = get_soc_description_file(this->arch_, this->target_type_),
+                .target_devices = target_chip_ids,
+            });
+        } else {
+            uint32_t num_devices = tt::umd::Cluster::create_cluster_descriptor()->get_all_chips().size();
+            uint32_t num_host_mem_ch_per_mmio_device = std::min(HOST_MEM_CHANNELS, num_devices);
+            device_driver = std::make_unique<tt::umd::Cluster>(tt::umd::ClusterOptions{
+                .num_host_mem_ch_per_mmio_device = num_host_mem_ch_per_mmio_device,
+                .sdesc_path = get_soc_description_file(this->arch_, this->target_type_),
+            });
+        }
     } else if (this->target_type_ == TargetDevice::Simulator) {
         device_driver = std::make_unique<tt::umd::Cluster>(tt::umd::ClusterOptions{
             .chip_type = tt::umd::ChipType::SIMULATION,
@@ -379,7 +389,7 @@ void Cluster::start_driver(tt_device_params &device_params) const {
     TT_FATAL(this->sdesc_per_chip_.size(), "Descriptor must be loaded. Try open_driver()");
 
     if (this->target_type_ == TargetDevice::Silicon && device_params.init_device) {
-        for (const auto [mmio_device_id, _]: this->cluster_desc_->get_chips_with_mmio()) {
+        for (const auto mmio_device_id : this->driver_->get_target_mmio_device_ids()) {
             ll_api::configure_static_tlbs(
                 this->arch_, mmio_device_id, this->get_soc_desc(mmio_device_id), *this->driver_);
         }
@@ -437,7 +447,12 @@ std::unordered_set<chip_id_t> Cluster::user_exposed_chip_ids() const {
         }
         return galaxy_boards;
     } else {
-        return this->cluster_desc_->get_all_chips();
+        auto target_device_ids = this->driver_->get_target_device_ids();
+        std::unordered_set<chip_id_t> user_exposed_device_ids;
+        for (const auto& device_id : target_device_ids) {
+            user_exposed_device_ids.insert(device_id);
+        }
+        return user_exposed_device_ids;
     }
 }
 
@@ -453,7 +468,7 @@ const metal_SocDescriptor &Cluster::get_soc_desc(chip_id_t chip) const {
 }
 
 void Cluster::generate_virtual_to_umd_coord_mapping() {
-    for (auto chip_id : this->cluster_desc_->get_all_chips()) {
+    for (auto chip_id : this->driver_->get_target_device_ids()) {
         this->virtual_worker_cores_[chip_id] = {};
         for (const tt::umd::CoreCoord& core :
              get_soc_desc(chip_id).get_cores(CoreType::TENSIX, CoordSystem::TRANSLATED)) {
@@ -828,8 +843,13 @@ std::unordered_map<chip_id_t, std::vector<CoreCoord>> Cluster::get_ethernet_core
     if (all_eth_connections.find(chip_id) == all_eth_connections.end()) {
         return {};
     }
+    const auto& target_device_ids = this->driver_->get_target_device_ids();
     for (const auto &[eth_chan, connected_chip_chan] : all_eth_connections.at(chip_id)) {
         const auto &other_chip_id = std::get<0>(connected_chip_chan);
+        if (std::find(target_device_ids.begin(), target_device_ids.end(), other_chip_id) == target_device_ids.end()) {
+            continue;
+        }
+        
         if (connected_chips.find(other_chip_id) == connected_chips.end()) {
             std::vector<CoreCoord> active_ethernet_cores;
 
@@ -848,7 +868,7 @@ std::unordered_map<chip_id_t, std::vector<CoreCoord>> Cluster::get_ethernet_core
 }
 #define MAX_TUNNEL_DEPTH 4
 void Cluster::set_tunnels_from_mmio_device() {
-    for (const auto &[mmio_chip_id, physical_chip_id] : this->cluster_desc_->get_chips_with_mmio()) {
+    for (const auto mmio_chip_id : this->driver_->get_target_mmio_device_ids()) {
         std::vector<std::vector<chip_id_t>> tunnels_from_mmio = {};
         const auto &all_eth_connections = this->cluster_desc_->get_ethernet_connections();
         TT_ASSERT(this->cluster_desc_->is_chip_mmio_capable(mmio_chip_id));
@@ -940,7 +960,7 @@ void Cluster::set_tunnels_from_mmio_device() {
 
 // Ethernet cluster api
 void Cluster::initialize_ethernet_sockets() {
-    for (const auto &chip_id : this->cluster_desc_->get_all_chips()) {
+    for (const auto &chip_id : this->driver_->get_target_device_ids()) {
         if (this->ethernet_sockets_.find(chip_id) == this->ethernet_sockets_.end()) {
             this->ethernet_sockets_.insert({chip_id, {}});
         }
@@ -974,7 +994,7 @@ void Cluster::initialize_ethernet_sockets() {
 
 void Cluster::disable_ethernet_cores_with_retrain() {
     std::vector<uint32_t> read_vec;
-    const auto& chips = this->cluster_desc_->get_all_chips();
+    const auto& chips = this->driver_->get_target_device_ids();
     for (const auto& chip_id : chips) {
         if (this->frequent_retrain_cores_.find(chip_id) == this->frequent_retrain_cores_.end()) {
             this->frequent_retrain_cores_.insert({chip_id, {}});
@@ -1006,7 +1026,10 @@ void Cluster::disable_ethernet_cores_with_retrain() {
 
 void Cluster::reserve_ethernet_cores_for_tunneling() {
     const char *TT_METAL_SLOW_DISPATCH_MODE = std::getenv("TT_METAL_SLOW_DISPATCH_MODE");
-    for (const auto &[assoc_mmio_device, devices] : this->devices_grouped_by_assoc_mmio_device_) {
+    const auto& target_device_ids = this->driver_->get_target_device_ids();
+
+    for (const auto& assoc_mmio_device : this->driver_->get_target_mmio_device_ids()) {
+        auto& devices = this->devices_grouped_by_assoc_mmio_device_.at(assoc_mmio_device);
         for (const auto &chip_id : devices) {
             if (this->device_eth_routing_info_.find(chip_id) == this->device_eth_routing_info_.end()) {
                 this->device_eth_routing_info_.insert({chip_id, {}});
