@@ -18,7 +18,7 @@ constexpr uint32_t chunk_num_tiles = get_compile_time_arg_val(4);
 constexpr uint32_t num_chunks_per_shard = get_compile_time_arg_val(5);
 constexpr uint32_t page_size = get_compile_time_arg_val(6);
 constexpr uint32_t output_cb = get_compile_time_arg_val(7);
-
+constexpr uint32_t sync_cb_id = get_compile_time_arg_val(8);
 void kernel_main() {
     size_t arg_idx = 0;
 
@@ -46,13 +46,22 @@ void kernel_main() {
     // Compute where remote sender dumped data into intermediate buffer.
     // Should follow same logic as sender writer.
 
-    DPRINT << "out_row_start " << out_row_start << ENDL();
-    DPRINT << "out_row_end " << out_row_end << ENDL();
-    DPRINT << "out_col_start " << out_col_start << ENDL();
-    DPRINT << "out_col_end " << out_col_end << ENDL();
-    DPRINT << "out_col_tiles " << out_col_tiles << ENDL();
+    // DPRINT << "out_row_start " << out_row_start << ENDL();
+    // DPRINT << "out_row_end " << out_row_end << ENDL();
+    // DPRINT << "out_col_start " << out_col_start << ENDL();
+    // DPRINT << "out_col_end " << out_col_end << ENDL();
+    // DPRINT << "out_col_tiles " << out_col_tiles << ENDL();
+    // DPRINT << "input_shard_row_tiles " << input_shard_row_tiles << ENDL();
+    // DPRINT << "input_shard_col_tiles " << input_shard_col_tiles << ENDL();
 
     for (uint32_t device_id = 0; device_id < ring_size; device_id++) {
+        // if (device_id > 1) {
+        //     continue;
+        // }
+        if (device_id >= 2) {
+            continue;
+        }
+        uint32_t tiles_written = 0;
         for (uint32_t out_row_id = out_row_start; out_row_id < out_row_end; out_row_id++) {
             for (uint32_t out_col_id = out_col_start; out_col_id < out_col_end; out_col_id += num_pages_per_packet) {
                 cb_wait_front(output_cb, num_pages_per_packet);
@@ -65,14 +74,21 @@ void kernel_main() {
                     uint32_t col_tile = out_col_id + j;
                     uint32_t tile_id = out_row_id * out_col_tiles + col_tile;
                     noc_async_write_tile(tile_id, output_tensor_addrgen, l1_read_addr);
+                    tiles_written++;
                     l1_read_addr += page_size;
                 }
-                noc_async_writes_flushed();
+                noc_async_write_barrier();
 
                 cb_pop_front(output_cb, num_pages_per_packet);
+                if (device_id > 0) {
+                    cb_wait_front(sync_cb_id, 1);
+                    cb_pop_front(sync_cb_id, 1);
+                }
             }
         }
-        DPRINT << "Done writing shard " << device_id << ENDL();
+        DPRINT << "Finished writing shard " << device_id << ENDL();
+        // DPRINT << "tiles_written " << tiles_written << ENDL();
+        // DPRINT << "Done writing shard " << device_id << ENDL();
     }
     noc_async_write_barrier();
 }

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include "compute_kernel_api/eltwise_binary.h"
 #include "debug/dprint.h"
+#include "debug/dprint_pages.h"
 namespace NAMESPACE {
 void MAIN {
     // Define all compile-time arguments at the beginning
@@ -16,6 +17,9 @@ void MAIN {
     constexpr uint32_t ring_size = get_compile_time_arg_val(5);
 
     for (uint32_t i = 0; i < ring_size - 1; ++i) {
+        if (i >= 1) {
+            continue;
+        }
         // Initialize binary operations - use the same constants consistently
         binary_op_init_common(input_cb_id, accumulator_cb, output_cb);
         add_tiles_init(input_cb_id, accumulator_cb, false);
@@ -26,6 +30,8 @@ void MAIN {
             cb_wait_front(input_cb_id, tiles_per_packet);
             // Reserve output space once before processing
             cb_wait_front(accumulator_cb, tiles_per_packet);
+            UNPACK(DPRINT << "Iteration " << i << " packet " << packet_id << ENDL());
+            UNPACK(tt::compute::common::print_full_tile(accumulator_cb, 0, true));
             cb_reserve_back(output_cb, tiles_per_packet);
             acquire_dst();
             for (uint32_t tile_id = 0; tile_id < tiles_per_packet; tile_id++) {
@@ -34,6 +40,7 @@ void MAIN {
             }
             release_dst();
             cb_pop_front(input_cb_id, tiles_per_packet);
+
             cb_pop_front(accumulator_cb, tiles_per_packet);
             cb_push_back(output_cb, tiles_per_packet);
         }

@@ -29,6 +29,7 @@ constexpr uint32_t num_targets_backward_direction = get_compile_time_arg_val(9);
 constexpr bool dynamic_alternate = get_compile_time_arg_val(10);
 constexpr uint32_t chunk_granularity = get_compile_time_arg_val(11);
 constexpr uint32_t contig_pages_advanced = get_compile_time_arg_val(12);
+// constexpr uint32_t contig_pages_advanced = 1;
 
 constexpr uint32_t num_max_targets = std::max(num_targets_forward_direction, num_targets_backward_direction);
 constexpr uint32_t num_sync_targets_forward = dynamic_alternate ? num_max_targets : num_targets_forward_direction;
@@ -138,6 +139,7 @@ void kernel_main() {
     uint32_t backward_hops = 1;
     uint32_t dst_ring_id;
     for (uint32_t i = 0; i < ring_size - 1; ++i) {
+        // for (uint32_t i = 0; i < 1; ++i) {
         if (forward_hops == num_targets_forward_direction + 1) {
             cur_is_forward = false;
         }
@@ -157,15 +159,15 @@ void kernel_main() {
         volatile PACKET_HEADER_TYPE* pkt_hdr =
             reinterpret_cast<volatile PACKET_HEADER_TYPE*>(packet_header_buffer_seminc);
 
-        DPRINT << "sender writer global_semaphore_addr[my_ring_id]: " << (uint32_t)global_semaphore_addr[my_ring_id]
-               << ENDL();
+        // DPRINT << "sender writer global_semaphore_addr[my_ring_id]: " << (uint32_t)global_semaphore_addr[my_ring_id]
+        //    << ENDL();
 
         pkt_hdr->to_noc_unicast_atomic_inc(tt::tt_fabric::NocUnicastAtomicIncCommandHeader{
             output_semaphore_noc_addr_in_pkt,
             static_cast<uint16_t>(1),  // increment 1
             32});
 
-        DPRINT << "from device " << (uint32_t)my_ring_id << " to device " << (uint32_t)dst_ring_id << "\n";
+        // DPRINT << "from device " << (uint32_t)my_ring_id << " to device " << (uint32_t)dst_ring_id << "\n";
 
         const uint32_t my_relative_ring_id = (my_ring_id < dst_ring_id) ? my_ring_id : my_ring_id - 1;
         uint32_t packet_id = 0;
@@ -187,6 +189,10 @@ void kernel_main() {
                         (global_id % N_DRAM_BANKS) + contig_pages_advanced * N_DRAM_BANKS * (global_id / N_DRAM_BANKS);
 
                     packet_id++;  // increment packet_id for chunk calculation
+                    volatile tt_l1_ptr uint32_t* packet_data =
+                        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(l1_read_addr);
+                    DPRINT << "D" << my_ring_id << ": SEND: iter " << i << " on packet_id: " << packet_id << " tile_id "
+                           << first_id << " data: " << packet_data[0] << ENDL();
 
                     uint64_t noc0_dest_noc_addr =
                         get_noc_addr(first_id, intermediate_tensor_addrgen, 0 /*offset*/, 0 /*noc_id*/);

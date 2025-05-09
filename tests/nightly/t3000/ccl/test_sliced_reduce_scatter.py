@@ -149,7 +149,7 @@ def run_sliced_reduce_scatter_impl(
 
     for i in range(num_iters if not reuse_inputs else 1):
         # input_tensors = [torch.rand(logical_shape).bfloat16() for _ in range(num_devices)]
-        input_tensors = [torch.full(logical_shape, 1.0).bfloat16() for _ in range(num_devices)]
+        input_tensors = [torch.full(logical_shape, i + 1).bfloat16() for i in range(num_devices)]
         # input_tensors = [t.pow(i) for i, t in enumerate(input_tensors)]
 
         output_tensor_goldens_list.append(torch.stack(input_tensors, dim=0).sum(dim=0).chunk(num_devices, scatter_dim))
@@ -212,11 +212,21 @@ def run_sliced_reduce_scatter_impl(
                     .to(ttnn.ROW_MAJOR_LAYOUT)
                     .to_torch()
                 )
+                input_tensor = (
+                    ttnn.get_device_tensors(input_tensor_mesh_list[tensor_index])[i]
+                    .cpu()
+                    .to(ttnn.ROW_MAJOR_LAYOUT)
+                    .to_torch()
+                )
                 # breakpoint()
                 logger.info(f"Checking for device {t.device().id()}")
-                breakpoint()
+                print("input_tensor")
+                print(input_tensor)
+                print("tt_output_tensor")
                 print(tt_output_tensor)
+                print("intermediate_tensor")
                 print(intermediate_tensor)
+                breakpoint()
                 if input_dtype == ttnn.bfloat16:
                     eq, output = comp_equal(tt_output_tensor, output_tensor)
                 else:
@@ -262,7 +272,7 @@ def run_sliced_reduce_scatter_impl(
 )
 @pytest.mark.parametrize(
     "num_iters, do_check, reuse_inputs",
-    [(2, True, False), (6, False, True), (20, False, True)],
+    [(1, True, False), (6, False, True), (20, False, True)],
     ids=["check", "perf", "stress"],
 )
 @pytest.mark.parametrize(

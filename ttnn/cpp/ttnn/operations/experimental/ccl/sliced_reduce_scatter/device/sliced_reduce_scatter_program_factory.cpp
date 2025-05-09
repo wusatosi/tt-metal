@@ -48,17 +48,22 @@ constexpr uint32_t PACKET_HEADER_BUFFER_SIZE = 8;
 
 // Calculate optimal chunk parameters to keep num_chunks < MAX_CHUNKS_PER_SHARD
 std::tuple<uint32_t, uint32_t, uint32_t> calculate_chunk_params(uint32_t pages_per_shard, uint32_t pages_per_packet) {
-    uint32_t chunk_granularity = MIN_CHUNK_GRANULARITY;
+    uint32_t chunk_granularity = pages_per_shard / pages_per_packet;
+    uint32_t chunk_tiles = pages_per_shard;
+    uint32_t num_chunks = 1;
+    return {chunk_granularity, chunk_tiles, num_chunks};
 
-    while (true) {
-        const uint32_t chunk_tiles = chunk_granularity * pages_per_packet;
-        const uint32_t num_chunks = tt::div_up(pages_per_shard, chunk_tiles);
+    // uint32_t chunk_granularity = MIN_CHUNK_GRANULARITY;
 
-        if (num_chunks < MAX_CHUNKS_PER_SHARD) {
-            return {chunk_granularity, chunk_tiles, num_chunks};
-        }
-        chunk_granularity *= 2;
-    }
+    // while (true) {
+    //     const uint32_t chunk_tiles = chunk_granularity * pages_per_packet;
+    //     const uint32_t num_chunks = tt::div_up(pages_per_shard, chunk_tiles);
+
+    //     if (num_chunks < MAX_CHUNKS_PER_SHARD) {
+    //         return {chunk_granularity, chunk_tiles, num_chunks};
+    //     }
+    //     chunk_granularity *= 2;
+    // }
 }
 
 // Create circular buffers for sender cores
@@ -93,10 +98,12 @@ auto create_receiver_buffer(
     uint32_t page_size,
     tt::DataFormat data_format) {
     const uint32_t receiver_pages = pages_per_packet * TRIPLE_BUFFER_MULTIPLIER;
+    const uint32_t accumulator_pages = pages_per_packet;
 
     const auto input_cb_id = tt::CB::c_in0;
     const auto accumulator_cb_id = tt::CB::c_in1;
     const auto output_cb_id = tt::CB::c_in2;
+    const auto sync_cb_id = tt::CB::c_in3;
 
     auto input_config = tt::tt_metal::CircularBufferConfig(receiver_pages * page_size, {{input_cb_id, data_format}})
                             .set_page_size(input_cb_id, page_size);
@@ -108,11 +115,14 @@ auto create_receiver_buffer(
     auto output_config = tt::tt_metal::CircularBufferConfig(receiver_pages * page_size, {{output_cb_id, data_format}})
                              .set_page_size(output_cb_id, page_size);
 
+    auto sync_config =
+        tt::tt_metal::CircularBufferConfig(1, {{sync_cb_id, tt::DataFormat::RawUInt32}}).set_page_size(sync_cb_id, 1);
+
     auto input_handle = CreateCircularBuffer(program, receiver_core_range, input_config);
     auto accumulator_handle = CreateCircularBuffer(program, receiver_core_range, accumulator_config);
     auto output_handle = CreateCircularBuffer(program, receiver_core_range, output_config);
-
-    return std::make_tuple(input_cb_id, accumulator_cb_id, output_cb_id);
+    auto sync_handle = CreateCircularBuffer(program, receiver_core_range, sync_config);
+    return std::make_tuple(input_cb_id, accumulator_cb_id, output_cb_id, sync_cb_id);
 }
 
 }  // namespace sliced_reduce_scatter_detail
@@ -190,13 +200,14 @@ tt::tt_metal::operation::ProgramWithCallbacks sliced_reduce_scatter_async_minima
     const size_t packet_size = tt::tt_fabric::get_1d_fabric_config().channel_buffer_size_bytes;
     const uint32_t page_size = op_config.get_page_size();
     const uint32_t pages_per_packet = packet_size / page_size;
+    // constexpr uint32_t pages_per_packet = 1;
     const uint32_t cb_pages = sliced_reduce_scatter_detail::TRIPLE_BUFFER_MULTIPLIER * pages_per_packet;
 
     // Create buffers
     tt::DataFormat data_format = tt::tt_metal::datatype_to_dataformat_converter(input_tensor.get_dtype());
     auto [sender_buffer, header_buffer] = sliced_reduce_scatter_detail::create_sender_buffers(
         program, sender_worker_core_range, cb_pages, page_size, data_format);
-    auto [receiver_input_cb_id, receiver_accumulator_cb_id, receiver_output_cb_id] =
+    auto [receiver_input_cb_id, receiver_accumulator_cb_id, receiver_output_cb_id, receiver_sync_cb_id] =
         sliced_reduce_scatter_detail::create_receiver_buffer(
             program, receiver_worker_core_range, pages_per_packet, page_size, data_format);
 
@@ -211,7 +222,6 @@ tt::tt_metal::operation::ProgramWithCallbacks sliced_reduce_scatter_async_minima
         tt::LogOp,
         "chunk_granularity: {}, chunk_num_tiles: {}, num_chunks_per_shard: {}",
         chunk_granularity,
-        chunk_num_tiles,
         num_chunks_per_shard);
 
     // Verify constraints
@@ -335,7 +345,7 @@ tt::tt_metal::operation::ProgramWithCallbacks sliced_reduce_scatter_async_minima
         num_chunks_per_shard,
         op_config.get_page_size(),
         receiver_output_cb_id,
-    };
+        receiver_sync_cb_id};
 
     auto receiver_writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
@@ -356,6 +366,7 @@ tt::tt_metal::operation::ProgramWithCallbacks sliced_reduce_scatter_async_minima
         receiver_input_cb_id,
         receiver_accumulator_cb_id,
         receiver_output_cb_id,
+        receiver_sync_cb_id,
         pages_per_packet,
         num_targets_forward,   // num_targets_forward_direction
         num_targets_backward,  // num_targets_backward_direction
