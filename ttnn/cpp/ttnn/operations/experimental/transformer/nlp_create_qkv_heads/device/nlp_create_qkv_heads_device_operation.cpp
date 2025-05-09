@@ -85,7 +85,6 @@ void NlpCreateHeadsDeviceOperation::validate_on_program_cache_miss(
 
         TT_FATAL(input_shape_kv[0] == input_shape[0], "KV tensor batch dim must be same as Q tensor batch!");
         TT_FATAL(input_shape_kv[1] == 1, "Unsupported input shape {} is not equal to 1", input_shape_kv[1]);
-        TT_FATAL(input_shape_kv[2] == input_shape[2], "KV tensor seq_len dim must be same as Q tensor seq_len!");
         if (input_tensor_kv.is_sharded()) {
             TT_FATAL(input_tensor.is_sharded(), "Error");
             TT_FATAL(
@@ -119,20 +118,28 @@ NlpCreateHeadsDeviceOperation::spec_return_value_t NlpCreateHeadsDeviceOperation
     const auto& input_tensor = tensor_args.input_tensor_q;
     const auto input_shape = input_tensor.get_padded_shape();
 
-    auto sequence_length = input_shape[2];
+    auto sequence_length_q = input_shape[2];
     auto head_dim = operation_attributes.head_dim;
-    if (sequence_length % TILE_HEIGHT != 0) {
-        sequence_length = (sequence_length / TILE_HEIGHT + 1) * TILE_HEIGHT;
+    if (sequence_length_q % TILE_HEIGHT != 0) {
+        sequence_length_q = (sequence_length_q / TILE_HEIGHT + 1) * TILE_HEIGHT;
     }
     if (head_dim % TILE_WIDTH != 0) {
         head_dim = (head_dim / TILE_WIDTH + 1) * TILE_WIDTH;
     }
 
-    const Shape q_output_shape({input_shape[0], operation_attributes.num_q_heads, sequence_length, head_dim});
-    const Shape v_output_shape({input_shape[0], operation_attributes.num_kv_heads, sequence_length, head_dim});
+    auto sequence_length_kv = sequence_length_q;
+    if (tensor_args.input_tensor_kv.has_value()) {
+        sequence_length_kv = tensor_args.input_tensor_kv.value().get_padded_shape()[2];
+        if (sequence_length_kv % TILE_HEIGHT != 0) {
+            sequence_length_kv = (sequence_length_kv / TILE_HEIGHT + 1) * TILE_HEIGHT;
+        }
+    }
+
+    const Shape q_output_shape({input_shape[0], operation_attributes.num_q_heads, sequence_length_q, head_dim});
+    const Shape v_output_shape({input_shape[0], operation_attributes.num_kv_heads, sequence_length_kv, head_dim});
     const Shape k_output_shape =
         operation_attributes.transpose_k_heads
-            ? Shape({input_shape[0], operation_attributes.num_kv_heads, head_dim, sequence_length})
+            ? Shape({input_shape[0], operation_attributes.num_kv_heads, head_dim, sequence_length_kv})
             : v_output_shape;
 
     if (operation_attributes.output_mem_config.is_sharded()) {

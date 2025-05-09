@@ -66,9 +66,16 @@ NlpCreateHeadsDeviceOperation::Interleaved::cached_program_t NlpCreateHeadsDevic
     uint32_t q_out_w_tiles = head_dim / TILE_WIDTH;  // tiles along head_dim
     uint32_t q_out_HtWt = q_out_h_tiles * q_out_w_tiles;
     uint32_t q_out_CHtWt = num_q_heads * q_out_HtWt;
-    uint32_t kv_out_CHtWt = num_kv_heads * q_out_HtWt;
     uint32_t q_num_tiles = num_q_heads * q_out_w_tiles;
-    uint32_t kv_num_tiles = num_kv_heads * q_out_w_tiles;
+
+    uint32_t kv_out_h_tiles = input_shape[2] / TILE_HEIGHT;
+    if (read_from_input_tensor_kv) {
+        kv_out_h_tiles = input_tensor_kv.value().get_padded_shape()[2] / TILE_HEIGHT;
+    }
+    uint32_t kv_out_w_tiles = head_dim / TILE_WIDTH;  // tiles along head_dim
+    uint32_t kv_out_HtWt = kv_out_h_tiles * kv_out_w_tiles;
+    uint32_t kv_out_CHtWt = num_kv_heads * kv_out_HtWt;
+    uint32_t kv_num_tiles = num_kv_heads * kv_out_w_tiles;
 
     uint32_t num_cores_x = compute_with_storage_grid_size.x;
     uint32_t num_cores_y = compute_with_storage_grid_size.y;

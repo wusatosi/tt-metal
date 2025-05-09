@@ -160,17 +160,42 @@ class TtAttention(nn.Module):
                 v_heads,
             ) = ttnn.experimental.nlp_create_qkv_heads(qkv_fused, num_heads=self.heads, transpose_k_heads=False)
         else:
-            # q_heads = ttnn.linear(
-            #     hidden_states,
-            #     self.tt_q_weights,
-            #     bias=None,
-            # )
+            q_heads = ttnn.linear(
+                hidden_states,
+                self.tt_q_weights,
+                bias=None,
+            )
 
-            # kv_heads = ttnn.linear(
-            #     encoder_hidden_states,
-            #     self.tt_kv_weights,
-            #     bias=None,
-            # )
+            kv_heads = ttnn.linear(
+                encoder_hidden_states,
+                self.tt_kv_weights,
+                bias=None,
+            )
+
+            # std::tuple<ttnn::Tensor, ttnn::Tensor, ttnn::Tensor> CreateQKVHeadsOperation::invoke(
+            #     const Tensor& input_tensor,
+            #     const uint32_t num_q_heads,
+            #     const std::optional<uint32_t> num_kv_heads,
+            #     const bool transpose_k_heads,
+            #     const std::optional<MemoryConfig>& memory_config,
+            #     std::optional<std::array<Tensor, 3>> optional_output_tensors) {
+            #     return invoke(
+            #         ttnn::DefaultQueueId,
+            #         input_tensor,
+            #         num_q_heads,
+            #         num_kv_heads,
+            #         transpose_k_heads,
+            #         memory_config,
+            #         std::move(optional_output_tensors));
+
+            q_heads, k_heads, v_heads = ttnn.experimental.nlp_create_qkv_heads(
+                input=q_heads,
+                input_kv=kv_heads,
+                num_heads=self.heads,
+                num_kv_heads=self.heads,
+                transpose_k_heads=False,
+            )
+
             # core_grid = ttnn.CoreGrid(y=8, x=8)
             # num_cores = core_grid.x * core_grid.y
 
@@ -204,32 +229,32 @@ class TtAttention(nn.Module):
             #     memory_config = ttnn.DRAM_MEMORY_CONFIG,
             # )
 
-            q_heads = ttnn.linear(
-                hidden_states,
-                self.tt_q_weights,
-                bias=None,
-            )
-            k_heads = ttnn.linear(
-                encoder_hidden_states,
-                self.tt_k_weights,
-                bias=None,
-            )
-            v_heads = ttnn.linear(
-                encoder_hidden_states,
-                self.tt_v_weights,
-                bias=None,
-            )
-            inner_dim = list(k_heads.shape)[-1]
-            head_dim = inner_dim // self.heads
+            # q_heads = ttnn.linear(
+            #     hidden_states,
+            #     self.tt_q_weights,
+            #     bias=None,
+            # )
+            # k_heads = ttnn.linear(
+            #     encoder_hidden_states,
+            #     self.tt_k_weights,
+            #     bias=None,
+            # )
+            # v_heads = ttnn.linear(
+            #     encoder_hidden_states,
+            #     self.tt_v_weights,
+            #     bias=None,
+            # )
+            # inner_dim = list(k_heads.shape)[-1]
+            # head_dim = inner_dim // self.heads
 
-            q_heads = ttnn.reshape(q_heads, [B, -1, self.heads, head_dim])
-            q_heads = ttnn.transpose(q_heads, 1, 2)
+            # q_heads = ttnn.reshape(q_heads, [B, -1, self.heads, head_dim])
+            # q_heads = ttnn.transpose(q_heads, 1, 2)
 
-            k_heads = ttnn.reshape(k_heads, [B, -1, self.heads, head_dim])
-            k_heads = ttnn.transpose(k_heads, 1, 2)
+            # k_heads = ttnn.reshape(k_heads, [B, -1, self.heads, head_dim])
+            # k_heads = ttnn.transpose(k_heads, 1, 2)
 
-            v_heads = ttnn.reshape(v_heads, [B, -1, self.heads, head_dim])
-            v_heads = ttnn.transpose(v_heads, 1, 2)
+            # v_heads = ttnn.reshape(v_heads, [B, -1, self.heads, head_dim])
+            # v_heads = ttnn.transpose(v_heads, 1, 2)
         # query = ttnn.linear(
         #     hidden_states,
         #     self.tt_q_weights,
