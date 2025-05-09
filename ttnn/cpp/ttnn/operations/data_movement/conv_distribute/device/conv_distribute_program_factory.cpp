@@ -116,18 +116,9 @@ operation::ProgramWithCallbacks conv_distribute_multi_core(
         calculate_core_mapping(cores, divisor, input_sticks_per_core, num_blocks_per_core, num_cores_with_extra_block);
 
     // set up circular buffers
-    tt::DataFormat input_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(input_tensor.get_dtype());
     tt::DataFormat output_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(output_tensor.get_dtype());
 
-    uint32_t src_cb_index = tt::CBIndex::c_0;
-    uint32_t out_cb_index = tt::CBIndex::c_1;
-
-    tt::tt_metal::CircularBufferConfig src_cb_config =
-        tt::tt_metal::CircularBufferConfig(
-            input_tensor.volume() * input_tensor.element_size(), {{src_cb_index, input_cb_data_format}})
-            .set_page_size(src_cb_index, input_stick_size * input_tensor.element_size())
-            .set_globally_allocated_address(*input_tensor.buffer());
-    auto cb_src = tt::tt_metal::CreateCircularBuffer(program, cores, src_cb_config);
+    uint32_t out_cb_index = tt::CBIndex::c_0;
 
     tt::tt_metal::CircularBufferConfig out_cb_config =
         tt::tt_metal::CircularBufferConfig(
@@ -198,6 +189,30 @@ operation::ProgramWithCallbacks conv_distribute_multi_core(
         SetRuntimeArgs(program, kernel_id_0, core, runtime_args_kernel_0);
         SetRuntimeArgs(program, kernel_id_1, core, runtime_args_kernel_1);
     }
+
+    auto override_runtime_arguments_callback = [kernel_id_0, kernel_id_1, cb_output, cores](
+                                                   const void* operation,
+                                                   tt::tt_metal::Program& program,
+                                                   const std::vector<Tensor>& input_tensors,
+                                                   const std::vector<std::optional<const Tensor>>&,
+                                                   const std::vector<Tensor>& output_tensors) {
+        const auto& input = input_tensors.at(0);
+        const auto& output = output_tensors.at(0);
+
+        uint32_t input_address = input.buffer()->address();
+
+        auto& runtime_args_0_by_core = GetRuntimeArgs(program, kernel_id_0);
+        auto& runtime_args_1_by_core = GetRuntimeArgs(program, kernel_id_1);
+
+        for (auto core : cores.bounding_box()) {
+            auto& runtime_args_0 = runtime_args_0_by_core[core.x][core.y];
+            auto& runtime_args_1 = runtime_args_1_by_core[core.x][core.y];
+            runtime_args_0[0] = input_address;
+            runtime_args_1[0] = input_address;
+        }
+
+        UpdateDynamicCircularBufferAddress(program, cb_output, *output.buffer());
+    };
 
     return {.program = std::move(program), .override_runtime_arguments_callback = nullptr};
 }
