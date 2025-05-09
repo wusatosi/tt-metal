@@ -20,12 +20,12 @@ repos:
   hooks:
     - id: autoflake
       args: [--remove-all-unused-imports, --in-place, --recursive, --exclude=__init__.py]
-      files: ^models/  # Run only on files in the models directory
+      files: ^(models/|ttnn/)
 - repo: https://github.com/pycqa/isort
   rev: 5.13.2
   hooks:
     - id: isort
-      files: ^models/
+      files: ^(models/|ttnn/)
       exclude: ^models/(demos/llama3_subdevices|experimental)/
 - repo: https://github.com/BlankSpruce/gersemi
   rev: 0.16.2
