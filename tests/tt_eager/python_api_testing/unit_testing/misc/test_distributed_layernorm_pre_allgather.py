@@ -273,3 +273,146 @@ def test_layernorm_part_1_with_program_cache2(
     assert device.num_program_cache_entries() == 1, "Program cache should have only one entry" + str(
         device.num_program_cache_entries()
     )
+
+
+@skip_for_grayskull("Requires wormhole")
+@pytest.mark.parametrize(
+    "mesh_device",
+    [
+        (1, 1),
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize(
+    "input_dtype",
+    [ttnn.bfloat16],
+    ids=["BFLOAT16"],
+)
+@pytest.mark.parametrize(
+    "output_dtype",
+    [ttnn.bfloat16],
+    ids=["BFLOAT16"],
+)
+@pytest.mark.parametrize(
+    "is_rmsnorm",
+    [False],
+    ids=["layernorm"],
+)
+def test_dimension_sharded_layernorm(input_dtype, output_dtype, is_rmsnorm, mesh_device):
+    """
+    Test dimension-sharded layer normalization implementation with shape [1, 1, 128, 2048].
+    This tests the specific implementation that uses multiple cores across the embedding dimension.
+    """
+    device = mesh_device
+    inp_shape = (1, 1, 128, 2048)
+    n_devices = 1  # Split into 4 devices for testing
+
+    # Set print options
+    torch.set_printoptions(threshold=100)
+    torch.manual_seed(42)
+
+    # Generate input tensor
+    if input_dtype == ttnn.float32:
+        canon_inp = torch.randn(inp_shape)
+    else:
+        canon_inp = torch.randn(inp_shape).bfloat16()
+
+    # Get per-chunk inputs
+    inp_chunked = canon_inp.chunk(n_devices, dim=-1)
+
+    # Reference (expected) output
+    out_torch = reference(inp_chunked, n_devices, is_rmsnorm)
+    out_torch = torch.concat(out_torch, -1)
+
+    dram_memcfg = ttnn.DRAM_MEMORY_CONFIG
+
+    # Convert to TT tensors
+    tt_inp = []
+    for d in range(n_devices):
+        tt_inp.append(
+            torch2tt_tensor(
+                inp_chunked[d],
+                tt_dtype=input_dtype,
+                tt_device=device,
+                tt_layout=ttnn.TILE_LAYOUT,
+                tt_memory_config=dram_memcfg,
+            )
+        )
+    print(tt_inp)
+    # Run the layer normalization with dimension sharding
+    kernel_config = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.HiFi4,  # Highest fidelity
+        math_approx_mode=False,
+        fp32_dest_acc_en=False,
+        packer_l1_acc=True,
+    )
+
+    tt_out = []
+    for d in range(n_devices):
+        print("starting")
+        if is_rmsnorm:
+            # Force using the dimension-sharded implementation
+            tt_out.append(
+                ttnn.rms_norm_pre_all_gather(tt_inp[d], compute_kernel_config=kernel_config, dtype=output_dtype)
+            )
+            print("done")
+        else:
+            # Force using the dimension-sharded implementation
+            tt_out.append(
+                ttnn.layer_norm_pre_all_gather(tt_inp[d], compute_kernel_config=kernel_config, dtype=output_dtype)
+            )
+
+    # Convert back to torch tensors
+    tt_output_host = torch.concat([tt2torch_tensor(tt_o) for tt_o in tt_out], -1)
+
+    # Validation
+    all_passing = True
+    reduction_width = inp_shape[-1] // n_devices
+
+    logger.debug(f"Testing dimension-sharded implementation with shape {inp_shape}")
+
+    for i in range(n_devices):
+        device_offset = i * 32 if is_rmsnorm else i * 64
+
+        # Compare sum(xˆ2)
+        logger.debug(f"Device {i} - Comparing sum(x^2)")
+        passing, output_str = comp_allclose_and_pcc(
+            out_torch[:, :, :, 0 + device_offset],
+            tt_output_host[:, :, :, 0 + device_offset],
+            rtol=1e-01 * reduction_width,
+            atol=0,
+            pcc=0.9,
+        )
+        logger.debug(f"tt vs torch sum(xˆ2) = {output_str}")
+        all_passing &= passing
+
+        # Check if zeros are same
+        passing, output_str = comp_equal(
+            out_torch[:, :, :, 1 + device_offset : 32 + device_offset],
+            tt_output_host[:, :, :, 1 + device_offset : 32 + device_offset],
+        )
+        logger.debug(f"tt vs torch padding 1 = {output_str}")
+        all_passing &= passing
+
+        if not is_rmsnorm:
+            # Compare sum(x)
+            logger.debug(f"Device {i} - Comparing sum(x)")
+            passing, output_str = comp_allclose_and_pcc(
+                out_torch[:, :, :, 32 + device_offset],
+                tt_output_host[:, :, :, 32 + device_offset],
+                rtol=5e-01 * reduction_width,
+                atol=10,
+                pcc=0.97,
+            )
+            logger.debug(f"tt vs torch sum(x) = {output_str}")
+            all_passing &= passing
+
+            # Check if zeros are same
+            passing, output_str = comp_equal(
+                out_torch[:, :, :, 33 + device_offset : 64 + device_offset],
+                tt_output_host[:, :, :, 33 + device_offset : 64 + device_offset],
+            )
+            logger.debug(f"tt vs torch padding 2 = {output_str}")
+            all_passing &= passing
+
+    assert all_passing, "Dimension-sharded layer normalization test failed"

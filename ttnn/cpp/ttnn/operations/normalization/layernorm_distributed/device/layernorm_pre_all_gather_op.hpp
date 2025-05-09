@@ -16,7 +16,7 @@ using namespace tt::tt_metal;
 
 namespace ttnn::operations::normalization {
 
-tt::tt_metal::operation::ProgramWithCallbacks layernorm_pre_allgather_multi_core(
+tt::tt_metal::operation::ProgramWithCallbacks layernorm_pre_allgather_multi_core_sharded(
     const Tensor& a,
     Tensor& output,
     LayerNormDistributedType norm_type,
