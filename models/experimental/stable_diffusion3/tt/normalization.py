@@ -39,7 +39,7 @@ class TtRmsNorm:
         parameters: TtRmsNormParameters,
         *,
         eps: float,
-        use_cpu_fallback: bool = False,
+        use_cpu_fallback: bool = True,
     ) -> None:
         super().__init__()
 
