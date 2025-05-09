@@ -11,11 +11,15 @@ from dataclasses import dataclass
 import torch
 import ttnn
 
-from .utils import from_torch_fast
+from .utils import from_torch_fast, to_torch
 
 
 @dataclass
 class TtLinearParameters:
+    device: ttnn.MeshDevice
+    in_channels: int
+    out_channels: int
+    shard_dim: int
     weight: ttnn.Tensor
     bias: ttnn.Tensor | None
 
@@ -74,10 +78,13 @@ class TtLinearParameters:
 
         if shard_dim in [0, -2]:
             bias_mm = _ShardBias(device)
+            shard_dim = 0
         elif shard_dim in [1, -1]:
             bias_mm = ttnn.ShardTensorToMesh(device, 1)
+            shard_dim = 1
         else:
             bias_mm = ttnn.ReplicateTensorToMesh(device)
+            shard_dim = None
 
         return cls(
             weight=from_torch_fast(
@@ -96,6 +103,10 @@ class TtLinearParameters:
             )
             if bias is not None
             else None,
+            device=device,
+            shard_dim=shard_dim,
+            in_channels=state["weight"].shape[1],
+            out_channels=state["weight"].shape[0],
         )
 
     @classmethod
@@ -159,6 +170,10 @@ class TtLinearParameters:
             )
             if torch_bias is not None
             else None,
+            device=device,
+            shard_dim=1,
+            in_channels=state["weight"].shape[1],
+            out_channels=state["weight"].shape[0],
         )
 
     @classmethod
@@ -226,22 +241,45 @@ class TtLinearParameters:
             )
             if torch_bias is not None
             else None,
+            device=device,
+            shard_dim=1,
+            in_channels=state["weight"].shape[1],
+            out_channels=state["weight"].shape[0],
         )
-
-    @property
-    def in_channels(self) -> int:
-        return self.weight.shape[0]
-
-    @property
-    def out_channels(self) -> int:
-        return self.weight.shape[1]
 
 
 class TtLinear:
-    def __init__(self, parameters: TtLinearParameters) -> None:
+    def __init__(
+        self,
+        parameters: TtLinearParameters,
+        *,
+        use_cpu_fallback: bool = False,
+    ) -> None:
         self._in_channels = parameters.in_channels
-        self._weight = parameters.weight
-        self._bias = parameters.bias
+        self._device = parameters.device
+        self._shard_dim = parameters.shard_dim
+
+        if use_cpu_fallback:
+            with torch.device("meta"):
+                self._cpu_fallback = torch.nn.Linear(
+                    in_features=parameters.in_channels,
+                    out_features=parameters.out_channels,
+                    bias=parameters.bias is not None,
+                )
+            bias_shard_dim = 1 if self._shard_dim == 1 else None
+            state = dict(
+                weight=to_torch(parameters.weight, shard_dim=self._shard_dim).transpose(0, 1),
+            )
+            if parameters.bias is not None:
+                state["bias"] = to_torch(parameters.bias, shard_dim=bias_shard_dim).reshape(-1)
+            self._cpu_fallback.load_state_dict(state, assign=True)
+            self._cpu_fallback.eval()
+            self._cpu_fallback.to(torch.float32)
+        else:
+            self._cpu_fallback = None
+
+            self._weight = parameters.weight
+            self._bias = parameters.bias
 
     def __call__(
         self,
@@ -257,11 +295,23 @@ class TtLinear:
         deallocate: bool = False,
         prob: bool = False,
     ) -> ttnn.Tensor:
-        msg = f"last value in input shape {list(x.shape)} should be equal to {self._in_channels}"
-        assert x.shape[-1] == self._in_channels, msg
+        if self._cpu_fallback is not None:
+            torch_x = to_torch(x, dtype=torch.float32)
+            torch_result = self._cpu_fallback(torch_x)
+
+            return from_torch_fast(
+                torch_result,
+                device=self._device,
+                shard_dim=-1 if self._shard_dim == 1 else None,
+                layout=x.layout,
+                dtype=x.dtype,
+            )
 
         weight = self._weight
         bias = self._bias
+
+        msg = f"last value in input shape {list(x.shape)} should be equal to {weight.shape[0]}"
+        assert x.shape[-1] == weight.shape[0], msg
 
         # there is a correctness issue with tensors of shape Mx1x1xN, squeeze them to Mx1xN
         squeeze = len(x.shape) == 4 and x.shape[1] == 1 and x.shape[2] == 1
