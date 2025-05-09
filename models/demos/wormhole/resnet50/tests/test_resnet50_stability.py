@@ -8,6 +8,7 @@ import pytest
 from loguru import logger
 
 import ttnn
+from models.demos.ttnn_resnet.tests.demo_utils import RESNET50_L1_SMALL_SIZE
 from models.demos.wormhole.resnet50.demo.demo import test_demo_trace_with_imagenet
 from models.utility_functions import run_for_wormhole_b0
 
@@ -16,7 +17,9 @@ test_demo_trace_with_imagenet.__test__ = False
 
 @run_for_wormhole_b0()
 @pytest.mark.parametrize(
-    "device_params", [{"l1_small_size": 24576, "trace_region_size": 1605632, "num_command_queues": 2}], indirect=True
+    "device_params",
+    [{"l1_small_size": RESNET50_L1_SMALL_SIZE, "trace_region_size": 1605632, "num_command_queues": 2}],
+    indirect=True,
 )
 @pytest.mark.parametrize(
     "batch_size, iterations, act_dtype, weight_dtype",

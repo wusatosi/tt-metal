@@ -4,6 +4,7 @@
 
 import pytest
 
+from models.demos.ttnn_resnet.tests.demo_utils import RESNET50_L1_SMALL_SIZE
 from models.demos.ttnn_resnet.tests.perf_e2e_resnet50 import run_perf_resnet
 from models.utility_functions import run_for_blackhole
 
@@ -14,7 +15,7 @@ from models.utility_functions import run_for_blackhole
 
 @run_for_blackhole()
 @pytest.mark.models_performance_bare_metal
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"l1_small_size": RESNET50_L1_SMALL_SIZE}], indirect=True)
 @pytest.mark.parametrize(
     "batch_size, expected_inference_time, expected_compile_time",
     (

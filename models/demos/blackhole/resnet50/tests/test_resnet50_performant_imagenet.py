@@ -8,14 +8,16 @@ from loguru import logger
 from transformers import AutoImageProcessor
 
 import ttnn
-from models.demos.ttnn_resnet.tests.demo_utils import get_batch, get_data_loader
+from models.demos.ttnn_resnet.tests.demo_utils import RESNET50_L1_SMALL_SIZE, get_batch, get_data_loader
 from models.demos.ttnn_resnet.tests.resnet50_performant_imagenet import ResNet50Trace2CQ
 from models.utility_functions import profiler, run_for_blackhole
 
 
 @run_for_blackhole()
 @pytest.mark.parametrize(
-    "device_params", [{"l1_small_size": 24576, "trace_region_size": 5554176, "num_command_queues": 2}], indirect=True
+    "device_params",
+    [{"l1_small_size": RESNET50_L1_SMALL_SIZE, "trace_region_size": 5554176, "num_command_queues": 2}],
+    indirect=True,
 )
 @pytest.mark.parametrize(
     "batch_size_per_device, iterations, act_dtype, weight_dtype",

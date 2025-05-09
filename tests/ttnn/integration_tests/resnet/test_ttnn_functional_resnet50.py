@@ -6,6 +6,7 @@ import pytest
 import ttnn
 
 from models.demos.ttnn_resnet.tests.resnet50_test_infra import create_test_infra
+from models.demos.ttnn_resnet.tests.demo_utils import RESNET50_L1_SMALL_SIZE
 from models.utility_functions import is_blackhole
 
 
@@ -51,7 +52,7 @@ def run_resnet_50(
     assert passed, message
 
 
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"l1_small_size": RESNET50_L1_SMALL_SIZE}], indirect=True)
 @pytest.mark.parametrize(
     "batch_size, act_dtype, weight_dtype, math_fidelity",
     (

@@ -13,6 +13,8 @@ from tqdm import tqdm
 
 from models.sample_data.huggingface_imagenet_classes import IMAGENET2012_CLASSES
 
+RESNET50_L1_SMALL_SIZE = 21 * 1024
+
 
 class InputExample(object):
     def __init__(self, image, label=None):

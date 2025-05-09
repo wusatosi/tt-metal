@@ -5,6 +5,7 @@
 import pytest
 
 import ttnn
+from models.demos.ttnn_resnet.tests.demo_utils import RESNET50_L1_SMALL_SIZE
 from models.demos.ttnn_resnet.tests.resnet50_performant import (
     run_resnet50_2cqs_inference,
     run_resnet50_inference,
@@ -15,7 +16,7 @@ from models.utility_functions import run_for_blackhole
 
 
 @run_for_blackhole()
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"l1_small_size": RESNET50_L1_SMALL_SIZE}], indirect=True)
 @pytest.mark.parametrize("batch_size", (16, 32))
 @pytest.mark.parametrize(
     "act_dtype, weight_dtype, math_fidelity",
@@ -28,7 +29,9 @@ def test_run_resnet50_inference(
 
 
 @run_for_blackhole()
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576, "trace_region_size": 5554176}], indirect=True)
+@pytest.mark.parametrize(
+    "device_params", [{"l1_small_size": RESNET50_L1_SMALL_SIZE, "trace_region_size": 5554176}], indirect=True
+)
 @pytest.mark.parametrize("batch_size", (16, 32))
 @pytest.mark.parametrize(
     "act_dtype, weight_dtype, math_fidelity",
@@ -54,7 +57,9 @@ def test_run_resnet50_trace_inference(
 
 
 @run_for_blackhole()
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576, "num_command_queues": 2}], indirect=True)
+@pytest.mark.parametrize(
+    "device_params", [{"l1_small_size": RESNET50_L1_SMALL_SIZE, "num_command_queues": 2}], indirect=True
+)
 @pytest.mark.parametrize("batch_size", (16, 32))
 @pytest.mark.parametrize(
     "act_dtype, weight_dtype, math_fidelity",
@@ -68,7 +73,9 @@ def test_run_resnet50_2cqs_inference(
 
 @run_for_blackhole()
 @pytest.mark.parametrize(
-    "device_params", [{"l1_small_size": 24576, "trace_region_size": 5554176, "num_command_queues": 2}], indirect=True
+    "device_params",
+    [{"l1_small_size": RESNET50_L1_SMALL_SIZE, "trace_region_size": 5554176, "num_command_queues": 2}],
+    indirect=True,
 )
 @pytest.mark.parametrize("batch_size", (16, 32))
 @pytest.mark.parametrize(

@@ -4,13 +4,14 @@
 
 import pytest
 
+from models.demos.ttnn_resnet.tests.demo_utils import RESNET50_L1_SMALL_SIZE
 from models.demos.ttnn_resnet.tests.perf_e2e_resnet50 import run_perf_resnet
 from models.utility_functions import run_for_wormhole_b0
 
 
 @run_for_wormhole_b0()
 @pytest.mark.model_perf_t3000
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"l1_small_size": RESNET50_L1_SMALL_SIZE}], indirect=True)
 @pytest.mark.parametrize(
     "device_batch_size, expected_inference_time, expected_compile_time",
     ((16, 0.0100, 60),),

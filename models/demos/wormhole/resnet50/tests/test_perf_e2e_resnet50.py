@@ -4,13 +4,14 @@
 
 import pytest
 
+from models.demos.ttnn_resnet.tests.demo_utils import RESNET50_L1_SMALL_SIZE
 from models.demos.ttnn_resnet.tests.perf_e2e_resnet50 import run_perf_resnet
 from models.utility_functions import run_for_wormhole_b0
 
 
 @run_for_wormhole_b0()
 @pytest.mark.models_performance_bare_metal
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 24576}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"l1_small_size": RESNET50_L1_SMALL_SIZE}], indirect=True)
 @pytest.mark.parametrize(
     "batch_size, expected_inference_time, expected_compile_time",
     ((16, 0.0087, 30),),
@@ -37,7 +38,9 @@ def test_perf(
 
 @run_for_wormhole_b0()
 @pytest.mark.models_performance_bare_metal
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 32768, "trace_region_size": 1500000}], indirect=True)
+@pytest.mark.parametrize(
+    "device_params", [{"l1_small_size": RESNET50_L1_SMALL_SIZE, "trace_region_size": 1500000}], indirect=True
+)
 @pytest.mark.parametrize(
     "batch_size, expected_inference_time, expected_compile_time",
     ((16, 0.005, 30),),
@@ -63,7 +66,9 @@ def test_perf_trace(
 
 
 @pytest.mark.models_performance_bare_metal
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 32768, "num_command_queues": 2}], indirect=True)
+@pytest.mark.parametrize(
+    "device_params", [{"l1_small_size": RESNET50_L1_SMALL_SIZE, "num_command_queues": 2}], indirect=True
+)
 @pytest.mark.parametrize(
     "batch_size, expected_inference_time, expected_compile_time",
     ((16, 0.0087, 30),),
@@ -90,7 +95,9 @@ def test_perf_2cqs(
 
 @pytest.mark.models_performance_bare_metal
 @pytest.mark.parametrize(
-    "device_params", [{"l1_small_size": 32768, "num_command_queues": 2, "trace_region_size": 1470464}], indirect=True
+    "device_params",
+    [{"l1_small_size": RESNET50_L1_SMALL_SIZE, "num_command_queues": 2, "trace_region_size": 1470464}],
+    indirect=True,
 )
 @pytest.mark.parametrize(
     "batch_size, expected_inference_time, expected_compile_time",
