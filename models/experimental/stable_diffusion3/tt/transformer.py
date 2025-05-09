@@ -49,7 +49,7 @@ class TtSD3Transformer2DModelParameters:
                 out_channels=embedding_dim,
             ),
             time_text_embed=TtCombinedTimestepTextProjEmbeddingsParameters.from_torch(
-                substate(state, "time_text_embed"), dtype=dtype, device=device
+                substate(state, "time_text_embed"), dtype=dtype, device=device, use_cpu_fallback=True
             ),
             context_embedder=TtLinearParameters.from_torch(
                 substate(state, "context_embedder"), dtype=dtype, device=device, shard_dim=-1
