@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "sliding_window.hpp"
+#include <climits>
 #include <cstdint>
 #include <vector>
 #include <tt-metalium/assert.hpp>
@@ -920,8 +921,8 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
 
         std::vector<std::vector<std::vector<uint16_t>>> flattened_config(2);
 
-        // printf("in_nsticks_per_core: %d\n", in_nsticks_per_core);
-        // printf("max_out_nsticks_per_core: %d\n", max_out_nsticks_per_core);
+        printf("in_nsticks_per_core: %d\n", in_nsticks_per_core);
+        printf("max_out_nsticks_per_core: %d\n", max_out_nsticks_per_core);
         printf("in_out_shard_size_delta: %d\n", in_out_shard_size_delta);
         printf("---LOCAL CONFIG---\n");
         int core = 0;
@@ -1021,9 +1022,9 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
         CoreCoord noc_00 = core_id_to_noc_coords(0);
         int max_ref_size = 0;  // track the max remote ref size for sizing the remote temp tensor
         int core = 0;
-        printf("---REMOTE CONFIG---\n");
+        std::vector<int> remote_ref_low_bounds(num_cores, INT_MAX);
+        std::vector<int> remote_ref_high_bounds(num_cores, -INT_MAX);
         for (const auto& core_config : config) {
-            printf("    core: %d\n", core);
             std::vector<std::vector<uint16_t>> flat_data(2, std::vector<uint16_t>(max_len, 0));
             uint32_t idx1 = 0, idx2 = 0;
             uint32_t len_idx1 = 0, len_idx2 = 0;
@@ -1031,6 +1032,7 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
             int ref_size = 0;
             for (const auto& [key, subdata] : core_config) {
                 auto [nocx, nocy, len] = key;
+                int ref_ind = nocx - noc_00.x + (nocy - noc_00.y) * num_cores_x;
                 flat_data[0][idx1++] = nocx;
                 flat_data[0][idx1++] = nocy;
                 len_idx1 = idx1;
@@ -1040,14 +1042,7 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                 flat_data[1][idx2++] = nocy;
                 len_idx2 = idx2;
                 flat_data[1][idx2++] = 0;
-                int ref_ind = nocx - noc_00.x + (nocy - noc_00.y) * num_cores_x;
-                printf("        ref ind: %d\n", ref_ind);
                 int local_count = flattened_local_config[0][ref_ind][2] / 4;
-                // for (int i = 0; i < local_count; ++i) {
-                //     printf("        src: %d, dst: %d, size: %d\n", flattened_local_config[0][ref_ind][3 + 3 * i],
-                //         flattened_local_config[0][ref_ind][4 + 3 * i],
-                //         flattened_local_config[0][ref_ind][5 + 3 * i]);
-                // }
                 int first_local_dst_relative_src = flattened_local_config[0][ref_ind][3] + in_out_shard_size_delta;
                 int last_local_dst_relative_src =
                     flattened_local_config[0][ref_ind][3 + 4 * (local_count - 1)] + in_out_shard_size_delta;
@@ -1065,39 +1060,27 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                     high_local_bound = first_local_dst_relative_src + first_local_size - 1;
                     forward_local = false;
                 }
-                // printf("            low_local_bound: %d, high_local_bound: %d\n", low_local_bound, high_local_bound);
                 for (size_t i = 0; i < subdata.size(); ++i) {
                     auto [src_start, dst_start, length] = subdata[i];
                     if (in_place) {
+                        int dst_relative_src = src_start + in_out_shard_size_delta;
                         int no_wait = false;
-                        if (dst_start > high_local_bound || dst_start + length - 1 < low_local_bound) {
+                        if ((int)dst_relative_src > high_local_bound ||
+                            (int)dst_relative_src + (int)length - 1 < low_local_bound) {
                             no_wait = true;
                         }
+                        remote_ref_low_bounds[core] = std::min(remote_ref_low_bounds[core], dst_relative_src);
+                        remote_ref_high_bounds[core] =
+                            std::max(remote_ref_high_bounds[core], (int)dst_relative_src + (int)length - 1);
 
                         flat_data[0][idx1++] = src_start;
                         flat_data[0][idx1++] = dst_start;
                         flat_data[0][idx1++] = length;
-                        flat_data[0][idx1++] = no_wait;
+                        flat_data[0][idx1++] = no_wait;  // default no wait based on local only
                         flat_data[0][len_idx1] += 4;
                         ref_size += length;  // TODO: we can reduce the size of the temp buffer now
 
-                        printf(
-                            "            src: %d, dst: %d, size: %d, no_wait: %d\n",
-                            src_start,
-                            dst_start,
-                            length,
-                            no_wait);
-
                         idx1 = flat_data[0][len_idx1] ? idx1 : idx1 - 4;  // TODO: should this be 3 or 4
-
-                        // edit the no_wait value for the local config
-                        for (int j = 0; j < local_count; ++j) {
-                            int local_src = flattened_local_config[0][ref_ind][3 + 4 * j];
-                            int local_size = flattened_local_config[0][ref_ind][5 + 4 * j];
-                            if (local_src + local_size - 1 >= src_start && local_src <= src_start + length - 1) {
-                                flattened_local_config[0][ref_ind][6 + 4 * j] = 0;  // local no_wait = false
-                            }
-                        }
                     } else {
                         if (vector_id) {
                             flat_data[0][idx1++] = src_start;
@@ -1121,6 +1104,55 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
             flattened_config[1].emplace_back(std::move(flat_data[1]));
             core++;
             max_ref_size = std::max(max_ref_size, ref_size);
+        }
+
+        // check the remote ref bounds to update the no wait conditions
+        if (in_place) {
+            core = 0;
+            printf("---REMOTE CONFIG---\n");
+            for (const auto& core_config : config) {
+                uint32_t idx1 = 0;
+                uint32_t len_idx1 = 0;
+                printf("    core: %d\n", core);
+                for (const auto& [key, subdata] : core_config) {
+                    idx1 += 2;
+                    len_idx1 = idx1;
+                    idx1++;
+                    auto [nocx, nocy, len] = key;
+                    int ref_ind = nocx - noc_00.x + (nocy - noc_00.y) * num_cores_x;
+                    printf("        ref ind: %d\n", ref_ind);
+                    for (size_t i = 0; i < subdata.size(); ++i) {
+                        idx1 += 3;
+                        auto [src_start, dst_start, length] = subdata[i];
+                        int dst_relative_src = src_start + in_out_shard_size_delta;
+                        bool no_wait = flattened_config[0][core][idx1];
+                        if (!(dst_relative_src > remote_ref_high_bounds[ref_ind] ||
+                              dst_relative_src + length - 1 < remote_ref_low_bounds[ref_ind])) {
+                            flattened_config[0][core][idx1] = 0;
+                            no_wait = false;
+                        }
+                        idx1++;
+
+                        printf(
+                            "            dst_rel_src: %d, dst: %d, size: %d, no_wait: %d\n",
+                            src_start + in_out_shard_size_delta,
+                            dst_start,
+                            length,
+                            no_wait);
+
+                        idx1 = flattened_config[0][core][len_idx1] ? idx1 : idx1 - 4;
+                    }
+                }
+                core++;
+            }
+        }
+
+        for (int i = 0; i < flattened_config[0].size(); ++i) {
+            printf("c %d:: ", i);
+            for (int j = 0; j < flattened_config[0][i].size(); ++j) {
+                printf("%d ", flattened_config[0][i][j]);
+            }
+            printf("\n");
         }
 
         return std::make_tuple(flattened_config, max_ref_size);
@@ -1163,6 +1195,9 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
         flattened_local_config[1],
         flattened_remote_config[0],
         flattened_remote_config[1]};
+
+    printf("max_ref_size: %d\n", max_ref_size);
+
     return std::make_tuple(std::move(config), max_ref_size);
 }
 

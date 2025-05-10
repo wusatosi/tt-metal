@@ -11,7 +11,13 @@ import math
 from models.utility_functions import is_wormhole_b0, is_grayskull, is_x2_harvested
 from tests.ttnn.utils_for_testing import assert_with_pcc
 
+import numpy as np
+import matplotlib.pyplot as plt
+import copy
+
 import ttnn
+
+output_shards = [[] for _ in range(64)]
 
 
 # Cache map used for torch tensor reuse - the tensor will not be generated if a tensor of the same dimensions has already been generated
@@ -45,6 +51,7 @@ def run_max_pool(
     memory_config=None,
     shard_scheme=None,
     ceil_mode=False,
+    in_place_halo=True,
 ):
     in_n, in_c, in_h, in_w = act_shape
     kernel_h, kernel_w = kernel_size
@@ -200,6 +207,7 @@ def run_max_pool(
             tile_size=32 if dtype == ttnn.bfloat8_b else 1,
         )
         ttact_device = ttnn.to_memory_config(ttact_device, sharded_memory_config)
+
     output = ttnn.max_pool2d(
         input_tensor=ttact_device,
         batch_size=in_n,
@@ -213,8 +221,42 @@ def run_max_pool(
         memory_config=memory_config,
         applied_shard_scheme=shard_scheme,
         ceil_mode=ceil_mode,
-        in_place_halo=True,
+        in_place_halo=in_place_halo,
     )
+
+    # for core_id in range(0, 64):
+    #     output_shard = torch.Tensor(ttnn.to_torch(output.extract_shard(core_id).pad_to_tile(0.0).cpu()))
+    #     output_shards[core_id].append(output_shard)
+    # total_total = 0
+    # if len(output_shards[0]) == 2:
+    #     for core_id in range(0, 64):
+    #         print(f"Core ID: {core_id}")
+    #         # coord = ttnn.CoreCoord(x, y)
+    #         gold_shard = output_shards[core_id][0]
+    #         opt_shard = output_shards[core_id][1]
+    #         diff = gold_shard[0][0] - opt_shard[0][0]
+
+    #         diff = diff.to(torch.float32)
+    #         # Replace -inf with zeros only where both gold_shard[0][0] and opt_shard[0][0] are -inf
+    #         mask = (gold_shard[0][0] == -float("inf")) & (opt_shard[0][0] == -float("inf"))
+    #         diff = torch.where(mask, torch.tensor(0.0, dtype=diff.dtype), diff)
+    #         total = torch.sum(diff)
+    #         total_total += total
+    #         print(f"core total: {total}")
+
+    #         # Plot the difference
+    #         plt.figure(figsize=(10, 10))
+    #         plt.imshow(diff[:, :], cmap="viridis", aspect="auto")
+    #         plt.colorbar()
+    #         plt.title("Difference between output shards")
+
+    #         # Save the plot
+    #         filename = "output_shard_pics/output_shard_difference_core_" + str(core_id) + ".png"
+    #         plt.savefig(filename)
+
+    #         # Clear the plot to avoid overlap in subsequent runs
+    #         plt.clf()
+    #     print(f"total total: {total_total}")
 
     output_host = output.cpu()
     output_pytorch_padded = torch.Tensor(ttnn.to_torch(output_host))
@@ -317,7 +359,9 @@ def run_max_pool(
             # # partial grid tests
             # [1, 32, 10, 10],  # BH
             # [1, 32, 6, 6],  # WH
-            [8, 64, 112, 112],
+            # [8, 64, 112, 112],
+            [1, 128, 112, 112],
+            # [32, 32, 264, 40],
         )
     ),
 )
@@ -334,8 +378,8 @@ def run_max_pool(
 @pytest.mark.parametrize(
     "padding",
     (
-        # (0, 0),
-        (1, 1),
+        (0, 0),
+        # (1, 1),
         # (2, 2),
         # (4, 4),
         # (6, 6),
@@ -359,12 +403,29 @@ def run_max_pool(
 @pytest.mark.parametrize(
     "ceil_mode",
     [
+        False,
+        # True,
+    ],
+)
+@pytest.mark.parametrize(
+    "in_place_halo",
+    [
         # False,
         True,
     ],
 )
 def test_run_max_pool(
-    act_shape, kernel_size, padding, stride, dilation, device, torch_tensor_map, dtype, use_program_cache, ceil_mode
+    act_shape,
+    kernel_size,
+    padding,
+    stride,
+    dilation,
+    device,
+    torch_tensor_map,
+    dtype,
+    use_program_cache,
+    ceil_mode,
+    in_place_halo,
 ):
     run_max_pool(
         act_shape,
@@ -377,6 +438,7 @@ def test_run_max_pool(
         dtype,
         shard_scheme=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
         ceil_mode=ceil_mode,
+        in_place_halo=in_place_halo,
     )
 
 

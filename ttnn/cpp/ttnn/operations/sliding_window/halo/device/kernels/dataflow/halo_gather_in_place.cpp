@@ -47,8 +47,8 @@ void copy_sticks_async_to_temp_or_final(
         uint16_t noc_x = ((is_block_sharded && !is_col_major) || is_width_sharded) ? my_noc_x : config_data[i + 0];
         uint16_t noc_y = ((is_block_sharded && is_col_major) || is_width_sharded) ? my_noc_y : config_data[i + 1];
         length = config_data[i + 2];
-        // DPRINT << "copy_sticks_async_to_temp_or_final: noc_x: " << noc_x << ", noc_y: " << noc_y
-        //        << ", length: " << length << ENDL();
+        DPRINT << "core: " << (noc_y - 18) * 8 + noc_x - 18 << "(" << noc_x << ", " << noc_y << ")"
+               << ", length: " << length << ENDL();
         i += 3;
         const uint64_t base_addr_final = get_noc_addr(noc_x, noc_y, out_base_l1_addr);
         for (uint16_t j = 0; j < length; j += 4) {
@@ -56,9 +56,8 @@ void copy_sticks_async_to_temp_or_final(
             uint16_t dst_local_idx = config_data[i + j + 1];
             uint16_t nsticks = config_data[i + j + 2];
             uint16_t no_wait = config_data[i + j + 3];
-            // DPRINT << "copy_sticks_async_to_temp_or_final: src_local_idx: " << src_local_idx
-            //        << ", dst_local_idx: " << dst_local_idx << ", nsticks: " << nsticks
-            //        << ", no_wait: " << no_wait << ENDL();
+            DPRINT << "    src_local_idx: " << src_local_idx << ", dst_local_idx: " << dst_local_idx
+                   << ", nsticks: " << nsticks << ", no_wait: " << no_wait << ENDL();
             uint32_t size = nsticks * stick_nbytes;
             uint32_t src_offset = src_local_idx * input_aligned_page_size;
             uint32_t dst_offset = dst_local_idx * stick_nbytes;
@@ -67,9 +66,11 @@ void copy_sticks_async_to_temp_or_final(
             uint64_t dst_addr_final = base_addr_final + dst_offset;
             if constexpr (stick_nbytes == input_aligned_page_size) {
                 if (no_wait) {  // no wait sticks are written directly to their final destinations
+                    DPRINT << "dsst_addr_final: " << (uint32_t)dst_addr_final << ENDL();
                     noc_async_write(src_addr, dst_addr_final, size);
                 } else {  // wait sticks are written to the temp buffer
                     noc_async_write(src_addr, dst_addr_temp, size);
+                    DPRINT << "        dst_addr_temp: " << dst_addr_temp - base_addr_temp << ENDL();
                     dst_addr_temp +=
                         size;  // remote sticks from each config entry are written contiguously into the temp buffer
                 }
@@ -116,6 +117,8 @@ void copy_sticks_async_from_temp(
         uint16_t noc_y = ((is_block_sharded && is_col_major) || is_width_sharded) ? my_noc_y : config_data[i + 1];
         length = config_data[i + 2];
         i += 3;
+        DPRINT << "core: " << (noc_y - 18) * 8 + noc_x - 18 << "(" << noc_x << ", " << noc_y << ")"
+               << ", length: " << length << ENDL();
         const uint64_t base_addr = get_noc_addr(noc_x, noc_y, out_base_l1_addr);
         for (uint16_t j = 0; j < length; j += 4) {
             uint16_t dst_local_idx = config_data[i + j + 1];
@@ -124,12 +127,15 @@ void copy_sticks_async_from_temp(
             if (no_wait) {  // no wait sticks were already copied to their final destinations
                 continue;
             }
+            DPRINT << "    dst_local_idx: " << dst_local_idx << ", nsticks: " << nsticks << ", no_wait: " << no_wait
+                   << ENDL();
             uint32_t size = nsticks * stick_nbytes;
             uint32_t dst_offset = dst_local_idx * stick_nbytes;
 
             uint64_t dst_addr = base_addr + dst_offset;
             if constexpr (stick_nbytes == input_aligned_page_size) {
                 noc_async_write(src_addr, dst_addr, size);
+                DPRINT << "         src_addr_temp: " << src_addr - temp_base_l1_addr << ENDL();
                 src_addr += size;  // remote sticks from each config entry are read contiguously from the temp buffer
             } else {
                 for (uint16_t k = 0; k < nsticks; k++) {
@@ -262,6 +268,9 @@ void kernel_main() {
     const uint32_t out_base_l1_addr = get_write_ptr(out_cb_id);
     const uint32_t untilize_temp_l1_addr = get_read_ptr(untilize_temp_cb_id);
 
+    DPRINT << "in_base_l1_addr: " << in_base_l1_addr << ", out_base_l1_addr: " << out_base_l1_addr
+           << ", untilize_temp_l1_addr: " << untilize_temp_l1_addr << ENDL();
+
     if constexpr (local_config_cb_id) {
         cb_reserve_back(src_cb_id, in_npages);
         cb_push_back(src_cb_id, in_npages);
@@ -284,10 +293,16 @@ void kernel_main() {
         }
     }
     cb_wait_front(in_cb_id, in_npages);
+    DPRINT << "untilize done" << ENDL();
 
     // copy remote sticks to temp buffer or their final destinations
     if constexpr (remote_config_cb_id && remote_temp_cb_id) {
+        // tt::data_movement::common::print_bf16_pages(in_base_l1_addr, 32, 224);
+
+        DPRINT << "REMOTE TO TEMP" << ENDL();
+
         const uint32_t temp_base_l1_addr = get_write_ptr(remote_temp_cb_id);
+        DPRINT << "temp_base_l1_addr: " << temp_base_l1_addr << ENDL();
         uint32_t config_data_l1_addr = get_read_ptr(remote_config_cb_id);
         const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
         copy_sticks_async_to_temp_or_final<
@@ -303,6 +318,8 @@ void kernel_main() {
 
     // move local sticks
     if constexpr (local_config_cb_id) {
+        DPRINT << "LOCAL" << ENDL();
+
         uint32_t config_data_l1_addr = get_read_ptr(local_config_cb_id);
         const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
         copy_sticks_async_local<stick_nbytes, input_aligned_page_size>(
@@ -316,6 +333,8 @@ void kernel_main() {
     uint32_t semaphore_addr = get_semaphore(semaphore_id);
     const uint64_t semaphore_noc_addr = get_noc_addr(noc_TL_x, noc_TL_y, semaphore_addr);
     noc_semaphore_inc(semaphore_noc_addr, 1);
+
+    DPRINT << "semaphore incremented" << ENDL();
 
     // wait for all cores to finish copying local and remote data
     if (cast_core) {
@@ -333,6 +352,8 @@ void kernel_main() {
     volatile tt_l1_ptr uint32_t* semaphore_noc_addr_ptr =
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(semaphore_noc_addr);
     noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_active_cores);
+
+    DPRINT << "multicast done" << ENDL();
 
     // insert padding
     if constexpr (padding_config_cb_id) {
@@ -362,7 +383,10 @@ void kernel_main() {
 
     // copy remote sticks from temp buffer to final destinations
     if constexpr (remote_config_cb_id && remote_temp_cb_id) {
+        DPRINT << "FROM TEMP" << ENDL();
+
         const uint32_t temp_base_l1_addr = get_read_ptr(remote_temp_cb_id);
+        DPRINT << "temp_base_l1_addr: " << temp_base_l1_addr << ENDL();
         uint32_t config_data_l1_addr = get_read_ptr(remote_config_cb_id);
         const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
         copy_sticks_async_from_temp<
