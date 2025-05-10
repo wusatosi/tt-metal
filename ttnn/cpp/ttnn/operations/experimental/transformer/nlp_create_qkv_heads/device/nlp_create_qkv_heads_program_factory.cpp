@@ -6,6 +6,7 @@
 #include <tt-metalium/constants.hpp>
 #include <tt-metalium/util.hpp>
 #include "nlp_create_qkv_heads_device_operation.hpp"
+#include "tt-metalium/logger.hpp"
 #include <tt-metalium/work_split.hpp>
 
 namespace ttnn::operations::experimental::transformer {
@@ -66,16 +67,64 @@ NlpCreateHeadsDeviceOperation::Interleaved::cached_program_t NlpCreateHeadsDevic
     uint32_t q_out_w_tiles = head_dim / TILE_WIDTH;  // tiles along head_dim
     uint32_t q_out_HtWt = q_out_h_tiles * q_out_w_tiles;
     uint32_t q_out_CHtWt = num_q_heads * q_out_HtWt;
-    uint32_t kv_out_CHtWt = num_kv_heads * q_out_HtWt;
     uint32_t q_num_tiles = num_q_heads * q_out_w_tiles;
-    uint32_t kv_num_tiles = num_kv_heads * q_out_w_tiles;
+
+    uint32_t kv_out_h_tiles = q_out_h_tiles;
+    uint32_t kv_out_w_tiles = q_out_w_tiles;
+    if (read_from_input_tensor_kv) {
+        kv_out_h_tiles = input_tensor_kv.value().get_padded_shape()[2] / TILE_HEIGHT;
+    }
+    uint32_t kv_out_HtWt = kv_out_h_tiles * kv_out_w_tiles;
+    uint32_t kv_out_CHtWt = num_kv_heads * kv_out_HtWt;
+    uint32_t kv_num_tiles = num_kv_heads * kv_out_w_tiles;
 
     uint32_t num_cores_x = compute_with_storage_grid_size.x;
     uint32_t num_cores_y = compute_with_storage_grid_size.y;
+
     // Block is a unit of work; ie. num of in0_w_tiles per core
-    uint32_t num_blocks = input_shape[0] * input_shape[1] * input_shape[2] / TILE_HEIGHT;
-    auto [num_cores, all_cores, core_group_1, core_group_2, num_blocks_per_core_group_1, num_blocks_per_core_group_2] =
-        tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_blocks);
+    uint32_t num_blocks_q = input_shape[0] * input_shape[1] * input_shape[2] / TILE_HEIGHT;
+    auto
+        [num_cores_q,
+         all_cores_q,
+         core_group_1_q,
+         core_group_2_q,
+         num_blocks_per_core_group_1_q,
+         num_blocks_per_core_group_2_q] =
+            tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_blocks_q);
+    uint32_t num_blocks_kv = num_blocks_q;
+    if (read_from_input_tensor_kv) {
+        num_blocks_kv = input_tensor_kv.value().get_padded_shape()[0] * input_tensor_kv.value().get_padded_shape()[1] *
+                        input_tensor_kv.value().get_padded_shape()[2] / TILE_HEIGHT;
+    }
+
+    auto
+        [num_cores_kv,
+         all_cores_kv,
+         core_group_1_kv,
+         core_group_2_kv,
+         num_blocks_per_core_group_1_kv,
+         num_blocks_per_core_group_2_kv] =
+            tt::tt_metal::split_work_to_cores(compute_with_storage_grid_size, num_blocks_kv);
+
+    tt::log_info(
+        "Num_cores_q: {} num_blocks_q: {} num_blocks_per_core_group_1_q {} num_blocks_per_core_group_2_q {}",
+        num_cores_q,
+        num_blocks_q,
+        num_blocks_per_core_group_1_q,
+        num_blocks_per_core_group_2_q);
+    tt::log_info(
+        "Num_cores_kv: {} num_blocks_kv: {} num_blocks_per_core_group_1_kv {} num_blocks_per_core_group_2_kv {}",
+        num_cores_kv,
+        num_blocks_kv,
+        num_blocks_per_core_group_1_kv,
+        num_blocks_per_core_group_2_kv);
+
+    uint32_t num_cores = num_cores_q;
+    auto all_cores = all_cores_q;
+    if (num_cores_kv > num_cores) {
+        num_cores = num_cores_kv;
+        all_cores = all_cores_kv;
+    }
 
     ////////////////////////////////////////////////////////////////////////////
     //                      Grayskull Device Setup
@@ -125,19 +174,19 @@ NlpCreateHeadsDeviceOperation::Interleaved::cached_program_t NlpCreateHeadsDevic
     std::map<string, string> reader_defines;
     std::map<string, string> writer_defines;
     if (transpose_k_heads) {
-        std::vector<uint32_t> compute_args_core_group_1 = {num_blocks_per_core_group_1 * kv_num_tiles};
+        std::vector<uint32_t> compute_args_core_group_1 = {num_blocks_per_core_group_1_kv * kv_num_tiles};
         auto compute_kernel_id_group_1 = tt_metal::CreateKernel(
             program,
             "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/compute/transpose_wh.cpp",
-            core_group_1,
+            core_group_1_kv,
             tt_metal::ComputeConfig{.compile_args = compute_args_core_group_1});
 
-        if (core_group_2.num_cores() > 0) {
-            std::vector<uint32_t> compute_args_core_group_2 = {num_blocks_per_core_group_2 * kv_num_tiles};
+        if (core_group_2_q.num_cores() > 0) {
+            std::vector<uint32_t> compute_args_core_group_2 = {num_blocks_per_core_group_2_kv * kv_num_tiles};
             auto compute_kernel_id_group_2 = tt_metal::CreateKernel(
                 program,
                 "ttnn/cpp/ttnn/deprecated/tt_dnn/kernels/compute/transpose_wh.cpp",
-                core_group_2,
+                core_group_2_kv,
                 tt_metal::ComputeConfig{.compile_args = compute_args_core_group_2});
         }
 
@@ -197,10 +246,10 @@ NlpCreateHeadsDeviceOperation::Interleaved::cached_program_t NlpCreateHeadsDevic
     for (uint32_t i = 0, num_blocks_written = 0; i < num_cores; i++) {
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
         uint32_t num_blocks_per_core = 0;
-        if (core_group_1.contains(core)) {
-            num_blocks_per_core = num_blocks_per_core_group_1;
-        } else if (core_group_2.contains(core)) {
-            num_blocks_per_core = num_blocks_per_core_group_2;
+        if (core_group_1_q.contains(core)) {
+            num_blocks_per_core = num_blocks_per_core_group_1_q;
+        } else if (core_group_2_q.contains(core)) {
+            num_blocks_per_core = num_blocks_per_core_group_2_q;
         } else {
             TT_ASSERT(false, "Core not in specified core ranges");
         }
