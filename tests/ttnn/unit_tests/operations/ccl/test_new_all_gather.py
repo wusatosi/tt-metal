@@ -626,6 +626,8 @@ def test_all_gather_ring_async_on_T3K(mesh_device):
     all_crs = ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(5, 5))])
     semaphore = ttnn.create_global_semaphore(mesh_device=mesh_device, cores=all_crs, initial_value=0)
     # Execute Line All-Gather on the tensor
+    print(mesh_tensor)
+
     output_tensor = ttnn.experimental.sample(
         mesh_tensor,
     )

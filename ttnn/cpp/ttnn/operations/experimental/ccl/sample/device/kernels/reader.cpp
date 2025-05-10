@@ -15,35 +15,20 @@
 using address_t = uint32_t;
 using tt::tt_metal::BufferType;
 
-constexpr uint32_t cb0_id = get_compile_time_arg_val(0);
-constexpr uint32_t cb1_id = get_compile_time_arg_val(1);
-constexpr uint32_t data_size = get_compile_time_arg_val(2);
-
 void kernel_main() {
     ///////////////////////////////////////////////////
     // ARGS
     ///////////////////////////////////////////////////
 
-    size_t arg_idx = 0;
-    uint32_t tensor_address0 = get_arg_val<uint32_t>(arg_idx++);
-
-    uint32_t receiver_semaphore_address = get_arg_val<uint32_t>(arg_idx++);
     DPRINT << "HELLO FROM READER\n";
+    size_t arg_idx = 0;
+    // uint32_t tensor_address0 = get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t receiver_semaphore_address = get_arg_val<uint32_t>(arg_idx++);
+    volatile tt_l1_ptr uint32_t* signal_semaphore_addr_ptr =
+        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(receiver_semaphore_address);
 
-    uint32_t tensor0_page_size = 1088;
-
-    auto dst_addrgen = InterleavedAddrGenFast<false>{
-        .bank_base_address = tensor_address0,
-        .page_size = tensor0_page_size,
-        .data_format = get_dataformat(cb1_id),
-    };
-
-    DPRINT << "WAITING ON SEMAPHORE " << receiver_semaphore_address << "\n";
-    noc_semaphore_wait((uint32_t*)receiver_semaphore_address, 1);
+    DPRINT << "WAITING ON SEMAPHORE " << (uint32_t)signal_semaphore_addr_ptr << "\n";
+    noc_semaphore_wait(signal_semaphore_addr_ptr, 1);
     DPRINT << "!!!!! READING FROM ETH !!!!\n";
-    // // noc_async_write_tile(0, dst_addrgen, get_write_ptr(cb1_id));
-    // // DPRINT << "DONE READING FROM ETH\n";
-    // // noc_async_write_barrier();
-    // noc_semaphore_set((uint32_t*)receiver_semaphore_address, 0);
     DPRINT << "DONE reader.\n";
 }

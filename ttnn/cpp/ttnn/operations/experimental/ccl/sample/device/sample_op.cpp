@@ -1,4 +1,5 @@
 #include "sample_op.hpp"
+#include "tt-metalium/core_coord.hpp"
 #include "ttnn/operations/functions.hpp"
 #include "ttnn/operations/math.hpp"
 #include "ttnn/operations/core/core.hpp"
@@ -40,9 +41,11 @@ tt::tt_metal::operation::MeshWorkloadWithCallbacks Sample::create_mesh_workload(
     const ttnn::MeshCoordinateRangeSet& tensor_coords,
     const std::vector<Tensor>& input_tensors,
     std::vector<Tensor>& output_tensors) const {
+    GlobalSemaphore* global_semaphore = new GlobalSemaphore(
+        input_tensors[0].device(), CoreRangeSet(CoreRange(CoreCoord(0, 0), CoreCoord(1, 1))), 0, BufferType::L1);
     return ccl::create_mesh_workload_from_programs(
         tensor_coords, input_tensors, output_tensors, [&, this](const ttnn::MeshCoordinate& coord) {
-            return create_program_at(coord, input_tensors, output_tensors);
+            return create_program_at(coord, input_tensors, output_tensors, global_semaphore);
         });
 }
 
@@ -52,7 +55,8 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     IDevice* device,
     IDevice* fwd_device,
     bool should_read,
-    bool should_write) {
+    bool should_write,
+    GlobalSemaphore* global_semaphore) {
     tt::tt_metal::Program program{};
     std::optional<tt::tt_metal::operation::OverrideRuntimeArgumentsCallback<std::vector<Tensor>>>
         override_runtime_arguments_callback = std::nullopt;
@@ -72,8 +76,12 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     auto input_tensor = input_tensors[0];
     auto output_tensor = output_tensors[0];
 
-    // Reader
+    // GlobalSemaphore(
+    //     IDevice* device, const CoreRangeSet& cores, uint32_t initial_value, BufferType buffer_type = BufferType::L1);
+
+    // // Reader
     auto reader_cores = CoreCoord(0, 0);
+    auto writer_cores = CoreCoord(0, 0);
 
     tt::tt_metal::CircularBufferConfig cb_src0_config =
         tt::tt_metal::CircularBufferConfig(2 * tile_size, {{src0_cb_index, data_format}})
@@ -83,7 +91,7 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     tt::tt_metal::CircularBufferConfig cb_dst0_config =
         tt::tt_metal::CircularBufferConfig(2 * tile_size, {{dst0_cb_index, data_format}})
             .set_page_size(dst0_cb_index, tile_size);
-    tt::tt_metal::CBHandle cb_dst0_workers = CreateCircularBuffer(program, {reader_cores}, cb_dst0_config);
+    tt::tt_metal::CBHandle cb_dst0_workers = CreateCircularBuffer(program, {writer_cores}, cb_dst0_config);
 
     tt::tt_metal::CircularBufferConfig cb_reserved_packet_header_config =
         tt::tt_metal::CircularBufferConfig(
@@ -93,10 +101,10 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     auto reserved_packet_header_CB_handle =
         CreateCircularBuffer(program, {reader_cores}, cb_reserved_packet_header_config);
 
-    auto semaphore = tt::tt_metal::CreateSemaphore(program, {reader_cores}, 0);
+    // auto semaphore = tt::tt_metal::CreateSemaphore(program, {reader_cores}, 0);
     if (should_read) {
         auto reader_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
-        reader_kernel_config.compile_args = {src0_cb_index, dst0_cb_index, tile_size};
+        // reader_kernel_config.compile_args = {src0_cb_index, dst0_cb_index, tile_size};
 
         auto reader_kernel_id = tt::tt_metal::CreateKernel(
             program,
@@ -106,20 +114,20 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
             reader_kernel_config);
 
         std::vector<uint32_t> reader_rt_args = {
-            input_tensor.buffer()->address(),  // tensor_address0
-            semaphore,
+            // input_tensor.buffer()->address(),  // tensor_address0
+            global_semaphore->address(),
         };
 
-        tt::tt_metal::SetRuntimeArgs(program, reader_kernel_id, reader_cores, reader_rt_args);
+        tt::tt_metal::SetRuntimeArgs(program, reader_kernel_id, {reader_cores}, reader_rt_args);
     }
 
     // Writer
-    auto writer_cores = CoreCoord(0, 0);
-    auto writer_core_range = CoreRange(writer_cores, writer_cores);
+    // auto writer_core_range = CoreRange(writer_cores, writer_cores);
 
     if (should_write) {
+        std::cout << "Writer starting..." << std::endl;
         auto writer_kernel_config = tt::tt_metal::WriterDataMovementConfig{};
-        writer_kernel_config.compile_args = {src0_cb_index, dst0_cb_index, tile_size};
+        // writer_kernel_config.compile_args = {src0_cb_index, dst0_cb_index, tile_size};
 
         auto writer_kernel_id = tt::tt_metal::CreateKernel(
             program,
@@ -129,12 +137,10 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
             writer_kernel_config);
 
         std::vector<uint32_t> writer_rt_args = {
-            input_tensor.buffer()->address(),  // tensor_address0
-            1,
             reserved_packet_header_CB_index,
-            semaphore,
-            writer_cores.x,  // out_ready_sem_noc0_x
-            writer_cores.y   // out_ready_sem_noc0_y
+            global_semaphore->address(),
+            reader_cores.x,  // out_ready_sem_noc0_x
+            reader_cores.y   // out_ready_sem_noc0_y
         };
 
         // link is set to 0
@@ -142,6 +148,7 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
         tt::tt_fabric::append_fabric_connection_rt_args(
             device->id(), fwd_device->id(), 0, program, writer_cores, writer_rt_args);
         writer_rt_args.push_back(0);
+
         tt::tt_metal::SetRuntimeArgs(program, writer_kernel_id, writer_cores, writer_rt_args);
     }
 
@@ -151,25 +158,28 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
 tt::tt_metal::operation::ProgramWithCallbacks Sample::create_program_at(
     const ttnn::MeshCoordinate& coord,
     const std::vector<Tensor>& input_tensors,
-    std::vector<Tensor>& output_tensors) const {
+    std::vector<Tensor>& output_tensors,
+    GlobalSemaphore* global_semaphore) const {
     const auto& mesh_view = input_tensors[0].mesh_device()->get_view();
     auto devices = mesh_view.get_devices();
     std::cout << "COORD:" << std::endl;
     std::cout << coord[0] << ", " << coord[1] << std::endl;
+
     if (coord[0] == 0 && coord[1] == 0) {
         auto to_device = devices[1];
         std::cout << "DEBUG: device id: " << devices[0]->id() << std::endl;
         std::cout << "DEBUG: to_device id: " << to_device->id() << std::endl;
-        return sample(input_tensors, output_tensors, devices[0], to_device, false, true);
+        return sample(input_tensors, output_tensors, devices[0], to_device, false, true, global_semaphore);
         // return tt::tt_metal::operation::ProgramWithCallbacks{};
     }
     if (coord[0] == 0 && coord[1] == 1) {
         auto to_device = devices[0];
         std::cout << "DEBUG: device id: " << devices[1]->id() << std::endl;
         std::cout << "DEBUG: to_device id: " << to_device->id() << std::endl;
-        return sample(input_tensors, output_tensors, devices[1], to_device, true, false);
+        return sample(input_tensors, output_tensors, devices[1], to_device, true, false, global_semaphore);
     }
-    return tt::tt_metal::operation::ProgramWithCallbacks{};
+    // return sample(input_tensors, output_tensors, devices[0], devices[0], false, false);
+    return {.program = tt::tt_metal::Program(), .override_runtime_arguments_callback = std::nullopt};
     // std::optional<IDevice*> forward_device = std::nullopt;
     // std::optional<IDevice*> backward_device = std::nullopt;
     // uint32_t device_index = 0;  // Initialize device index
