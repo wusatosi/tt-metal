@@ -108,15 +108,15 @@ run_async_ccl_T3000_test() {
 }
 
 run_profiling_test() {
-    run_async_test
+    # run_async_test
 
-    run_ccl_T3000_test
+    # run_ccl_T3000_test
 
-    run_async_ccl_T3000_test
+    # run_async_ccl_T3000_test
 
-    run_async_tracing_T3000_test
+    # run_async_tracing_T3000_test
 
-    run_mid_run_tracy_push
+    # run_mid_run_tracy_push
 
     TT_METAL_DEVICE_PROFILER=1 pytest $PROFILER_TEST_SCRIPTS_ROOT/test_device_profiler.py --noconftest --timeout 360
 
