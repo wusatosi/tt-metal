@@ -234,6 +234,11 @@ def run_max_pool(
     #         # coord = ttnn.CoreCoord(x, y)
     #         gold_shard = output_shards[core_id][0]
     #         opt_shard = output_shards[core_id][1]
+
+    #         y_limit = 4372
+
+    #         gold_shard = gold_shard[:, :, :y_limit, :]
+    #         opt_shard = opt_shard[:, :, :y_limit, :]
     #         diff = gold_shard[0][0] - opt_shard[0][0]
 
     #         diff = diff.to(torch.float32)
@@ -360,8 +365,9 @@ def run_max_pool(
             # [1, 32, 10, 10],  # BH
             # [1, 32, 6, 6],  # WH
             # [8, 64, 112, 112],
-            [1, 128, 112, 112],
+            # [1, 32, 112, 112],
             # [32, 32, 264, 40],
+            [1, 64, 360, 640],
         )
     ),
 )
@@ -378,8 +384,8 @@ def run_max_pool(
 @pytest.mark.parametrize(
     "padding",
     (
-        (0, 0),
-        # (1, 1),
+        # (0, 0),
+        (1, 1),
         # (2, 2),
         # (4, 4),
         # (6, 6),
