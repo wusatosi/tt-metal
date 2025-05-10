@@ -608,7 +608,7 @@ def test_line_all_gather_async_on_T3K_cols_persistent_fabric_post_commit(
     )
 
 
-@pytest.mark.parametrize("mesh_device", [pytest.param((2, 4), id="2x4_grid")], indirect=True)
+@pytest.mark.parametrize("mesh_device", [pytest.param((1, 8), id="1x8_grid")], indirect=True)
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_all_gather_ring_async_on_T3K(mesh_device):
     torch_tensor = torch.rand((32, 256), dtype=torch.bfloat16)
@@ -623,8 +623,8 @@ def test_all_gather_ring_async_on_T3K(mesh_device):
         dtype=ttnn.bfloat8_b,
     )
 
-    all_crs = ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(5, 5))])
-    semaphore = ttnn.create_global_semaphore(mesh_device=mesh_device, cores=all_crs, initial_value=0)
+    # all_crs = ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(0, 1), ttnn.CoreCoord(0, 1))])
+    # semaphore = ttnn.create_global_semaphore(mesh_device=mesh_device, cores=all_crs, initial_value=0)
     # Execute Line All-Gather on the tensor
     print(mesh_tensor)
 

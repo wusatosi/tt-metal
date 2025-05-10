@@ -30,7 +30,8 @@ void kernel_main() {
     DPRINT << "WAITING ON SEMAPHORE \n";
     // noc_semaphore_wait(signal_semaphore_addr_ptr, 1);
     while (1) {
-        DPRINT << "SEM VALUE: " << (uint32_t)*signal_semaphore_addr_ptr << "\n";
+        DPRINT << "SEM addr: " << (uint32_t)signal_semaphore_addr_ptr
+               << " VALUE: " << (uint32_t)*signal_semaphore_addr_ptr << "\n";
         for (int i = 0; i < 1000000000; i++) {
         }
     }
