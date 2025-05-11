@@ -120,8 +120,10 @@ NlpCreateHeadsDeviceOperation::spec_return_value_t NlpCreateHeadsDeviceOperation
 
     const auto& input_tensor = tensor_args.input_tensor_q;
     const auto input_shape = input_tensor.get_padded_shape();
+    const auto logical_input_shape = input_tensor.get_logical_shape();
 
     auto sequence_length_q = input_shape[2];
+    auto sequence_length_q_logical = logical_input_shape[2];
     auto head_dim = operation_attributes.head_dim;
     if (sequence_length_q % TILE_HEIGHT != 0) {
         sequence_length_q = (sequence_length_q / TILE_HEIGHT + 1) * TILE_HEIGHT;
@@ -131,18 +133,35 @@ NlpCreateHeadsDeviceOperation::spec_return_value_t NlpCreateHeadsDeviceOperation
     }
 
     auto sequence_length_kv = sequence_length_q;
+    auto sequence_length_kv_logical = sequence_length_q_logical;
     if (tensor_args.input_tensor_kv.has_value()) {
         const auto& input_tensor_kv = tensor_args.input_tensor_kv.value();
         const auto input_shape_kv = input_tensor_kv.get_padded_shape();
         sequence_length_kv = input_shape_kv[2];
+        const auto logical_input_shape_kv = input_tensor_kv.get_logical_shape();
+        sequence_length_kv_logical = logical_input_shape_kv[2];
     }
 
-    const Shape q_output_shape({input_shape[0], operation_attributes.num_q_heads, sequence_length_q, head_dim});
-    const Shape v_output_shape({input_shape[0], operation_attributes.num_kv_heads, sequence_length_kv, head_dim});
+    const Shape q_output_shape({input_shape[0], operation_attributes.num_q_heads, sequence_length_q_logical, head_dim});
+    const Shape v_output_shape(
+        {input_shape[0], operation_attributes.num_kv_heads, sequence_length_kv_logical, head_dim});
     const Shape k_output_shape =
+        operation_attributes.transpose_k_heads
+            ? Shape({input_shape[0], operation_attributes.num_kv_heads, head_dim, sequence_length_kv_logical})
+            : v_output_shape;
+
+    const Shape q_output_padded_shape({input_shape[0], operation_attributes.num_q_heads, sequence_length_q, head_dim});
+    const Shape v_output_padded_shape(
+        {input_shape[0], operation_attributes.num_kv_heads, sequence_length_kv, head_dim});
+    const Shape k_output_padded_shape =
         operation_attributes.transpose_k_heads
             ? Shape({input_shape[0], operation_attributes.num_kv_heads, head_dim, sequence_length_kv})
             : v_output_shape;
+
+    // return {TensorSpec(
+    //     output_shape,
+    //     TensorLayout::fromPaddedShape(
+    //         dtype, PageConfig(output_layout), mem_config, output_shape, padded_output_shape))};
 
     if (operation_attributes.output_mem_config.is_sharded()) {
         auto core_grid = input_tensor.device()->compute_with_storage_grid_size();
@@ -171,22 +190,28 @@ NlpCreateHeadsDeviceOperation::spec_return_value_t NlpCreateHeadsDeviceOperation
     return {
         TensorSpec(
             q_output_shape,
-            tt::tt_metal::TensorLayout(
+            tt::tt_metal::TensorLayout::fromPaddedShape(
                 input_tensor.get_dtype(),
                 tt::tt_metal::PageConfig(Layout::TILE),
-                operation_attributes.output_mem_config)),
+                operation_attributes.output_mem_config,
+                q_output_shape,
+                q_output_padded_shape)),
         TensorSpec(
             k_output_shape,
-            tt::tt_metal::TensorLayout(
+            tt::tt_metal::TensorLayout::fromPaddedShape(
                 input_tensor.get_dtype(),
                 tt::tt_metal::PageConfig(Layout::TILE),
-                operation_attributes.output_mem_config)),
+                operation_attributes.output_mem_config,
+                k_output_shape,
+                k_output_padded_shape)),
         TensorSpec(
             v_output_shape,
-            tt::tt_metal::TensorLayout(
+            tt::tt_metal::TensorLayout::fromPaddedShape(
                 input_tensor.get_dtype(),
                 tt::tt_metal::PageConfig(Layout::TILE),
-                operation_attributes.output_mem_config))};
+                operation_attributes.output_mem_config,
+                v_output_shape,
+                v_output_padded_shape))};
 }
 
 NlpCreateHeadsDeviceOperation::tensor_return_value_t NlpCreateHeadsDeviceOperation::create_output_tensors(

@@ -149,9 +149,6 @@ class TtAttention(nn.Module):
                 bias=None,
             )
 
-            print(f"Q shape: {q.shape}")
-            print(f"KV shape: {kv.shape}")
-
             q_heads, k_heads, v_heads = ttnn.experimental.nlp_create_qkv_heads(
                 q,
                 kv,
@@ -160,33 +157,42 @@ class TtAttention(nn.Module):
                 transpose_k_heads=False,
             )
 
-            # q_heads = ttnn.linear(
-            #     hidden_states,
-            #     self.tt_q_weights,
-            #     bias=None,
-            # )
-            # k_heads = ttnn.linear(
-            #     encoder_hidden_states,
-            #     self.tt_k_weights,
-            #     bias=None,
-            # )
-            # v_heads = ttnn.linear(
-            #     encoder_hidden_states,
-            #     self.tt_v_weights,
-            #     bias=None,
-            # )
+            print(f"Q heads shape: {q_heads.shape} Q heads padded shape: {q_heads.padded_shape}")
+            print(f"K heads shape: {k_heads.shape} K heads padded shape: {k_heads.padded_shape}")
+            print(f"V heads shape: {v_heads.shape} V heads padded shape: {v_heads.padded_shape}")
 
-            # inner_dim = list(k_heads.shape)[-1]
-            # head_dim = inner_dim // self.heads
+            if False:
+                q_heads = ttnn.linear(
+                    hidden_states,
+                    self.tt_q_weights,
+                    bias=None,
+                )
+                k_heads = ttnn.linear(
+                    encoder_hidden_states,
+                    self.tt_k_weights,
+                    bias=None,
+                )
+                v_heads = ttnn.linear(
+                    encoder_hidden_states,
+                    self.tt_v_weights,
+                    bias=None,
+                )
 
-            # q_heads = ttnn.reshape(q_heads, [B, -1, self.heads, head_dim])
-            # q_heads = ttnn.transpose(q_heads, 1, 2)
+                inner_dim = list(k_heads.shape)[-1]
+                head_dim = inner_dim // self.heads
 
-            # k_heads = ttnn.reshape(k_heads, [B, -1, self.heads, head_dim])
-            # k_heads = ttnn.transpose(k_heads, 1, 2)
+                q_heads = ttnn.reshape(q_heads, [B, -1, self.heads, head_dim])
+                q_heads = ttnn.transpose(q_heads, 1, 2)
 
-            # v_heads = ttnn.reshape(v_heads, [B, -1, self.heads, head_dim])
-            # v_heads = ttnn.transpose(v_heads, 1, 2)
+                k_heads = ttnn.reshape(k_heads, [B, -1, self.heads, head_dim])
+                k_heads = ttnn.transpose(k_heads, 1, 2)
+
+                v_heads = ttnn.reshape(v_heads, [B, -1, self.heads, head_dim])
+                v_heads = ttnn.transpose(v_heads, 1, 2)
+
+                print(f"Q heads shape: {q_heads.shape} Q heads padded shape: {q_heads.padded_shape}")
+                print(f"K heads shape: {k_heads.shape} K heads padded shape: {k_heads.padded_shape}")
+                print(f"V heads shape: {v_heads.shape} V heads padded shape: {v_heads.padded_shape}")
 
         hidden_states = ttnn.transformer.scaled_dot_product_attention(
             q_heads,
