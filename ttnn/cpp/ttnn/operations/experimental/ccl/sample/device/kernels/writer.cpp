@@ -25,9 +25,10 @@ void kernel_main() {
     size_t arg_idx = 0;
     uint32_t reserved_packet_header_cb_id = get_arg_val<uint32_t>(arg_idx++);
     uint32_t tensor_address0 = get_arg_val<uint32_t>(arg_idx++);
-    uint32_t out_ready_sem_bank_addr = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t out_ready_sem_bank_addr = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
     uint32_t out_ready_sem_noc0_x = get_arg_val<uint32_t>(arg_idx++);
     uint32_t out_ready_sem_noc0_y = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t device_id = get_arg_val<uint32_t>(arg_idx++);
 
     auto fabric_connection =
         FabricConnectionManager::build_from_args<FabricConnectionManager::BUILD_AND_OPEN_CONNECTION_START_ONLY>(
@@ -52,7 +53,7 @@ void kernel_main() {
     fabric_connection.open_finish();
 
     uint64_t out_ready_sem_noc_addr_in_pkt =
-        safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, out_ready_sem_bank_addr);
+        safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, out_ready_sem_bank_addr, 0);
     // Write the mcast packet (forward)
     DPRINT << "noc0: " << safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, out_ready_sem_bank_addr, 0)
            << " noc1:" << safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, out_ready_sem_bank_addr, 1)

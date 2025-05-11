@@ -41,22 +41,18 @@ tt::tt_metal::operation::MeshWorkloadWithCallbacks Sample::create_mesh_workload(
     const ttnn::MeshCoordinateRangeSet& tensor_coords,
     const std::vector<Tensor>& input_tensors,
     std::vector<Tensor>& output_tensors) const {
-    GlobalSemaphore* global_semaphore = new GlobalSemaphore(
-        input_tensors[0].device(), CoreRangeSet(CoreRange(CoreCoord(0, 0), CoreCoord(0, 0))), 0, BufferType::L1);
     return ccl::create_mesh_workload_from_programs(
         tensor_coords, input_tensors, output_tensors, [&, this](const ttnn::MeshCoordinate& coord) {
-            return create_program_at(coord, input_tensors, output_tensors, global_semaphore);
+            return create_program_at(coord, input_tensors, output_tensors);
         });
 }
 
 tt::tt_metal::operation::ProgramWithCallbacks sample(
     const std::vector<Tensor>& input_tensors,
     std::vector<Tensor>& output_tensors,
-
     IDevice* device,
     IDevice* fwd_device,
-    IDevice* bwd_device,
-    GlobalSemaphore* global_semaphore) {
+    IDevice* bwd_device) {
     tt::tt_metal::Program program{};
     std::optional<tt::tt_metal::operation::OverrideRuntimeArgumentsCallback<std::vector<Tensor>>>
         override_runtime_arguments_callback = std::nullopt;
@@ -77,7 +73,7 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     static constexpr auto packet_header_size_bytes = sizeof(tt::tt_fabric::PacketHeader);
 
     // Reader
-    auto reader_cores = CoreCoord(0, 0);
+    auto reader_cores = CoreCoord(0, 2);
     auto writer_cores = CoreCoord(0, 0);
 
     tt::tt_metal::CircularBufferConfig cb_src0_config =
@@ -101,6 +97,8 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
 
     CoreCoord drain_sync_core = device->worker_core_from_logical_core(reader_cores);
 
+    auto global_semaphore = tt::tt_metal::CreateSemaphore(program, reader_cores, 0);
+
     std::cout << "Device: " << device->id() << " Logical core: " << reader_cores.str()
               << " Drain sync core: " << drain_sync_core.str() << std::endl;
 
@@ -113,8 +111,8 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
 
     std::vector<uint32_t> reader_rt_args = {
         input_tensor.buffer()->address(),  // tensor_address0
-        global_semaphore->address(),
-    };
+        global_semaphore,
+        device->id()};
 
     tt::tt_metal::SetRuntimeArgs(program, reader_kernel_id, {reader_cores}, reader_rt_args);
 
@@ -132,10 +130,10 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     std::vector<uint32_t> writer_rt_args = {
         header_cb_index,
         input_tensor.buffer()->address(),
-        global_semaphore->address(),
+        global_semaphore,
         drain_sync_core.x,  // out_ready_sem_noc0_x
-        drain_sync_core.y   // out_ready_sem_noc0_y
-    };
+        drain_sync_core.y,  // out_ready_sem_noc0_y
+        device->id()};
 
     // link is set to 0
     writer_rt_args.push_back(1);
@@ -150,48 +148,35 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     return {.program = std::move(program), .override_runtime_arguments_callback = override_runtime_arguments_callback};
 }
 
-IDevice* get_next_device(
-    int current_device_id, bool is_forward, const std::vector<IDevice*>& devices, std::vector<int> device_order) {
-    int chosen_device = -1;
-    switch (current_device_id) {
-        case 4: chosen_device = is_forward ? 0 : 5; break;
-        case 0: chosen_device = is_forward ? 4 : 2; break;
-        case 2: chosen_device = is_forward ? 6 : 0; break;
-        case 6: chosen_device = is_forward ? 7 : 2; break;
-        case 7: chosen_device = is_forward ? 3 : 6; break;
-        case 3: chosen_device = is_forward ? 1 : 7; break;
-        case 1: chosen_device = is_forward ? 5 : 3; break;
-        case 5: chosen_device = is_forward ? 4 : 1; break;
-    }
-    return devices[device_order[chosen_device]];
-}
-
 tt::tt_metal::operation::ProgramWithCallbacks Sample::create_program_at(
     const ttnn::MeshCoordinate& coord,
     const std::vector<Tensor>& input_tensors,
-    std::vector<Tensor>& output_tensors,
-    GlobalSemaphore* global_semaphore) const {
+    std::vector<Tensor>& output_tensors) const {
     const auto& mesh_view = input_tensors[0].mesh_device()->get_view();
     auto devices = mesh_view.get_devices();
     // print each device id
 
-    // std::vector<int> device_order = {4, 0, 2, 6, 7, 3, 1, 5};
-    std::vector<int> device_order = {1, 6, 2, 5, 0, 7, 3, 4};
+    auto current_device = devices[(coord[0] * 4) + coord[1]];
 
     for (auto device : devices) {
         std::cout << "Device id: " << device->id() << std::endl;
     }
+    IDevice* forward_device = nullptr;
+    IDevice* backward_device = nullptr;
+    for (uint32_t i = 0; i < 8; ++i) {
+        if (devices.at(i) != current_device) {
+            continue;
+        }
+        backward_device = i != 0 ? devices.at(i - 1) : devices.at(7);
+        forward_device = i != 7 ? devices.at(i + 1) : devices.at(0);
+    }
 
     std::cout << "Coords: " << coord[0] << ", " << coord[1] << std::endl;
     std::cout << "calc idx: " << (coord[0] * 4) + coord[1] << std::endl;
-    auto current_device_id = device_order[(coord[0] * 4) + coord[1]];
-    auto current_device = devices[current_device_id];
-    auto fwd_device = get_next_device(current_device->id(), true, devices, device_order);
-    auto bwd_device = get_next_device(current_device->id(), false, devices, device_order);
     std::cout << "Current device id: " << current_device->id() << std::endl;
-    std::cout << "Fwd device id: " << fwd_device->id() << std::endl;
-    std::cout << "Bwd device id: " << bwd_device->id() << std::endl;
-    return sample(input_tensors, output_tensors, current_device, fwd_device, bwd_device, global_semaphore);
+    std::cout << "Fwd device id: " << forward_device->id() << std::endl;
+    std::cout << "Bwd device id: " << backward_device->id() << std::endl;
+    return sample(input_tensors, output_tensors, current_device, forward_device, backward_device);
 };
 
 namespace operations::experimental::ccl {

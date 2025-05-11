@@ -46,8 +46,7 @@ struct Sample {
     tt::tt_metal::operation::ProgramWithCallbacks create_program_at(
         const ttnn::MeshCoordinate& mesh_coord,
         const std::vector<Tensor>& input_tensors,
-        std::vector<Tensor>& output_tensors,
-        GlobalSemaphore* global_semaphore) const;
+        std::vector<Tensor>& output_tensors) const;
 
     tt::tt_metal::operation::Hash compute_program_hash(const std::vector<Tensor>& input_tensors) const;
 };

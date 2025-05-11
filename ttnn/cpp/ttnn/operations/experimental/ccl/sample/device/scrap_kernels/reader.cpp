@@ -23,7 +23,7 @@ void kernel_main() {
     DPRINT << "HELLO FROM READER\n";
     size_t arg_idx = 0;
     uint32_t tensor_address0 = get_arg_val<uint32_t>(arg_idx++);
-    const uint32_t receiver_semaphore_address = get_arg_val<uint32_t>(arg_idx++);
+    const uint32_t receiver_semaphore_address = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
     volatile tt_l1_ptr uint32_t* signal_semaphore_addr_ptr =
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(receiver_semaphore_address);
 
