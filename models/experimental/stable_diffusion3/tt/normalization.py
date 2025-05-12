@@ -171,7 +171,7 @@ class TtLayerNorm:
         parameters: TtLayerNormParameters,
         *,
         eps: float,
-        use_cpu_fallback: bool = True,
+        use_cpu_fallback: bool = False,
     ) -> None:
         super().__init__()
 

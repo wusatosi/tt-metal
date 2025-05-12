@@ -115,7 +115,7 @@ class TtSD3Transformer2DModel:
             TtTransformerBlock(block, num_heads=num_heads, device=device) for block in parameters.transformer_blocks
         ]
         self._time_embed_out = TtLinear(parameters.time_embed_out)
-        self._norm_out = TtLayerNorm(parameters.norm_out, eps=1e-6)
+        self._norm_out = TtLayerNorm(parameters.norm_out, eps=1e-6, use_cpu_fallback=True)
         self._proj_out = TtLinear(parameters.proj_out)
 
         self._patch_size = self._pos_embed.patch_size
