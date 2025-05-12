@@ -47,6 +47,10 @@ void kernel_main() {
 
     for (uint32_t device_id = 0; device_id < ring_size; device_id++) {
         uint32_t output_cb = device_id > 0 ? compute_output_cb_id : reader_output_cb_id;
+        if (device_id > 0) {
+            cb_reserve_back(sync_cb_id, 1);
+            cb_push_back(sync_cb_id, 1);
+        }
 
         uint32_t tiles_written = 0;
         for (uint32_t out_row_id = out_row_start; out_row_id < out_row_end; out_row_id++) {
@@ -69,15 +73,11 @@ void kernel_main() {
 
                     l1_read_addr += page_size;
                 }
-                noc_async_write_barrier();
+                noc_async_writes_flushed();
 
                 cb_pop_front(output_cb, num_pages_per_packet);
-                if (device_id > 0) {
-                    cb_wait_front(sync_cb_id, 1);
-                    cb_pop_front(sync_cb_id, 1);
-                }
             }
         }
+        noc_async_write_barrier();
     }
-    noc_async_write_barrier();
 }

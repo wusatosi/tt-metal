@@ -44,6 +44,7 @@ void kernel_main() {
     uint32_t out_row_tiles = get_arg_val<uint32_t>(arg_idx++);
     uint32_t out_col_tiles = get_arg_val<uint32_t>(arg_idx++);
     uint32_t num_pages_per_packet = get_arg_val<uint32_t>(arg_idx++);
+    DPRINT << "READER: rt arg num_pages_per_packet " << num_pages_per_packet << ENDL();
     tt_l1_ptr uint32_t* global_semaphore_addr = (tt_l1_ptr uint32_t*)get_arg_addr(arg_idx);
     arg_idx += ring_size;
 
@@ -80,7 +81,10 @@ void kernel_main() {
         } else {
             my_cur_is_forward = !my_cur_is_forward;
         }
-        DPRINT << "dst_ring_id " << dst_ring_id << ENDL();
+        if (do_reduce) {
+            cb_wait_front(sync_cb_id, 1);
+            cb_pop_front(sync_cb_id, 1);
+        }
 
         if (i == ring_size - 1) {
             // Follows same logic as sender reader for local copy.
@@ -109,11 +113,7 @@ void kernel_main() {
                         intermed_tile_id++;
                     }
 
-                    noc_async_read_barrier();
-                    cb_push_back(input_cb_id, num_pages_per_packet);
-
                     // Accumulator read
-                    cb_reserve_back(sync_cb_id, 1);
                     cb_reserve_back(accumulator_cb_id, num_pages_per_packet);
                     uint32_t accumulator_l1_write_addr = get_write_ptr(accumulator_cb_id);
 
@@ -126,7 +126,7 @@ void kernel_main() {
 
                     noc_async_read_barrier();
                     cb_push_back(accumulator_cb_id, num_pages_per_packet);
-                    cb_push_back(sync_cb_id, 1);
+                    cb_push_back(input_cb_id, num_pages_per_packet);
                 }
             }
         } else {
@@ -144,7 +144,11 @@ void kernel_main() {
             for (uint32_t out_row_id = out_row_start; out_row_id < out_row_end; out_row_id++) {
                 for (uint32_t out_col_id = out_col_start; out_col_id < out_col_end;
                      out_col_id += num_pages_per_packet) {
+                    uint32_t pages_acked_ptr = (uint32_t)get_cb_tiles_acked_ptr(cb_in0);
+                    uint32_t pages_received = get_cb_tiles_received_ptr(cb_in0)[0];
+
                     cb_reserve_back(cb_in0, num_pages_per_packet);
+
                     size_t l1_write_addr = get_write_ptr(cb_in0);
                     uint32_t num_pages_to_read = std::min(out_col_end - out_col_id, num_pages_per_packet);
 
@@ -154,6 +158,7 @@ void kernel_main() {
                     uint32_t current_chunk_id = packet_id / chunk_granularity;
                     uint32_t wait_chunk_id = current_chunk_id + 1;  // Chunks are 1-based
                     // Ensure that current chunk has been sent
+
                     while (*global_semaphore_ptr < wait_chunk_id);
 
                     for (uint32_t j = 0; j < num_pages_to_read; j += contig_pages_advanced) {
@@ -163,19 +168,14 @@ void kernel_main() {
                             get_noc_addr(first_id, intermediate_tensor_addrgen, 0 /*offset*/, 0 /*noc_id*/);
 
                         noc_async_read(packet_addr, l1_write_addr, payload_size_bytes);
-                        noc_async_read_barrier();
                         volatile tt_l1_ptr uint32_t* packet_data =
                             reinterpret_cast<volatile tt_l1_ptr uint32_t*>(l1_write_addr);
                         l1_write_addr += payload_size_bytes;
                         packet_id++;
                     }
-                    noc_async_read_barrier();
-
-                    cb_push_back(cb_in0, num_pages_per_packet);
 
                     if (do_reduce) {
                         // read from output tensor into accumulator_cb
-                        cb_reserve_back(sync_cb_id, 1);
                         cb_reserve_back(accumulator_cb_id, num_pages_per_packet);
                         uint32_t accumulator_l1_write_addr = get_write_ptr(accumulator_cb_id);
                         uint32_t tile_id = out_row_id * out_col_tiles + out_col_id;
@@ -187,8 +187,11 @@ void kernel_main() {
 
                         noc_async_read_barrier();
                         cb_push_back(accumulator_cb_id, num_pages_per_packet);
-                        cb_push_back(sync_cb_id, 1);
                     }
+
+                    noc_async_read_barrier();
+
+                    cb_push_back(cb_in0, num_pages_per_packet);
                 }
             }
             *reinterpret_cast<volatile tt_l1_ptr uint32_t*>(global_semaphore_addr[dst_ring_id]) = 0;
