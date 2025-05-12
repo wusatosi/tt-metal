@@ -197,6 +197,16 @@ void FDMeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool
     auto& sysmem_manager = this->reference_sysmem_manager();
     auto dispatch_core_config = MetalContext::instance().get_dispatch_core_manager().get_dispatch_core_config();
     CoreType dispatch_core_type = dispatch_core_config.get_core_type();
+    if (!sysmem_manager.get_bypass_mode()) {
+        auto& sub_device_cq_owner = sysmem_manager.sub_device_cq_owner();
+        auto& sub_device = sub_device_cq_owner[*sub_device_id];
+        if (sub_device != std::nullopt && *sub_device != this->id_) {
+            TT_FATAL(
+                *sub_device == this->id_,
+                "Program is being executed on a different command queue than the one it was created on");
+        }
+        sub_device = this->id_;
+    }
 
     TT_FATAL(
         mesh_workload.get_program_binary_status(mesh_device_id) != ProgramBinaryStatus::NotSent,
@@ -512,6 +522,12 @@ MeshEvent FDMeshCommandQueue::enqueue_record_event_helper(
 
 MeshEvent FDMeshCommandQueue::enqueue_record_event(
     tt::stl::Span<const SubDeviceId> sub_device_ids, const std::optional<MeshCoordinateRange>& device_range) {
+    auto& sub_device_cq_owner = reference_sysmem_manager().sub_device_cq_owner();
+    for (auto& sub_device_entry : sub_device_cq_owner) {
+        if (sub_device_entry.has_value() && sub_device_entry == this->id_) {
+            sub_device_entry = std::nullopt;
+        }
+    }
     return this->enqueue_record_event_helper(sub_device_ids, /*notify_host=*/false, device_range);
 }
 
@@ -521,6 +537,12 @@ MeshEvent FDMeshCommandQueue::enqueue_record_event_to_host(
     completion_queue_reads_.push(std::make_shared<MeshCompletionReaderVariant>(
         std::in_place_type<MeshReadEventDescriptor>, ReadEventDescriptor(event.id()), event.device_range()));
     this->increment_num_entries_in_completion_queue();
+    auto& sub_device_cq_owner = reference_sysmem_manager().sub_device_cq_owner();
+    for (auto& sub_device_entry : sub_device_cq_owner) {
+        if (sub_device_entry.has_value() && sub_device_entry == this->id_) {
+            sub_device_entry = std::nullopt;
+        }
+    }
     return event;
 }
 
@@ -643,6 +665,9 @@ void FDMeshCommandQueue::read_l1_data_from_completion_queue(MeshCoreDataReadDesc
 
 void FDMeshCommandQueue::reset_worker_state(
     bool reset_launch_msg_state, uint32_t num_sub_devices, const vector_aligned<uint32_t>& go_signal_noc_data) {
+    auto& sysmem_manager = this->reference_sysmem_manager();
+    sysmem_manager.sub_device_cq_owner().clear();
+    sysmem_manager.sub_device_cq_owner().resize(num_sub_devices);
     in_use_ = true;
     for (auto device : mesh_device_->get_devices()) {
         program_dispatch::reset_worker_dispatch_state_on_device(
