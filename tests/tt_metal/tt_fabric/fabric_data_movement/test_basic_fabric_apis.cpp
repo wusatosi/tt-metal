@@ -714,6 +714,12 @@ TEST_F(Fabric2DPushFixture, TestUnicastRaw1HopS) { RunTestUnicastRaw(this, 1, Ro
 
 TEST_F(Fabric2DPushFixture, TestUnicastRaw2HopS) { RunTestUnicastRaw(this, 2, RoutingDirection::S); }
 
+TEST_F(Fabric2DPushFixture, TestUnicastRaw) {
+    for (uint32_t i = 0; i < 10; i++) {
+        RunTestUnicastRaw(this);
+    }
+}
+
 TEST_F(Fabric2DPushFixture, TestUnicastConnAPI) { RunTestUnicastConnAPI(this, 1); }
 
 TEST_F(Fabric2DPushFixture, TestMCastConnAPI) { RunTestMCastConnAPI(this); }
