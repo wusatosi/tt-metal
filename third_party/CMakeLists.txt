@@ -178,7 +178,7 @@ CPMAddPackage(
     GITHUB_REPOSITORY xtensor-stack/xtensor
     GIT_TAG 0.26.0
     PATCHES
-        xtensor.patch
+        /tmp/xtensor.patch
     OPTIONS
         "CMAKE_MESSAGE_LOG_LEVEL NOTICE"
         "XTENSOR_ENABLE_TESTS OFF"
