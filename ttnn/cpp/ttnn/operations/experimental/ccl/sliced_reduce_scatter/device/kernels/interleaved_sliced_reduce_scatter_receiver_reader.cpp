@@ -66,10 +66,8 @@ void kernel_main() {
     uint32_t hop_count = 0;
     uint32_t dst_ring_id;
     for (uint32_t i = 0; i < ring_size; ++i) {
-        // for (uint32_t i = 0; i < 2; ++i) {
         // This is the inverse of the sender reader logic
         const bool do_reduce = i != 0;
-        DPRINT << "do_reduce " << (uint32_t)do_reduce << ENDL();
         hop_count++;
 
         if (my_cur_is_forward) {
@@ -85,8 +83,6 @@ void kernel_main() {
         DPRINT << "dst_ring_id " << dst_ring_id << ENDL();
 
         if (i == ring_size - 1) {
-            // continue;
-            // TODO: synchronize with matmul and ensure all other receivers have finished
             // Follows same logic as sender reader for local copy.
             uint32_t shard_row_start_id = my_ring_id * input_row_device_stride;
             uint32_t shard_col_start_id = my_ring_id * input_col_device_stride;
@@ -100,11 +96,9 @@ void kernel_main() {
                     uint32_t intermed_row_id = row_tile_id + shard_row_start_id;
                     uint32_t intermed_col_id = col_tile_id + shard_col_start_id;
                     uint32_t intermed_tile_id = intermed_row_id * in_col_tiles + intermed_col_id;
-                    // DPRINT << "tile_id: " << tile_id << "\n";
 
                     // Local read
                     cb_reserve_back(input_cb_id, num_pages_per_packet);
-                    // DPRINT << "reserve input cb col_tile_id " << col_tile_id << ENDL();
                     const uint32_t l1_write_addr_base = get_write_ptr(input_cb_id);
                     uint32_t l1_write_addr = l1_write_addr_base;
 
@@ -121,7 +115,6 @@ void kernel_main() {
                     // Accumulator read
                     cb_reserve_back(sync_cb_id, 1);
                     cb_reserve_back(accumulator_cb_id, num_pages_per_packet);
-                    // DPRINT << "reserve accumulator cb col_tile_id " << col_tile_id << ENDL();
                     uint32_t accumulator_l1_write_addr = get_write_ptr(accumulator_cb_id);
 
                     uint32_t tile_id = row_tile_id * out_col_tiles + col_tile_id;
@@ -136,13 +129,10 @@ void kernel_main() {
                     cb_push_back(sync_cb_id, 1);
                 }
             }
-            DPRINT << "local copy done" << ENDL();
         } else {
             // // Copy from intermediate buffer to output buffer
             // // Compute where remote sender dumped data into intermediate buffer.
             // // Should follow same logic as sender writer.
-            // DPRINT << "starting remote copy" << ENDL();
-            // TODO: If first receiver, write directly to output cb. otherwise, intermediate cb
             uint32_t cb_in0 = do_reduce ? input_cb_id : reader_output_cb_id;
 
             const uint32_t sender_relative_ring_id = (dst_ring_id < my_ring_id) ? dst_ring_id : dst_ring_id - 1;
@@ -150,9 +140,6 @@ void kernel_main() {
             volatile tt_l1_ptr uint32_t* global_semaphore_ptr =
                 reinterpret_cast<volatile tt_l1_ptr uint32_t*>(global_semaphore_addr[dst_ring_id]);
             uint32_t packet_id = 0;
-
-            // DPRINT << "receiver reader global_semaphore_addr[dst_ring_id]: "
-            //    << (uint32_t)global_semaphore_addr[dst_ring_id] << ENDL();
 
             for (uint32_t out_row_id = out_row_start; out_row_id < out_row_end; out_row_id++) {
                 for (uint32_t out_col_id = out_col_start; out_col_id < out_col_end;
@@ -179,8 +166,6 @@ void kernel_main() {
                         noc_async_read_barrier();
                         volatile tt_l1_ptr uint32_t* packet_data =
                             reinterpret_cast<volatile tt_l1_ptr uint32_t*>(l1_write_addr);
-                        DPRINT << "D" << my_ring_id << ": RECV: iter " << i << " on packet_id: " << packet_id
-                               << " tile id " << first_id << " : " << packet_data[0] << ENDL();
                         l1_write_addr += payload_size_bytes;
                         packet_id++;
                     }
@@ -190,14 +175,11 @@ void kernel_main() {
 
                     if (do_reduce) {
                         // read from output tensor into accumulator_cb
-                        // if (out_col_id < 2) {
                         cb_reserve_back(sync_cb_id, 1);
                         cb_reserve_back(accumulator_cb_id, num_pages_per_packet);
                         uint32_t accumulator_l1_write_addr = get_write_ptr(accumulator_cb_id);
-                        // DPRINT << "reading accumulator row, col: " << out_row_id << ", " << out_col_id << ENDL();
                         uint32_t tile_id = out_row_id * out_col_tiles + out_col_id;
                         for (uint32_t j = 0; j < num_pages_to_read; j++) {
-                            DPRINT << "d" << my_ring_id << " READING TILE " << tile_id << ENDL();
                             noc_async_read_tile(tile_id, output_tensor_addrgen, accumulator_l1_write_addr);
                             accumulator_l1_write_addr += page_size;
                             tile_id++;
@@ -206,17 +188,10 @@ void kernel_main() {
                         noc_async_read_barrier();
                         cb_push_back(accumulator_cb_id, num_pages_per_packet);
                         cb_push_back(sync_cb_id, 1);
-                        DPRINT << "accumulator cb: " << accumulator_cb_id << " sync_cb_id: " << sync_cb_id
-                               << " reader_output_cb_id: " << reader_output_cb_id << ENDL();
-                        // }
                     }
                 }
             }
-            // DPRINT << "remote copy done" << ENDL();
             *reinterpret_cast<volatile tt_l1_ptr uint32_t*>(global_semaphore_addr[dst_ring_id]) = 0;
         }
-
-        // Reset global semaphore
-        // DPRINT << "reset done\n";
     }
 }

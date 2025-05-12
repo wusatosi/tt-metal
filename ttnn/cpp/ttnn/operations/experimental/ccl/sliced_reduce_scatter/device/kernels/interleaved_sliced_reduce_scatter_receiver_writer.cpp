@@ -45,26 +45,9 @@ void kernel_main() {
         .page_size = page_size,
         .data_format = get_dataformat(reader_output_cb_id)};
 
-    // Copy from intermediate buffer to output buffer
-    // Compute where remote sender dumped data into intermediate buffer.
-    // Should follow same logic as sender writer.
-
-    // DPRINT << "out_row_start " << out_row_start << ENDL();
-    // DPRINT << "out_row_end " << out_row_end << ENDL();
-    // DPRINT << "out_col_start " << out_col_start << ENDL();
-    // DPRINT << "out_col_end " << out_col_end << ENDL();
-    // DPRINT << "out_col_tiles " << out_col_tiles << ENDL();
-    // DPRINT << "input_shard_row_tiles " << input_shard_row_tiles << ENDL();
-    // DPRINT << "input_shard_col_tiles " << input_shard_col_tiles << ENDL();
-
     for (uint32_t device_id = 0; device_id < ring_size; device_id++) {
-        // if (device_id > 1) {
-        //     continue;
-        // }
         uint32_t output_cb = device_id > 0 ? compute_output_cb_id : reader_output_cb_id;
-        // if (device_id >= 2) {
-        //     continue;
-        // }
+
         uint32_t tiles_written = 0;
         for (uint32_t out_row_id = out_row_start; out_row_id < out_row_end; out_row_id++) {
             for (uint32_t out_col_id = out_col_start; out_col_id < out_col_end; out_col_id += num_pages_per_packet) {
@@ -73,9 +56,7 @@ void kernel_main() {
                 uint32_t pages_received_ptr = (uint32_t)get_cb_tiles_received_ptr(output_cb);
                 uint32_t received_data = reg_read(pages_received_ptr);
                 uint16_t pages_received = ((uint16_t)received_data) - pages_acked;
-                DPRINT << "WRITER: pages_acked: " << pages_acked << " received_data: " << received_data
-                       << " pages_received: " << pages_received << ENDL();
-                // DPRINT << "wait front output cb col_tile_id " << out_col_id << ENDL();
+
                 size_t l1_read_addr = get_read_ptr(output_cb);
                 uint32_t num_pages_to_read = std::min(out_col_end - out_col_id, num_pages_per_packet);
 
@@ -85,8 +66,7 @@ void kernel_main() {
                     uint32_t tile_id = out_row_id * out_col_tiles + col_tile;
                     noc_async_write_tile(tile_id, output_tensor_addrgen, l1_read_addr);
                     tiles_written++;
-                    DPRINT << "d" << device_id << " WRITER WRITING TILE " << tile_id << " to output_cb " << output_cb
-                           << ENDL();
+
                     l1_read_addr += page_size;
                 }
                 noc_async_write_barrier();
@@ -98,9 +78,6 @@ void kernel_main() {
                 }
             }
         }
-        DPRINT << "Finished writing shard " << device_id << ENDL();
-        // DPRINT << "tiles_written " << tiles_written << ENDL();
-        // DPRINT << "Done writing shard " << device_id << ENDL();
     }
     noc_async_write_barrier();
 }

@@ -43,27 +43,22 @@ namespace sliced_reduce_scatter_detail {
 // Configuration constants
 constexpr uint32_t MIN_CHUNK_GRANULARITY = 4;
 constexpr uint32_t MAX_CHUNKS_PER_SHARD = 30;
-constexpr uint32_t TRIPLE_BUFFER_MULTIPLIER = 1;
+constexpr uint32_t TRIPLE_BUFFER_MULTIPLIER = 3;
 constexpr uint32_t PACKET_HEADER_BUFFER_SIZE = 8;
 
 // Calculate optimal chunk parameters to keep num_chunks < MAX_CHUNKS_PER_SHARD
 std::tuple<uint32_t, uint32_t, uint32_t> calculate_chunk_params(uint32_t pages_per_shard, uint32_t pages_per_packet) {
-    uint32_t chunk_granularity = pages_per_shard / pages_per_packet;
-    uint32_t chunk_tiles = pages_per_shard;
-    uint32_t num_chunks = 1;
-    return {chunk_granularity, chunk_tiles, num_chunks};
+    uint32_t chunk_granularity = MIN_CHUNK_GRANULARITY;
 
-    // uint32_t chunk_granularity = MIN_CHUNK_GRANULARITY;
+    while (true) {
+        const uint32_t chunk_tiles = chunk_granularity * pages_per_packet;
+        const uint32_t num_chunks = tt::div_up(pages_per_shard, chunk_tiles);
 
-    // while (true) {
-    //     const uint32_t chunk_tiles = chunk_granularity * pages_per_packet;
-    //     const uint32_t num_chunks = tt::div_up(pages_per_shard, chunk_tiles);
-
-    //     if (num_chunks < MAX_CHUNKS_PER_SHARD) {
-    //         return {chunk_granularity, chunk_tiles, num_chunks};
-    //     }
-    //     chunk_granularity *= 2;
-    // }
+        if (num_chunks < MAX_CHUNKS_PER_SHARD) {
+            return {chunk_granularity, chunk_tiles, num_chunks};
+        }
+        chunk_granularity *= 2;
+    }
 }
 
 // Create circular buffers for sender cores

@@ -64,31 +64,12 @@ void kernel_main() {
     tt_l1_ptr uint32_t* global_semaphore_addr = (tt_l1_ptr uint32_t*)get_arg_addr(arg_idx);
     arg_idx += ring_size;
     size_t arg_for_fab = arg_idx;
-    // DPRINT << "arg_for_fab: " << (uint32_t)arg_for_fab << "\n";
     auto fabric_connection = FabricConnectionManager::build_from_args(arg_idx);
 
     constexpr uint32_t out_row_start = 0;
     constexpr uint32_t out_col_start = 0;
     uint32_t out_row_end = out_row_start + input_shard_row_tiles;
     uint32_t out_col_end = out_col_start + input_shard_col_tiles;
-
-    // DPRINT << "ct args: \n";
-    // DPRINT << "my_ring_id: " << (uint32_t)my_ring_id << "\n";
-    // DPRINT << "reserved_packet_header_cb_id: " << (uint32_t)reserved_packet_header_cb_id << "\n";
-    // DPRINT << "num_packet_headers_storable: " << (uint32_t)num_packet_headers_storable << "\n";
-    // DPRINT << "buffer0_type: " << (uint32_t)buffer0_type << "\n";
-    // DPRINT << "cb0_id: " << (uint32_t)cb0_id << "\n";
-    // DPRINT << "packet_size_in_pages: " << (uint32_t)packet_size_in_pages << "\n";
-    // DPRINT << "tensor0_page_size: " << (uint32_t)tensor0_page_size << "\n";
-    // DPRINT << "num_targets_forward_direction: " << (uint32_t)num_targets_forward_direction << "\n";
-    // DPRINT << "num_targets_backward_direction: " << (uint32_t)num_targets_backward_direction << "\n";
-
-    // DPRINT << "arg_for_fab: " << (uint32_t)arg_for_fab << "\n";
-    // DPRINT << "fabric_connection arg 0" << get_arg_val<uint32_t>(arg_for_fab++) << "\n";
-    // DPRINT << "fabric_connection arg 1" << get_arg_val<uint32_t>(arg_for_fab++) << "\n";
-    // DPRINT << "fabric_connection arg 2" << get_arg_val<uint32_t>(arg_for_fab++) << "\n";
-    // DPRINT << "fabric_connection arg 3" << get_arg_val<uint32_t>(arg_for_fab++) << "\n";
-    // DPRINT << "fabric_connection arg 4" << get_arg_val<uint32_t>(arg_for_fab++) << "\n";
 
     // packet header cb
     cb_reserve_back(reserved_packet_header_cb_id, 1);
@@ -100,9 +81,6 @@ void kernel_main() {
     cb_reserve_back(reserved_packet_header_cb_id, 1);
     auto packet_header_buffer_seminc = get_write_ptr(reserved_packet_header_cb_id);
     cb_push_back(reserved_packet_header_cb_id, 1);
-    // DPRINT << "packet_header_buffer_addr_forward: " << (uint32_t)packet_header_buffer_addr_forward << "\n";
-    // DPRINT << "packet_header_buffer_addr_backward: " << (uint32_t)packet_header_buffer_addr_backward << "\n";
-    // DPRINT << "packet_header_buffer_seminc: " << (uint32_t)packet_header_buffer_seminc << "\n";
 
     // pre-populate packet headers
     volatile PACKET_HEADER_TYPE* pkt_hdr_forward =
@@ -119,27 +97,15 @@ void kernel_main() {
     auto output_tensor_addrgen = InterleavedAddrGenFast<is_dram>{
         .bank_base_address = output_buffer_addr, .page_size = tensor0_page_size, .data_format = get_dataformat(cb0_id)};
 
-    // DPRINT << "fabric_connection.is_logically_connected(): " << (uint32_t)fabric_connection.is_logically_connected()
-    //    << "\n";
     if (fabric_connection.is_logically_connected()) {
         fabric_connection.open();
     }
-
-    // DPRINT << "device " << (uint32_t)my_ring_id << " opened fabric\n";
-
-    // DPRINT << "num_targets_forward_direction: " << num_targets_forward_direction << "\n";
-    // DPRINT << "num_targets_backward_direction: " << num_targets_backward_direction << "\n";
-    // DPRINT << "my_ring_id: " << my_ring_id << "\n";
-
-    // DPRINT << "tensor -> CB: " << (uint32_t)cb0_id << "\n";
-    // DPRINT << "packet size in pages: " << (uint32_t)packet_size_in_pages << "\n";
 
     bool cur_is_forward = num_targets_forward_direction > num_targets_backward_direction;
     uint32_t forward_hops = 1;
     uint32_t backward_hops = 1;
     uint32_t dst_ring_id;
     for (uint32_t i = 0; i < ring_size - 1; ++i) {
-        // for (uint32_t i = 0; i < 1; ++i) {
         if (forward_hops == num_targets_forward_direction + 1) {
             cur_is_forward = false;
         }
@@ -159,15 +125,10 @@ void kernel_main() {
         volatile PACKET_HEADER_TYPE* pkt_hdr =
             reinterpret_cast<volatile PACKET_HEADER_TYPE*>(packet_header_buffer_seminc);
 
-        // DPRINT << "sender writer global_semaphore_addr[my_ring_id]: " << (uint32_t)global_semaphore_addr[my_ring_id]
-        //    << ENDL();
-
         pkt_hdr->to_noc_unicast_atomic_inc(tt::tt_fabric::NocUnicastAtomicIncCommandHeader{
             output_semaphore_noc_addr_in_pkt,
             static_cast<uint16_t>(1),  // increment 1
             32});
-
-        // DPRINT << "from device " << (uint32_t)my_ring_id << " to device " << (uint32_t)dst_ring_id << "\n";
 
         const uint32_t my_relative_ring_id = (my_ring_id < dst_ring_id) ? my_ring_id : my_ring_id - 1;
         uint32_t packet_id = 0;
@@ -191,8 +152,6 @@ void kernel_main() {
                     packet_id++;  // increment packet_id for chunk calculation
                     volatile tt_l1_ptr uint32_t* packet_data =
                         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(l1_read_addr);
-                    DPRINT << "D" << my_ring_id << ": SEND: iter " << i << " on packet_id: " << packet_id << " tile_id "
-                           << first_id << " data: " << packet_data[0] << ENDL();
 
                     uint64_t noc0_dest_noc_addr =
                         get_noc_addr(first_id, intermediate_tensor_addrgen, 0 /*offset*/, 0 /*noc_id*/);
@@ -284,6 +243,4 @@ void kernel_main() {
     }
 
     noc_async_write_barrier();
-
-    DPRINT << "DONE \n";
 }
