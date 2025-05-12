@@ -105,20 +105,13 @@ class TtCombinedTimestepTextProjEmbeddings:
             return from_torch_fast(
                 torch_out,
                 device=self._device,
-                dtype=timestep.dtype,
-                layout=timestep.layout,
-                # shard_dim=-1,
+                dtype=pooled_projection.dtype,
+                layout=ttnn.TILE_LAYOUT,
             )
 
         assert timestep.shape[0] == self._time_proj_factor.shape[0], "timestep needs correct batch size"
 
-        batch_size = timestep.shape[0]
-
-        # time_proj_factor = ttnn.repeat(self._time_proj_factor, ttnn.Shape([batch_size, 1]))
-        # time_proj_factor = ttnn.to_layout(time_proj_factor, ttnn.TILE_LAYOUT)
-        time_proj_factor = ttnn.to_layout(self._time_proj_factor, ttnn.TILE_LAYOUT)
-
-        emb = timestep * time_proj_factor
+        emb = timestep * self._time_proj_factor
 
         c = ttnn.cos(emb)
         s = ttnn.sin(emb)
@@ -142,7 +135,12 @@ class TtCombinedTimestepTextProjEmbeddings:
         exponent = exponent / half_dim
         factor = torch.exp(exponent).unsqueeze(0).repeat(batch_size, 1)
 
-        return ttnn.from_torch(factor, device=device, mesh_mapper=ttnn.ReplicateTensorToMesh(device))
+        return ttnn.from_torch(
+            factor,
+            device=device,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(device),
+            layout=ttnn.TILE_LAYOUT,
+        )
 
 
 class _TimestepEmbedding:
