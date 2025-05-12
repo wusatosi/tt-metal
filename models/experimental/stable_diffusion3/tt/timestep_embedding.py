@@ -111,7 +111,13 @@ class TtCombinedTimestepTextProjEmbeddings:
 
         assert timestep.shape[0] == self._time_proj_factor.shape[0], "timestep needs correct batch size"
 
-        emb = timestep * self._time_proj_factor
+        # Elementwise multiplication is inaccurate here. Not sure if problematic.
+        emb = from_torch_fast(
+            to_torch(timestep) * to_torch(self._time_proj_factor),
+            device=self._device,
+            dtype=ttnn.float32,
+            layout=ttnn.TILE_LAYOUT,
+        )
 
         c = ttnn.cos(emb)
         s = ttnn.sin(emb)
