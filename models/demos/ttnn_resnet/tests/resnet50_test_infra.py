@@ -26,6 +26,13 @@ from models.demos.ttnn_resnet.tt.custom_preprocessing import create_custom_mesh_
 from models.demos.ttnn_resnet.tt.ttnn_functional_resnet50 import resnet50
 
 
+def p(x, a="x"):
+    print(f"{a}'s  shape: {x.shape}")
+    print(f"{a}'s  layout: {x.layout}")
+    print(f"{a}'s  dtype: {x.dtype}")
+    print(f"{a}'s config: {x.memory_config()}")
+
+
 def load_resnet50_model(model_location_generator):
     # TODO: Can generalize the version to an arg
     torch_resnet50 = None
@@ -285,6 +292,7 @@ class ResNet50TestInfra:
         n = n // self.num_devices
 
         # sharded mem config for fold input
+        # core_grid = ttnn.CoreGrid(y=8, x=8)
         num_cores = core_grid.x * core_grid.y
         shard_h = (n * c * h + num_cores - 1) // num_cores
         grid_size = core_grid
@@ -300,6 +308,8 @@ class ResNet50TestInfra:
             layout=ttnn.ROW_MAJOR_LAYOUT,
             mesh_mapper=self.inputs_mesh_mapper,
         )
+        print("t4ensorh here", tt_inputs_host.shape)
+        p(tt_inputs_host, "input before")
         return tt_inputs_host, input_mem_config
 
     def setup_dram_sharded_input(self, device, torch_input_tensor=None):

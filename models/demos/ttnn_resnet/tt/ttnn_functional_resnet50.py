@@ -66,6 +66,13 @@ ops_parallel_config = {
 }
 
 
+def p(x, a="x"):
+    print(f"{a}'s  shape: {x.shape}")
+    print(f"{a}'s  layout: {x.layout}")
+    print(f"{a}'s  dtype: {x.dtype}")
+    print(f"{a}'s config: {x.memory_config()}")
+
+
 def ResnetLinear(
     in_features: int,
     out_features: int,
@@ -615,6 +622,14 @@ class resnet50:
         self.conv1_bias_tensor = parameters.conv1.bias
         self.conv1_input_channels = self.conv1_weight_tensor.shape[1]
         self.conv1_output_channels = self.conv1_weight_tensor.shape[0]
+        print(
+            "values are",
+            self.conv1_weight_tensor.shape,
+            self.conv1_bias_tensor.shape,
+            self.conv1_input_channels,
+            self.conv1_output_channels,
+        )
+        # ss
         assert self.conv1_weight_tensor.shape[2] == 4
 
         self.layer1 = self._make_layer(
@@ -715,6 +730,7 @@ class resnet50:
             math_fidelity=self.model_config["MATH_FIDELITY"],
             packer_l1_acc=True,
         )
+        print("configs are", self.conv1_config, self.conv1_compute_config)
         if is_wormhole_b0():
             # Issue #13145: Temp workaround for Galaxy to avoid hangs
             if device.get_num_devices() > 8:
@@ -733,7 +749,7 @@ class resnet50:
         self.conv1_output_width = (
             (self.conv1_input_width - self.conv1_kernel_size[1] + 2 * self.conv1_padding[1]) // self.conv1_stride[1]
         ) + 1
-
+        print("conv1 params are", self.conv1_output_height, self.conv1_output_width)
         # fold params
         self.fold_stride_h = stride
         self.fold_stride_w = stride
@@ -742,6 +758,7 @@ class resnet50:
         h += kernel_size * 2
         w += kernel_size * 2
         C = _nearest_y(c, 4)
+        print("small na fbig C", c, C)
         self.fold_pad_c = C - c
         self.fold_pad_h = kernel_size
         self.fold_pad_w = kernel_size
@@ -751,6 +768,7 @@ class resnet50:
             w // self.fold_stride_w,
             C * (self.fold_stride_h * self.fold_stride_w),
         )
+        print("folding params", self.fold_pad_c, self.fold_pad_h, self.fold_pad_w, self.fold_output_shape)
         num_cores_x = 8
         num_cores_y = 8
         if self.batch_size == 16:
@@ -796,6 +814,7 @@ class resnet50:
             self.conv1_config.input_channels_alignment,
             is_grayskull() or is_blackhole(),
         )
+        print("over ridde config", self.override_fold_mem_config)
 
     def __del__(self):
         # Nothing to do
@@ -849,6 +868,7 @@ class resnet50:
         logger.debug(f"==== fold on device")
 
         # run fold
+        p(input_tensor, "input_tensor")
         fold_output_tensor = ttnn.fold(
             input_tensor,
             self.fold_stride_h,
@@ -860,9 +880,10 @@ class resnet50:
             grid_size=self.fold_compute_grid_size,
             override_memory_config=self.override_fold_mem_config,
         )
+        p(fold_output_tensor, "fold_output_tensor")
         n, c, h, w = fold_output_tensor.shape
         fold_output_tensor = ttnn.reshape(fold_output_tensor, (1, 1, n * c * h, w))
-
+        p(fold_output_tensor, "fold_output_tensor after reshape")
         ttnn.deallocate(input_tensor)
 
         logger.debug(f"==== first conv")
@@ -901,7 +922,8 @@ class resnet50:
             )
             self.conv1_weight_tensor = ttnn.to_device(self.conv1_weight_tensor, device)
             self.conv1_bias_tensor = ttnn.to_device(self.conv1_bias_tensor, device)
-
+        p(self.conv1_weight_tensor, "weights")
+        p(self.conv1_bias_tensor, "bias")
         x, [x_height, x_width] = ttnn.conv2d(
             input_tensor=fold_output_tensor,
             weight_tensor=self.conv1_weight_tensor,
@@ -911,7 +933,9 @@ class resnet50:
             return_output_dim=True,
             return_weights_and_bias=False,
         )
-
+        p(x, "1st conv out")
+        print("h,w after 1st conv", [x_height, x_width])
+        ss
         # Relu is fused with conv1
         if self.batch_size == 20:
             x = ttnn.reallocate(x)

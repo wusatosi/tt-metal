@@ -44,6 +44,7 @@ def custom_preprocessor(
             )
     elif isinstance(model, torchvision.models.resnet.ResNet):
         conv1_weight, conv1_bias = fold_batch_norm2d_into_conv2d(model.conv1, model.bn1)
+        print("this isc alled")
         conv1_weight = pad_and_fold_conv_filters_for_unity_stride(conv1_weight, 2, 2)
         parameters["conv1"] = {}
         parameters["conv1"]["weight"] = ttnn.from_torch(conv1_weight, mesh_mapper=mesh_mapper)

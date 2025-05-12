@@ -13,10 +13,11 @@ from ttnn.model_preprocessing import (
     preprocess_linear_weight,
     preprocess_linear_bias,
 )
-from models.demos.ufld_v2.reference.ufld_v2_model import TuSimple34, BasicBlock
+from models.demos.ufld_v2.reference.ufld_v2_model import TuSimple34, BasicBlock, CustomResNet34
 from models.demos.ufld_v2.ttnn.ttnn_ufld_v2 import TtnnUFLDv2
 from models.demos.ufld_v2.ttnn.ttnn_basic_block import TtnnBasicBlock
 from tests.ttnn.utils_for_testing import assert_with_pcc
+from models.utility_functions import pad_and_fold_conv_filters_for_unity_stride
 
 
 def custom_preprocessor_basic_block(model, name):
@@ -39,13 +40,24 @@ def custom_preprocessor_basic_block(model, name):
 
 def custom_preprocessor_whole_model(model, name):
     parameters = {}
-    if isinstance(model, TuSimple34):
-        weight, bias = fold_batch_norm2d_into_conv2d(model.res_model.conv1, model.res_model.bn1)
-        parameters["res_model"] = {}
+    parameters["res_model"] = {}
+    if isinstance(model.res_model, CustomResNet34):
+        print("it is ntering", model.res_model)
+        print("befroe shapes are", model.res_model.conv1, model.res_model.bn1)
         parameters["res_model"]["conv1"] = {}
-        parameters["res_model"]["conv1"]["weight"] = ttnn.from_torch(weight, dtype=ttnn.float32)
-        bias = bias.reshape((1, 1, 1, -1))
-        parameters["res_model"]["conv1"]["bias"] = ttnn.from_torch(bias, dtype=ttnn.float32)
+        conv1_weight, conv1_bias = fold_batch_norm2d_into_conv2d(model.res_model.conv1, model.res_model.bn1)
+        print("after fold are", conv1_weight.shape, conv1_bias.shape, conv1_bias.shape)
+        # print("this isc alled")
+        conv1_weight = pad_and_fold_conv_filters_for_unity_stride(conv1_weight, 2, 2)
+        print("after pad and fold", conv1_weight.shape)
+        parameters["res_model"]["conv1"]["weight"] = ttnn.from_torch(conv1_weight)
+        parameters["res_model"]["conv1"]["bias"] = ttnn.from_torch(torch.reshape(conv1_bias, (1, 1, 1, -1)))
+    if isinstance(model, TuSimple34):
+        # weight, bias = fold_batch_norm2d_into_conv2d(model.res_model.conv1, model.res_model.bn1)
+        # parameters["res_model"]["conv1"] = {}
+        # parameters["res_model"]["conv1"]["weight"] = ttnn.from_torch(weight, dtype=ttnn.float32)
+        # bias = bias.reshape((1, 1, 1, -1))
+        # parameters["res_model"]["conv1"]["bias"] = ttnn.from_torch(bias, dtype=ttnn.float32)
 
         weight, bias = fold_batch_norm2d_into_conv2d(model.res_model.layer1[0].conv1, model.res_model.layer1[0].bn1)
         parameters["res_model"]["layer1_0"] = {}
