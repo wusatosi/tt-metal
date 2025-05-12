@@ -129,6 +129,31 @@ int main(int argc, char** argv) {
     bool disable_sends_for_interior_workers = std::stoi(argv[arg_idx++]);
     bool unidirectional_test = std::stoi(argv[arg_idx++]);
     bool senders_are_unidirectional = std::stoi(argv[arg_idx++]);
+    std::string device_pairs_str = argv[arg_idx++];
+
+    std::vector<DevicePair> device_pairs;
+
+    std::stringstream ss(device_pairs_str);
+    std::string pair_str;
+
+    // Parse the device pairs
+    while (std::getline(ss, pair_str, ' ')) {
+        // Example format: "(0,0)-(0,1)"
+        size_t x1, y1, x2, y2;
+        char discard;  // to discard the parentheses and commas
+
+        std::stringstream pair_stream(pair_str);
+        pair_stream >> discard >> x1 >> discard >> y1 >> discard >> discard >> discard >> x2 >> discard >> y2 >>
+            discard;
+
+        device_pairs.push_back({{x1, y1}, {x2, y2}});  // Store the pair as std::pair
+    }
+
+    // Output the parsed device pairs
+    for (const auto& pair : device_pairs) {
+        std::cout << "Device Pair: (" << pair.dev_a.first << "," << pair.dev_a.second << ") and (" << pair.dev_b.first
+                  << "," << pair.dev_b.second << ")" << std::endl;
+    }
 
     // WriteThroughputStabilityTestWithPersistentFabricParams params;
     TestParams test_params;
@@ -144,6 +169,7 @@ int main(int argc, char** argv) {
     test_params.params.disable_end_workers_in_backward_direction = unidirectional_test;
     test_params.params.senders_are_unidirectional = senders_are_unidirectional;
     test_params.message_noc_type = message_noc_type;
+    test_params.device_pairs = device_pairs;
 
     auto rc = baseline_validate_test_environment(test_params.params);
     if (rc != 0) {
