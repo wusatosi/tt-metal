@@ -110,6 +110,8 @@ class TtCombinedTimestepTextProjEmbeddings:
                 # shard_dim=-1,
             )
 
+        assert timestep.shape[0] == self._time_proj_factor.shape[0], "timestep needs correct batch size"
+
         batch_size = timestep.shape[0]
 
         # time_proj_factor = ttnn.repeat(self._time_proj_factor, ttnn.Shape([batch_size, 1]))
