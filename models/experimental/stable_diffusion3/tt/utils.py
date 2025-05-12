@@ -218,14 +218,6 @@ def all_gather(
     return x
 
 
-def silu_cpu(x: ttnn.Tensor, *, device: ttnn.MeshDevice) -> ttnn.Tensor:
-    torch_x = to_torch(x, shard_dim=0).to(torch.float32)
-    torch_result = torch.nn.functional.silu(torch_x)
-    return from_torch_fast(
-        torch_result,
-        device=device,
-        shard_dim=0,
-        layout=x.layout,
-        dtype=x.dtype,
-        memory_config=x.memory_config(),
-    )
+def silu(x: ttnn.Tensor) -> ttnn.Tensor:
+    """More accurate version of `ttnn.silu`"""
+    return ttnn.div(x, ttnn.exp(ttnn.neg(x)) + 1)

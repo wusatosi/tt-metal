@@ -273,7 +273,7 @@ class TtTransformerBlock:
             )
             return spatial, prompt
 
-        t = utils.silu_cpu(time_embed, device=self._device)
+        t = utils.silu(time_embed)
 
         spatial_time = self._spatial_time_embed(t, memory_config=ttnn.DRAM_MEMORY_CONFIG)
         prompt_time = self._prompt_time_embed(t, memory_config=ttnn.DRAM_MEMORY_CONFIG)
