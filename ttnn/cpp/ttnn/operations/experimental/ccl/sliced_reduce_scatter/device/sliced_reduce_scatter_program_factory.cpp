@@ -229,6 +229,7 @@ tt::tt_metal::operation::ProgramWithCallbacks sliced_reduce_scatter_async_minima
         tt::LogOp,
         "chunk_granularity: {}, chunk_num_tiles: {}, num_chunks_per_shard: {}",
         chunk_granularity,
+        chunk_num_tiles,
         num_chunks_per_shard);
 
     // Verify constraints
@@ -504,7 +505,7 @@ tt::tt_metal::operation::ProgramWithCallbacks sliced_reduce_scatter_async_minima
             receiver_core_y,
             // semaphore.address(),
         };
-        sender_writer_global_semaphore_args_idx = writer_rt_args.size() - 1;
+        sender_writer_global_semaphore_args_idx = writer_rt_args.size();
         writer_rt_args.insert(writer_rt_args.end(), semaphore_addresses.begin(), semaphore_addresses.end());
 
         log_trace(tt::LogOp, "Writer Runtime Args:");
@@ -543,7 +544,7 @@ tt::tt_metal::operation::ProgramWithCallbacks sliced_reduce_scatter_async_minima
                 out_col_tiles,
                 pages_per_packet,
             };
-            receiver_reader_global_semaphore_args_idx = receiver_reader_rt_args.size() - 1;
+            receiver_reader_global_semaphore_args_idx = receiver_reader_rt_args.size();
             receiver_reader_rt_args.insert(
                 receiver_reader_rt_args.end(), semaphore_addresses.begin(), semaphore_addresses.end());
             tt::tt_metal::SetRuntimeArgs(program, receiver_reader_kernel_id, {core}, receiver_reader_rt_args);

@@ -21,39 +21,41 @@ def run_with_trace(
     num_links,
     output_mem_config,
     multi_device_global_semaphore,
-    num_iter=20,
     subdevice_id=None,
 ):
     # Compile Run
     logger.info("Compiling model")
-    tt_out_tensor = ttnn.experimental.sliced_reduce_scatter_async(
-        input_tensor,
-        scatter_dim=scatter_dim,
-        persistent_intermediate_buffer=persistent_intermediate_buffer,
-        persistent_output_buffer=persistent_output_buffer,
-        multi_device_global_semaphore=multi_device_global_semaphore,
-        num_links=num_links,
-        memory_config=output_mem_config,
-        topology=topology,
-        subdevice_id=subdevice_id,
-    )
-    ttnn.synchronize_device(mesh_device)
-
-    # Capture trace
-    logger.info("Capturing trace")
-    trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
-    for i in range(num_iter):
+    for i in range(len(input_tensor)):
         tt_out_tensor = ttnn.experimental.sliced_reduce_scatter_async(
-            input_tensor,
+            input_tensor[i],
             scatter_dim=scatter_dim,
-            persistent_intermediate_buffer=persistent_intermediate_buffer,
-            persistent_output_buffer=persistent_output_buffer,
-            multi_device_global_semaphore=multi_device_global_semaphore,
+            persistent_intermediate_buffer=persistent_intermediate_buffer[i],
+            persistent_output_buffer=persistent_output_buffer[i],
+            multi_device_global_semaphore=multi_device_global_semaphore[i],
             num_links=num_links,
             memory_config=output_mem_config,
             topology=topology,
             subdevice_id=subdevice_id,
         )
+    ttnn.synchronize_device(mesh_device)
+
+    # Capture trace
+    logger.info("Capturing trace")
+    trace_id = ttnn.begin_trace_capture(mesh_device, cq_id=0)
+    tt_out_tensor_list = []
+    for i in range(len(input_tensor)):
+        tt_out_tensor = ttnn.experimental.sliced_reduce_scatter_async(
+            input_tensor[i],
+            scatter_dim=scatter_dim,
+            persistent_intermediate_buffer=persistent_intermediate_buffer[i],
+            persistent_output_buffer=persistent_output_buffer[i],
+            multi_device_global_semaphore=multi_device_global_semaphore[i],
+            num_links=num_links,
+            memory_config=output_mem_config,
+            topology=topology,
+            subdevice_id=subdevice_id,
+        )
+        tt_out_tensor_list.append(tt_out_tensor)
     ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
     ttnn.synchronize_device(mesh_device)
 
@@ -63,7 +65,7 @@ def run_with_trace(
     ttnn.release_trace(mesh_device, trace_id)
     ttnn.synchronize_device(mesh_device)
 
-    return tt_out_tensor
+    return tt_out_tensor_list
 
 
 def run_sliced_reduce_scatter_impl(
@@ -163,20 +165,18 @@ def run_sliced_reduce_scatter_impl(
 
     tt_out_tensor_list = []
     if trace_mode:
-        tt_out_tensor = run_with_trace(
+        tt_out_tensor_list = run_with_trace(
             mesh_device,
             topology,
-            input_tensor_mesh_list[0],
-            persistent_intermediate_buffers[0],
-            persistent_output_buffers[0],
+            input_tensor_mesh_list,
+            persistent_intermediate_buffers,
+            persistent_output_buffers,
             scatter_dim,
             num_links,
             output_mem_config,
-            multi_device_global_semaphore=ccl_semaphore_handles[0],
-            num_iter=num_iters,
+            multi_device_global_semaphore=ccl_semaphore_handles,
             subdevice_id=worker_sub_device_id,
         )
-        tt_out_tensor_list.append(tt_out_tensor)
     else:
         for i in range(num_iters):
             tt_out_tensor = ttnn.experimental.sliced_reduce_scatter_async(
@@ -223,9 +223,7 @@ def run_sliced_reduce_scatter_impl(
                     passed = False
 
     assert (
-        mesh_device.num_program_cache_entries() == 1
-        if trace_mode
-        else mesh_device.num_program_cache_entries() == num_iters
+        mesh_device.num_program_cache_entries() == num_iters
     ), f"Device has {mesh_device.num_program_cache_entries()} program cache entries"
 
     mesh_device.reset_sub_device_stall_group()
@@ -257,7 +255,7 @@ def run_sliced_reduce_scatter_impl(
 )
 @pytest.mark.parametrize(
     "num_iters, do_check, reuse_inputs",
-    [(1, True, False), (6, False, True), (20, False, True)],
+    [(1, True, False), (6, False, False), (20, False, True)],
     ids=["check", "perf", "stress"],
 )
 @pytest.mark.parametrize(
