@@ -15,6 +15,10 @@
 using address_t = uint32_t;
 using tt::tt_metal::BufferType;
 
+constexpr uint32_t cb_index = get_compile_time_arg_val(0);
+
+// constexpr uint32_t dst_cb_index = get_compile_time_arg_val(1);
+
 void kernel_main() {
     ///////////////////////////////////////////////////
     // ARGS
@@ -22,20 +26,44 @@ void kernel_main() {
 
     DPRINT << "HELLO FROM READER\n";
     size_t arg_idx = 0;
-    uint32_t tensor_address0 = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t input_tensor_address = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t output_tensor_address = get_arg_val<uint32_t>(arg_idx++);
     const uint32_t receiver_semaphore_address = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t input_num_tiles = get_arg_val<uint32_t>(arg_idx++);
     uint32_t device_id = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t device_order = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t input_tensor_page_size = get_arg_val<uint32_t>(arg_idx++);
+
+    auto tensor0_addrgen = InterleavedAddrGenFast<true>{
+        .bank_base_address = input_tensor_address,
+        .page_size = input_tensor_page_size,
+        .data_format = get_dataformat(cb_index)};
+
+    auto output_tensor_addrgen = InterleavedAddrGenFast<true>{
+        .bank_base_address = output_tensor_address,
+        .page_size = input_tensor_page_size,
+        .data_format = get_dataformat(cb_index)};
+
+    uint32_t tile_id = 0;
+    for (; tile_id < input_num_tiles; tile_id++) {
+        cb_reserve_back(cb_index, 1);
+        tensor0_addrgen.noc_async_read_tile(tile_id, get_write_ptr(cb_index));
+        noc_async_read_barrier();
+        cb_push_back(cb_index, 1);
+    }
+
+    tile_id = 0;
+    for (; tile_id < input_num_tiles; tile_id++) {
+        cb_reserve_back(cb_index, 1);
+        tensor0_addrgen.noc_async_read_tile(tile_id, get_write_ptr(cb_index));
+        noc_async_read_barrier();
+        cb_push_back(cb_index, 1);
+    }
 
     volatile tt_l1_ptr uint32_t* signal_semaphore_addr_ptr =
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(receiver_semaphore_address);
 
-    DPRINT << "WAITING ON SEMAPHORE \n";
-    // noc_semaphore_wait(signal_semaphore_addr_ptr, 1);
-    while (1) {
-        DPRINT << "device_id: " << device_id << " SEM VALUE: " << (uint32_t)*signal_semaphore_addr_ptr << "\n";
-        for (int i = 0; i < 1000000000; i++) {
-        }
-    }
-    DPRINT << "!!!!! READING FROM ETH !!!!\n";
-    DPRINT << "DONE reader.\n";
+    noc_semaphore_wait(signal_semaphore_addr_ptr, 1);
+
+    DPRINT << "DONE READER\n";
 }

@@ -10,6 +10,7 @@
 #include <tt-metalium/device.hpp>
 #include <tt-metalium/fabric.hpp>
 
+#include "ttnn/tensor/tensor.hpp"
 #include "ttnn/tensor/tensor_utils.hpp"
 
 namespace ttnn {
@@ -33,8 +34,19 @@ void Sample::validate(const std::vector<Tensor>& input_tensors) const {
 std::vector<ttnn::TensorSpec> Sample::compute_output_specs(const std::vector<Tensor>& input_tensors) const {
     // Return the same spec as the input tensor
     std::vector<ttnn::TensorSpec> output_specs;
-    output_specs.push_back(input_tensors[0].get_tensor_spec());
+    auto input_shape = input_tensors[0].get_padded_shape();
+    auto output_shape = ttnn::Shape({input_shape[0] * 8, input_shape[1]});
+    output_specs.push_back(ttnn::TensorSpec(output_shape, input_tensors[0].tensor_spec().tensor_layout()));
     return output_specs;
+}
+
+std::vector<Tensor> Sample::create_output_tensors(
+    const std::vector<Tensor>& input_tensors, const std::vector<std::optional<Tensor>>& output_tensors) const {
+    if (!output_tensors.empty() && output_tensors.at(0).has_value()) {
+        return {output_tensors.at(0).value()};
+    }
+    auto spec = compute_output_specs(input_tensors)[0];
+    return {create_device_tensor(spec, input_tensors.at(0).device())};
 }
 
 tt::tt_metal::operation::MeshWorkloadWithCallbacks Sample::create_mesh_workload(
@@ -47,13 +59,130 @@ tt::tt_metal::operation::MeshWorkloadWithCallbacks Sample::create_mesh_workload(
         });
 }
 
+void createReader(
+    tt::tt_metal::Program& program,
+    IDevice* device,
+    CoreCoord drain_sync_core,
+    Tensor& input_tensor,
+    Tensor& output_tensor,
+    const ttnn::GlobalSemaphore& semaphore,
+    bool is_forward,
+    CoreCoord reader_core,
+    uint32_t device_order) {
+    auto reader_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
+    reader_kernel_config.compile_args = {tt::CB::c_in0};
+
+    uint32_t tile_size = 1088;
+
+    uint32_t num_tiles = input_tensor.padded_shape().volume() / tt::constants::TILE_HW;
+
+    auto reader_kernel_id = tt::tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/experimental/ccl/sample/device/kernels/"
+        "reader.cpp",
+        reader_core,
+        reader_kernel_config);
+
+    std::vector<uint32_t> reader_rt_args = {
+        input_tensor.buffer()->address(),   // tensor_address0
+        output_tensor.buffer()->address(),  // tensor_address1
+        semaphore.address(),
+        num_tiles,
+        device->id(),
+        device_order,
+        tile_size};
+
+    tt::tt_metal::SetRuntimeArgs(program, reader_kernel_id, {reader_core}, reader_rt_args);
+}
+
+void createWriter(
+    tt::tt_metal::Program& program,
+    IDevice* device,
+    IDevice* fwd_device,
+    IDevice* bwd_device,
+    CoreCoord drain_sync_core,
+    Tensor& input_tensor,
+    Tensor& output_tensor,
+    const ttnn::GlobalSemaphore& semaphore,
+    bool is_forward,
+    CoreCoord writer_core,
+    int link,
+    uint32_t device_order) {
+    tt::DataFormat data_format = tt::DataFormat::Bfp8_b;
+    uint32_t src0_cb_index = tt::CB::c_in0;
+    uint32_t dst0_cb_index = tt::CB::c_in1;
+    uint32_t header_cb_index = tt::CB::c_in2;
+    uint32_t num_pages_per_packet = 1;
+    uint32_t num_tiles = input_tensor.padded_shape().volume() / tt::constants::TILE_HW;
+    std::cout << "Number of tiles: " << num_tiles << std::endl;
+
+    uint32_t tile_size = 1088;
+
+    static constexpr auto num_packet_headers_storable = 8;
+    static constexpr auto packet_header_size_bytes = sizeof(tt::tt_fabric::PacketHeader);
+
+    tt::tt_metal::CircularBufferConfig cb_src0_config =
+        tt::tt_metal::CircularBufferConfig(8 * tile_size, {{src0_cb_index, data_format}})
+            .set_page_size(src0_cb_index, tile_size);
+    tt::tt_metal::CBHandle cb_src0_workers = tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_src0_config);
+
+    tt::tt_metal::CircularBufferConfig cb_dst_config =
+        tt::tt_metal::CircularBufferConfig(8 * tile_size, {{dst0_cb_index, data_format}})
+            .set_page_size(dst0_cb_index, tile_size);
+    tt::tt_metal::CBHandle cb_dst_workers = tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_dst_config);
+
+    tt::tt_metal::CircularBufferConfig cb_reserved_packet_header_config =
+        tt::tt_metal::CircularBufferConfig(
+            num_packet_headers_storable * packet_header_size_bytes * 2, {{header_cb_index, tt::DataFormat::RawUInt32}})
+            .set_page_size(header_cb_index, packet_header_size_bytes);
+    tt::tt_metal::CBHandle reserved_packet_header_CB_handle =
+        tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_reserved_packet_header_config);
+
+    auto writer_kernel_config = tt::tt_metal::WriterDataMovementConfig{};
+    writer_kernel_config.compile_args = {src0_cb_index, dst0_cb_index, header_cb_index};
+
+    auto writer_kernel_id = tt::tt_metal::CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/experimental/ccl/sample/device/kernels/"
+        "writer.cpp",
+        writer_core,
+        writer_kernel_config);
+
+    std::vector<uint32_t> writer_rt_args = {
+        input_tensor.buffer()->address(),
+        output_tensor.buffer()->address(),
+        semaphore.address(),
+        drain_sync_core.x,  // out_ready_sem_noc0_x
+        drain_sync_core.y,  // out_ready_sem_noc0_y
+        device->id(),
+        device_order,
+        num_tiles,
+        tile_size};
+
+    // link is set to 0
+    if (is_forward) {
+        writer_rt_args.push_back(1);
+        tt::tt_fabric::append_fabric_connection_rt_args(
+            device->id(), fwd_device->id(), link, program, writer_core, writer_rt_args);
+        writer_rt_args.push_back(0);
+    } else {
+        writer_rt_args.push_back(0);
+        writer_rt_args.push_back(1);
+        tt::tt_fabric::append_fabric_connection_rt_args(
+            device->id(), bwd_device->id(), link, program, writer_core, writer_rt_args);
+    }
+
+    tt::tt_metal::SetRuntimeArgs(program, writer_kernel_id, writer_core, writer_rt_args);
+}
+
 tt::tt_metal::operation::ProgramWithCallbacks sample(
     const std::vector<Tensor>& input_tensors,
     std::vector<Tensor>& output_tensors,
     IDevice* device,
     IDevice* fwd_device,
     IDevice* bwd_device,
-    const ttnn::GlobalSemaphore& semaphore) {
+    const ttnn::GlobalSemaphore& semaphore,
+    uint32_t device_order) {
     tt::tt_metal::Program program{};
     std::optional<tt::tt_metal::operation::OverrideRuntimeArgumentsCallback<std::vector<Tensor>>>
         override_runtime_arguments_callback = std::nullopt;
@@ -62,90 +191,71 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     auto input_tensor = input_tensors[0];
     auto output_tensor = output_tensors[0];
     auto mesh_device = input_tensor.mesh_device();
-    // Common
-    tt::DataFormat data_format = tt::DataFormat::Bfp8_b;
-    uint32_t src0_cb_index = tt::CB::c_in0;
-    uint32_t dst0_cb_index = tt::CB::c_in1;
-    uint32_t header_cb_index = tt::CB::c_in2;
-    uint32_t num_pages_per_packet = 1;
-    uint32_t tile_size = 1088;
-
-    static constexpr auto num_packet_headers_storable = 8;
-    static constexpr auto packet_header_size_bytes = sizeof(tt::tt_fabric::PacketHeader);
+    // Forward
 
     // Reader
-    auto reader_cores = CoreCoord(0, 2);
-    auto writer_cores = CoreCoord(0, 0);
-
-    tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(2 * tile_size, {{src0_cb_index, data_format}})
-            .set_page_size(src0_cb_index, tile_size);
-    tt::tt_metal::CBHandle cb_src0_workers = tt::tt_metal::CreateCircularBuffer(program, writer_cores, cb_src0_config);
-
-    tt::tt_metal::CircularBufferConfig cb_dst0_config =
-        tt::tt_metal::CircularBufferConfig(2 * tile_size, {{dst0_cb_index, data_format}})
-            .set_page_size(dst0_cb_index, tile_size);
-    tt::tt_metal::CBHandle cb_dst0_workers = tt::tt_metal::CreateCircularBuffer(program, writer_cores, cb_dst0_config);
-
-    tt::tt_metal::CircularBufferConfig cb_reserved_packet_header_config =
-        tt::tt_metal::CircularBufferConfig(
-            num_packet_headers_storable * packet_header_size_bytes * 2, {{header_cb_index, tt::DataFormat::RawUInt32}})
-            .set_page_size(header_cb_index, packet_header_size_bytes);
-    tt::tt_metal::CBHandle reserved_packet_header_CB_handle =
-        tt::tt_metal::CreateCircularBuffer(program, writer_cores, cb_reserved_packet_header_config);
-
-    auto reader_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
-
-    CoreCoord drain_sync_core = device->worker_core_from_logical_core(reader_cores);
-
-    std::cout << "Device: " << device->id() << " Logical core: " << reader_cores.str()
-              << " Drain sync core: " << drain_sync_core.str() << std::endl;
-
-    auto reader_kernel_id = tt::tt_metal::CreateKernel(
+    CoreCoord fwd_reader_core = CoreCoord(0, 0);
+    CoreCoord fwd_drain_sync_core = device->worker_core_from_logical_core(fwd_reader_core);
+    createReader(
         program,
-        "ttnn/cpp/ttnn/operations/experimental/ccl/sample/device/kernels/"
-        "reader.cpp",
-        reader_cores,
-        reader_kernel_config);
-
-    std::vector<uint32_t> reader_rt_args = {
-        input_tensor.buffer()->address(),  // tensor_address0
-        semaphore.address(),
-        device->id()};
-
-    tt::tt_metal::SetRuntimeArgs(program, reader_kernel_id, {reader_cores}, reader_rt_args);
+        device,
+        fwd_drain_sync_core,
+        input_tensor,
+        output_tensor,
+        semaphore,
+        true,
+        fwd_reader_core,
+        device_order);
 
     // Writer
-    auto writer_kernel_config = tt::tt_metal::WriterDataMovementConfig{};
-    writer_kernel_config.compile_args = {header_cb_index};
-
-    auto writer_kernel_id = tt::tt_metal::CreateKernel(
+    CoreCoord writer_core = CoreCoord(0, 0);
+    createWriter(
         program,
-        "ttnn/cpp/ttnn/operations/experimental/ccl/sample/device/kernels/"
-        "writer.cpp",
-        writer_cores,
-        writer_kernel_config);
+        device,
+        fwd_device,
+        bwd_device,
+        fwd_drain_sync_core,
+        input_tensor,
+        output_tensor,
+        semaphore,
+        true,
+        writer_core,
+        0,
+        device_order);
 
-    std::vector<uint32_t> writer_rt_args = {
-        header_cb_index,
-        input_tensor.buffer()->address(),
-        semaphore.address(),
-        drain_sync_core.x,  // out_ready_sem_noc0_x
-        drain_sync_core.y,  // out_ready_sem_noc0_y
-        device->id()};
+    // // Backward
+    // CoreCoord bwd_reader_core = CoreCoord(0, 3);
+    // CoreCoord bwd_drain_sync_core = device->worker_core_from_logical_core(bwd_reader_core);
+    // createReader(
+    //     program,
+    //     device,
+    //     bwd_drain_sync_core,
+    //     input_tensor,
+    //     semaphore,
+    //     false,
+    //     bwd_reader_core
+    // );
 
-    // link is set to 0
-    writer_rt_args.push_back(1);
-    tt::tt_fabric::append_fabric_connection_rt_args(
-        device->id(), fwd_device->id(), 0, program, writer_cores, writer_rt_args);
-    writer_rt_args.push_back(1);
-    tt::tt_fabric::append_fabric_connection_rt_args(
-        device->id(), bwd_device->id(), 0, program, writer_cores, writer_rt_args);
-
-    tt::tt_metal::SetRuntimeArgs(program, writer_kernel_id, writer_cores, writer_rt_args);
+    // // Writer
+    // CoreCoord bwd_writer_core = CoreCoord(0, 1);
+    // createWriter(
+    //     program,
+    //     device,
+    //     fwd_device,
+    //     bwd_device,
+    //     bwd_drain_sync_core,
+    //     input_tensor,
+    //     semaphore,
+    //     false,
+    //     bwd_writer_core,
+    //     0
+    // );
 
     return {.program = std::move(program), .override_runtime_arguments_callback = override_runtime_arguments_callback};
 }
+
+// create map of ids to order
+std::map<uint32_t, uint32_t> device_id_order_map = {{4, 0}, {0, 1}, {2, 2}, {6, 3}, {7, 4}, {3, 5}, {1, 6}, {5, 7}};
 
 tt::tt_metal::operation::ProgramWithCallbacks Sample::create_program_at(
     const ttnn::MeshCoordinate& coord,
@@ -176,7 +286,9 @@ tt::tt_metal::operation::ProgramWithCallbacks Sample::create_program_at(
     std::cout << "Current device id: " << current_device->id() << std::endl;
     std::cout << "Fwd device id: " << forward_device->id() << std::endl;
     std::cout << "Bwd device id: " << backward_device->id() << std::endl;
-    return sample(input_tensors, output_tensors, current_device, forward_device, backward_device, semaphore);
+    auto device_order = device_id_order_map.at(current_device->id());
+    return sample(
+        input_tensors, output_tensors, current_device, forward_device, backward_device, semaphore, device_order);
 };
 
 namespace operations::experimental::ccl {
