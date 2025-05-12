@@ -43,7 +43,7 @@ namespace sliced_reduce_scatter_detail {
 // Configuration constants
 constexpr uint32_t MIN_CHUNK_GRANULARITY = 4;
 constexpr uint32_t MAX_CHUNKS_PER_SHARD = 30;
-constexpr uint32_t TRIPLE_BUFFER_MULTIPLIER = 3;
+constexpr uint32_t TRIPLE_BUFFER_MULTIPLIER = 1;
 constexpr uint32_t PACKET_HEADER_BUFFER_SIZE = 8;
 
 // Calculate optimal chunk parameters to keep num_chunks < MAX_CHUNKS_PER_SHARD
@@ -102,8 +102,9 @@ auto create_receiver_buffer(
 
     const auto input_cb_id = tt::CB::c_in0;
     const auto accumulator_cb_id = tt::CB::c_in1;
-    const auto output_cb_id = tt::CB::c_in2;
-    const auto sync_cb_id = tt::CB::c_in3;
+    const auto compute_output_cb_id = tt::CB::c_in2;
+    const auto reader_output_cb_id = tt::CB::c_in3;
+    const auto sync_cb_id = tt::CB::c_in4;
 
     auto input_config = tt::tt_metal::CircularBufferConfig(receiver_pages * page_size, {{input_cb_id, data_format}})
                             .set_page_size(input_cb_id, page_size);
@@ -112,17 +113,23 @@ auto create_receiver_buffer(
         tt::tt_metal::CircularBufferConfig(receiver_pages * page_size, {{accumulator_cb_id, data_format}})
             .set_page_size(accumulator_cb_id, page_size);
 
-    auto output_config = tt::tt_metal::CircularBufferConfig(receiver_pages * page_size, {{output_cb_id, data_format}})
-                             .set_page_size(output_cb_id, page_size);
+    auto compute_output_config =
+        tt::tt_metal::CircularBufferConfig(receiver_pages * page_size, {{compute_output_cb_id, data_format}})
+            .set_page_size(compute_output_cb_id, page_size);
+
+    auto reader_output_config =
+        tt::tt_metal::CircularBufferConfig(receiver_pages * page_size, {{reader_output_cb_id, data_format}})
+            .set_page_size(reader_output_cb_id, page_size);
 
     auto sync_config =
         tt::tt_metal::CircularBufferConfig(1, {{sync_cb_id, tt::DataFormat::RawUInt32}}).set_page_size(sync_cb_id, 1);
 
     auto input_handle = CreateCircularBuffer(program, receiver_core_range, input_config);
     auto accumulator_handle = CreateCircularBuffer(program, receiver_core_range, accumulator_config);
-    auto output_handle = CreateCircularBuffer(program, receiver_core_range, output_config);
+    auto compute_output_handle = CreateCircularBuffer(program, receiver_core_range, compute_output_config);
+    auto reader_output_handle = CreateCircularBuffer(program, receiver_core_range, reader_output_config);
     auto sync_handle = CreateCircularBuffer(program, receiver_core_range, sync_config);
-    return std::make_tuple(input_cb_id, accumulator_cb_id, output_cb_id, sync_cb_id);
+    return std::make_tuple(input_cb_id, accumulator_cb_id, compute_output_cb_id, reader_output_cb_id, sync_cb_id);
 }
 
 }  // namespace sliced_reduce_scatter_detail
@@ -207,9 +214,14 @@ tt::tt_metal::operation::ProgramWithCallbacks sliced_reduce_scatter_async_minima
     tt::DataFormat data_format = tt::tt_metal::datatype_to_dataformat_converter(input_tensor.get_dtype());
     auto [sender_buffer, header_buffer] = sliced_reduce_scatter_detail::create_sender_buffers(
         program, sender_worker_core_range, cb_pages, page_size, data_format);
-    auto [receiver_input_cb_id, receiver_accumulator_cb_id, receiver_output_cb_id, receiver_sync_cb_id] =
-        sliced_reduce_scatter_detail::create_receiver_buffer(
-            program, receiver_worker_core_range, pages_per_packet, page_size, data_format);
+    auto
+        [receiver_input_cb_id,
+         receiver_accumulator_cb_id,
+         receiver_compute_output_cb_id,
+         receiver_reader_output_cb_id,
+         receiver_sync_cb_id] =
+            sliced_reduce_scatter_detail::create_receiver_buffer(
+                program, receiver_worker_core_range, pages_per_packet, page_size, data_format);
 
     const auto [chunk_granularity, chunk_num_tiles, num_chunks_per_shard] =
         sliced_reduce_scatter_detail::calculate_chunk_params(
@@ -344,7 +356,8 @@ tt::tt_metal::operation::ProgramWithCallbacks sliced_reduce_scatter_async_minima
         chunk_num_tiles,
         num_chunks_per_shard,
         op_config.get_page_size(),
-        receiver_output_cb_id,
+        receiver_compute_output_cb_id,
+        receiver_reader_output_cb_id,
         receiver_sync_cb_id};
 
     auto receiver_writer_kernel_id = tt::tt_metal::CreateKernel(
@@ -365,7 +378,7 @@ tt::tt_metal::operation::ProgramWithCallbacks sliced_reduce_scatter_async_minima
         op_config.get_page_size(),
         receiver_input_cb_id,
         receiver_accumulator_cb_id,
-        receiver_output_cb_id,
+        receiver_reader_output_cb_id,
         receiver_sync_cb_id,
         pages_per_packet,
         num_targets_forward,   // num_targets_forward_direction
@@ -392,7 +405,7 @@ tt::tt_metal::operation::ProgramWithCallbacks sliced_reduce_scatter_async_minima
     receiver_reduce_kernel_config.compile_args = {
         receiver_input_cb_id,
         receiver_accumulator_cb_id,
-        receiver_output_cb_id,
+        receiver_compute_output_cb_id,
         num_packets,
         pages_per_packet,
         ring_size};

@@ -17,9 +17,9 @@ void MAIN {
     constexpr uint32_t ring_size = get_compile_time_arg_val(5);
 
     for (uint32_t i = 0; i < ring_size - 1; ++i) {
-        if (i >= 1) {
-            continue;
-        }
+        // if (i >= 1) {
+        //     continue;
+        // }
         // Initialize binary operations - use the same constants consistently
         binary_op_init_common(input_cb_id, accumulator_cb, output_cb);
         add_tiles_init(input_cb_id, accumulator_cb, false);
@@ -30,8 +30,8 @@ void MAIN {
             cb_wait_front(input_cb_id, tiles_per_packet);
             // Reserve output space once before processing
             cb_wait_front(accumulator_cb, tiles_per_packet);
-            UNPACK(DPRINT << "Iteration " << i << " packet " << packet_id << ENDL());
-            UNPACK(tt::compute::common::print_full_tile(accumulator_cb, 0, true));
+            // UNPACK(DPRINT << "Iteration " << i << " packet " << packet_id << ENDL());
+            // UNPACK(tt::compute::common::print_full_tile(accumulator_cb, 0, true));
             cb_reserve_back(output_cb, tiles_per_packet);
             acquire_dst();
             for (uint32_t tile_id = 0; tile_id < tiles_per_packet; tile_id++) {
@@ -42,6 +42,9 @@ void MAIN {
             cb_pop_front(input_cb_id, tiles_per_packet);
 
             cb_pop_front(accumulator_cb, tiles_per_packet);
+            UNPACK(
+                DPRINT << "COMPUTE: writing packet " << packet_id << " tiles_per_packet: " << tiles_per_packet
+                       << ENDL());
             cb_push_back(output_cb, tiles_per_packet);
         }
     }

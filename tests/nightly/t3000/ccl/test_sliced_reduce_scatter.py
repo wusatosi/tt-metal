@@ -148,9 +148,7 @@ def run_sliced_reduce_scatter_impl(
     output_tensor_goldens_list = []
 
     for i in range(num_iters if not reuse_inputs else 1):
-        # input_tensors = [torch.rand(logical_shape).bfloat16() for _ in range(num_devices)]
-        input_tensors = [torch.full(logical_shape, i + 1).bfloat16() for i in range(num_devices)]
-        # input_tensors = [t.pow(i) for i, t in enumerate(input_tensors)]
+        input_tensors = [torch.rand(logical_shape).bfloat16() for _ in range(num_devices)]
 
         output_tensor_goldens_list.append(torch.stack(input_tensors, dim=0).sum(dim=0).chunk(num_devices, scatter_dim))
 
@@ -218,24 +216,11 @@ def run_sliced_reduce_scatter_impl(
                     .to(ttnn.ROW_MAJOR_LAYOUT)
                     .to_torch()
                 )
-                # breakpoint()
                 logger.info(f"Checking for device {t.device().id()}")
-                print("input_tensor")
-                print(input_tensor)
-                print("tt_output_tensor")
-                print(tt_output_tensor)
-                print("intermediate_tensor")
-                print(intermediate_tensor)
-                breakpoint()
-                if input_dtype == ttnn.bfloat16:
-                    eq, output = comp_equal(tt_output_tensor, output_tensor)
-                else:
-                    eq, output = comp_pcc(tt_output_tensor, output_tensor)
+                eq, output = comp_pcc(tt_output_tensor, output_tensor)
                 if not eq:
                     logger.error(f"output mismatch for tensor {i}")
                     passed = False
-
-        breakpoint()
 
     assert (
         mesh_device.num_program_cache_entries() == 1

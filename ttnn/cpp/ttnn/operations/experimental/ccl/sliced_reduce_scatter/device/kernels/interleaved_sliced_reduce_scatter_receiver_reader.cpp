@@ -19,7 +19,7 @@ constexpr uint32_t num_chunks_per_shard = get_compile_time_arg_val(5);
 constexpr uint32_t page_size = get_compile_time_arg_val(6);
 constexpr uint32_t input_cb_id = get_compile_time_arg_val(7);
 constexpr uint32_t accumulator_cb_id = get_compile_time_arg_val(8);
-constexpr uint32_t output_cb_id = get_compile_time_arg_val(9);
+constexpr uint32_t reader_output_cb_id = get_compile_time_arg_val(9);
 constexpr uint32_t sync_cb_id = get_compile_time_arg_val(10);
 constexpr uint32_t contig_pages_advanced = get_compile_time_arg_val(11);
 constexpr uint32_t num_targets_forward_direction = get_compile_time_arg_val(12);
@@ -65,8 +65,8 @@ void kernel_main() {
     bool my_cur_is_forward = num_targets_forward_direction > num_targets_backward_direction;
     uint32_t hop_count = 0;
     uint32_t dst_ring_id;
-    // for (uint32_t i = 0; i < ring_size; ++i) {
-    for (uint32_t i = 0; i < 2; ++i) {
+    for (uint32_t i = 0; i < ring_size; ++i) {
+        // for (uint32_t i = 0; i < 2; ++i) {
         // This is the inverse of the sender reader logic
         const bool do_reduce = i != 0;
         DPRINT << "do_reduce " << (uint32_t)do_reduce << ENDL();
@@ -85,7 +85,7 @@ void kernel_main() {
         DPRINT << "dst_ring_id " << dst_ring_id << ENDL();
 
         if (i == ring_size - 1) {
-            continue;
+            // continue;
             // TODO: synchronize with matmul and ensure all other receivers have finished
             // Follows same logic as sender reader for local copy.
             uint32_t shard_row_start_id = my_ring_id * input_row_device_stride;
@@ -124,7 +124,7 @@ void kernel_main() {
                     // DPRINT << "reserve accumulator cb col_tile_id " << col_tile_id << ENDL();
                     uint32_t accumulator_l1_write_addr = get_write_ptr(accumulator_cb_id);
 
-                    uint32_t tile_id = row_tile_id * in_col_tiles + col_tile_id;
+                    uint32_t tile_id = row_tile_id * out_col_tiles + col_tile_id;
                     for (uint32_t j = 0; j < num_pages_to_read; j++) {
                         noc_async_read_tile(tile_id, output_tensor_addrgen, accumulator_l1_write_addr);
                         accumulator_l1_write_addr += page_size;
@@ -143,7 +143,7 @@ void kernel_main() {
             // // Should follow same logic as sender writer.
             // DPRINT << "starting remote copy" << ENDL();
             // TODO: If first receiver, write directly to output cb. otherwise, intermediate cb
-            uint32_t cb_in0 = do_reduce ? input_cb_id : output_cb_id;
+            uint32_t cb_in0 = do_reduce ? input_cb_id : reader_output_cb_id;
 
             const uint32_t sender_relative_ring_id = (dst_ring_id < my_ring_id) ? dst_ring_id : dst_ring_id - 1;
 
@@ -190,12 +190,14 @@ void kernel_main() {
 
                     if (do_reduce) {
                         // read from output tensor into accumulator_cb
+                        // if (out_col_id < 2) {
                         cb_reserve_back(sync_cb_id, 1);
                         cb_reserve_back(accumulator_cb_id, num_pages_per_packet);
                         uint32_t accumulator_l1_write_addr = get_write_ptr(accumulator_cb_id);
                         // DPRINT << "reading accumulator row, col: " << out_row_id << ", " << out_col_id << ENDL();
-                        uint32_t tile_id = out_row_id * in_col_tiles + out_col_id;
+                        uint32_t tile_id = out_row_id * out_col_tiles + out_col_id;
                         for (uint32_t j = 0; j < num_pages_to_read; j++) {
+                            DPRINT << "d" << my_ring_id << " READING TILE " << tile_id << ENDL();
                             noc_async_read_tile(tile_id, output_tensor_addrgen, accumulator_l1_write_addr);
                             accumulator_l1_write_addr += page_size;
                             tile_id++;
@@ -204,6 +206,9 @@ void kernel_main() {
                         noc_async_read_barrier();
                         cb_push_back(accumulator_cb_id, num_pages_per_packet);
                         cb_push_back(sync_cb_id, 1);
+                        DPRINT << "accumulator cb: " << accumulator_cb_id << " sync_cb_id: " << sync_cb_id
+                               << " reader_output_cb_id: " << reader_output_cb_id << ENDL();
+                        // }
                     }
                 }
             }

@@ -17,8 +17,9 @@ constexpr uint32_t chunk_granularity = get_compile_time_arg_val(3);
 constexpr uint32_t chunk_num_tiles = get_compile_time_arg_val(4);
 constexpr uint32_t num_chunks_per_shard = get_compile_time_arg_val(5);
 constexpr uint32_t page_size = get_compile_time_arg_val(6);
-constexpr uint32_t output_cb = get_compile_time_arg_val(7);
-constexpr uint32_t sync_cb_id = get_compile_time_arg_val(8);
+constexpr uint32_t compute_output_cb_id = get_compile_time_arg_val(7);
+constexpr uint32_t reader_output_cb_id = get_compile_time_arg_val(8);
+constexpr uint32_t sync_cb_id = get_compile_time_arg_val(9);
 void kernel_main() {
     size_t arg_idx = 0;
 
@@ -40,7 +41,9 @@ void kernel_main() {
 
     constexpr bool is_dram = true;  // TODO: CT arg
     auto output_tensor_addrgen = InterleavedAddrGenFast<is_dram>{
-        .bank_base_address = output_buffer_addr, .page_size = page_size, .data_format = get_dataformat(output_cb)};
+        .bank_base_address = output_buffer_addr,
+        .page_size = page_size,
+        .data_format = get_dataformat(reader_output_cb_id)};
 
     // Copy from intermediate buffer to output buffer
     // Compute where remote sender dumped data into intermediate buffer.
@@ -58,13 +61,20 @@ void kernel_main() {
         // if (device_id > 1) {
         //     continue;
         // }
-        if (device_id >= 2) {
-            continue;
-        }
+        uint32_t output_cb = device_id > 0 ? compute_output_cb_id : reader_output_cb_id;
+        // if (device_id >= 2) {
+        //     continue;
+        // }
         uint32_t tiles_written = 0;
         for (uint32_t out_row_id = out_row_start; out_row_id < out_row_end; out_row_id++) {
             for (uint32_t out_col_id = out_col_start; out_col_id < out_col_end; out_col_id += num_pages_per_packet) {
                 cb_wait_front(output_cb, num_pages_per_packet);
+                uint32_t pages_acked = get_cb_tiles_acked_ptr(output_cb)[0];
+                uint32_t pages_received_ptr = (uint32_t)get_cb_tiles_received_ptr(output_cb);
+                uint32_t received_data = reg_read(pages_received_ptr);
+                uint16_t pages_received = ((uint16_t)received_data) - pages_acked;
+                DPRINT << "WRITER: pages_acked: " << pages_acked << " received_data: " << received_data
+                       << " pages_received: " << pages_received << ENDL();
                 // DPRINT << "wait front output cb col_tile_id " << out_col_id << ENDL();
                 size_t l1_read_addr = get_read_ptr(output_cb);
                 uint32_t num_pages_to_read = std::min(out_col_end - out_col_id, num_pages_per_packet);
@@ -75,6 +85,8 @@ void kernel_main() {
                     uint32_t tile_id = out_row_id * out_col_tiles + col_tile;
                     noc_async_write_tile(tile_id, output_tensor_addrgen, l1_read_addr);
                     tiles_written++;
+                    DPRINT << "d" << device_id << " WRITER WRITING TILE " << tile_id << " to output_cb " << output_cb
+                           << ENDL();
                     l1_read_addr += page_size;
                 }
                 noc_async_write_barrier();
