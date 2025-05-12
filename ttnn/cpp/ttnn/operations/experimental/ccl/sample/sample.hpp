@@ -14,7 +14,7 @@ namespace ttnn {
 namespace operations::experimental::ccl {
 
 struct ExecuteSample {
-    static ttnn::Tensor invoke(const ttnn::Tensor& input_tensor);
+    static ttnn::Tensor invoke(const ttnn::Tensor& input_tensor, const ttnn::GlobalSemaphore& semaphore);
 };
 
 }  // namespace operations::experimental::ccl

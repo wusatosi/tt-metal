@@ -43,7 +43,7 @@ tt::tt_metal::operation::MeshWorkloadWithCallbacks Sample::create_mesh_workload(
     std::vector<Tensor>& output_tensors) const {
     return ccl::create_mesh_workload_from_programs(
         tensor_coords, input_tensors, output_tensors, [&, this](const ttnn::MeshCoordinate& coord) {
-            return create_program_at(coord, input_tensors, output_tensors);
+            return create_program_at(coord, input_tensors, output_tensors, this->semaphore);
         });
 }
 
@@ -52,7 +52,8 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     std::vector<Tensor>& output_tensors,
     IDevice* device,
     IDevice* fwd_device,
-    IDevice* bwd_device) {
+    IDevice* bwd_device,
+    const ttnn::GlobalSemaphore& semaphore) {
     tt::tt_metal::Program program{};
     std::optional<tt::tt_metal::operation::OverrideRuntimeArgumentsCallback<std::vector<Tensor>>>
         override_runtime_arguments_callback = std::nullopt;
@@ -97,8 +98,6 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
 
     CoreCoord drain_sync_core = device->worker_core_from_logical_core(reader_cores);
 
-    auto global_semaphore = tt::tt_metal::CreateSemaphore(program, reader_cores, 0);
-
     std::cout << "Device: " << device->id() << " Logical core: " << reader_cores.str()
               << " Drain sync core: " << drain_sync_core.str() << std::endl;
 
@@ -111,7 +110,7 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
 
     std::vector<uint32_t> reader_rt_args = {
         input_tensor.buffer()->address(),  // tensor_address0
-        global_semaphore,
+        semaphore.address(),
         device->id()};
 
     tt::tt_metal::SetRuntimeArgs(program, reader_kernel_id, {reader_cores}, reader_rt_args);
@@ -130,7 +129,7 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     std::vector<uint32_t> writer_rt_args = {
         header_cb_index,
         input_tensor.buffer()->address(),
-        global_semaphore,
+        semaphore.address(),
         drain_sync_core.x,  // out_ready_sem_noc0_x
         drain_sync_core.y,  // out_ready_sem_noc0_y
         device->id()};
@@ -151,7 +150,8 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
 tt::tt_metal::operation::ProgramWithCallbacks Sample::create_program_at(
     const ttnn::MeshCoordinate& coord,
     const std::vector<Tensor>& input_tensors,
-    std::vector<Tensor>& output_tensors) const {
+    std::vector<Tensor>& output_tensors,
+    const ttnn::GlobalSemaphore& semaphore) const {
     const auto& mesh_view = input_tensors[0].mesh_device()->get_view();
     auto devices = mesh_view.get_devices();
     // print each device id
@@ -176,12 +176,12 @@ tt::tt_metal::operation::ProgramWithCallbacks Sample::create_program_at(
     std::cout << "Current device id: " << current_device->id() << std::endl;
     std::cout << "Fwd device id: " << forward_device->id() << std::endl;
     std::cout << "Bwd device id: " << backward_device->id() << std::endl;
-    return sample(input_tensors, output_tensors, current_device, forward_device, backward_device);
+    return sample(input_tensors, output_tensors, current_device, forward_device, backward_device, semaphore);
 };
 
 namespace operations::experimental::ccl {
-ttnn::Tensor sample(const ttnn::Tensor& input_tensor) {
-    auto result = tt::tt_metal::operation::run(ttnn::Sample{}, {input_tensor});
+ttnn::Tensor sample(const ttnn::Tensor& input_tensor, const ttnn::GlobalSemaphore& semaphore) {
+    auto result = tt::tt_metal::operation::run(ttnn::Sample{semaphore}, {input_tensor});
     // Return the first tensor from the result vector
     if (!result.empty()) {
         return result[0];

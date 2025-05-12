@@ -25,7 +25,7 @@ void kernel_main() {
     size_t arg_idx = 0;
     uint32_t reserved_packet_header_cb_id = get_arg_val<uint32_t>(arg_idx++);
     uint32_t tensor_address0 = get_arg_val<uint32_t>(arg_idx++);
-    uint32_t out_ready_sem_bank_addr = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
+    uint32_t out_ready_sem_bank_addr = get_arg_val<uint32_t>(arg_idx++);
     uint32_t out_ready_sem_noc0_x = get_arg_val<uint32_t>(arg_idx++);
     uint32_t out_ready_sem_noc0_y = get_arg_val<uint32_t>(arg_idx++);
     uint32_t device_id = get_arg_val<uint32_t>(arg_idx++);

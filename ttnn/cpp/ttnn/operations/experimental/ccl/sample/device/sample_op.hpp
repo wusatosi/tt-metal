@@ -26,11 +26,13 @@ namespace ttnn {
 using ccl::EriscDatamoverBuilder;
 
 struct Sample {
-    Sample() = default;
+    const ttnn::GlobalSemaphore& semaphore;
+    Sample(const ttnn::GlobalSemaphore& semaphore) : semaphore(semaphore) {}
 
     auto attributes() const {
         using tt::stl::reflection::Attribute;
         std::vector<std::tuple<std::string, Attribute>> attrs;
+        attrs.emplace_back("semaphore", semaphore);
         return attrs;
     }
 
@@ -46,7 +48,8 @@ struct Sample {
     tt::tt_metal::operation::ProgramWithCallbacks create_program_at(
         const ttnn::MeshCoordinate& mesh_coord,
         const std::vector<Tensor>& input_tensors,
-        std::vector<Tensor>& output_tensors) const;
+        std::vector<Tensor>& output_tensors,
+        const ttnn::GlobalSemaphore& semaphore) const;
 
     tt::tt_metal::operation::Hash compute_program_hash(const std::vector<Tensor>& input_tensors) const;
 };
@@ -55,7 +58,7 @@ namespace operations {
 namespace experimental {
 namespace ccl {
 
-Tensor sample(const ttnn::Tensor& input_tensor);
+Tensor sample(const ttnn::Tensor& input_tensor, const ttnn::GlobalSemaphore& semaphore);
 
 }  // namespace ccl
 }  // namespace experimental

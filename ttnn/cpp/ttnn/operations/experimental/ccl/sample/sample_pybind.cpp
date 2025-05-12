@@ -23,9 +23,9 @@ void py_bind_sample_async(pybind11::module& module, const ccl_operation_t& opera
         operation,
         doc,
         ttnn::pybind_overload_t{
-            [](const ccl_operation_t& self, const ttnn::Tensor& input_tensor) -> ttnn::Tensor {
-                return self(input_tensor);
-            },
+            [](const ccl_operation_t& self,
+               const ttnn::Tensor& input_tensor,
+               const ttnn::GlobalSemaphore& semaphore) -> ttnn::Tensor { return self(input_tensor, semaphore); },
         });
 }
 
