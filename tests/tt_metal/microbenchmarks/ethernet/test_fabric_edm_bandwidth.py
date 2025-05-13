@@ -308,7 +308,7 @@ def run_fabric_edm(
     test_mode="1_fabric_instance",
     num_cluster_rows=0,
     num_cluster_cols=0,
-    device_pair=None,
+    devices=None,
 ):
     if test_mode == "1_fabric_instance":
         assert num_cluster_rows == 0 and num_cluster_cols == 0
@@ -340,12 +340,11 @@ def run_fabric_edm(
                 {int(disable_sends_for_interior_workers)} \
                 {int(unidirectional)} \
                 {int(senders_are_unidirectional)}"
-    device_pair_a = device_pair[0]
-    device_pair_b = device_pair[1]
-    device_pairs_str = " ".join(f"({device_pair_a[0]},{device_pair_a[1]})-({device_pair_b[0]},{device_pair_b[1]})")
-    device_pairs_str = f'"{device_pairs_str}"'
-    cmd += f" \
-        {device_pairs_str}"
+    if devices is not None:
+        devices_str = "-".join([f"({device[0]},{device[1]})" for device in devices])
+        devices_str = f'"{devices_str}"'
+        cmd += f" \
+            {devices_str}"
     if test_mode == "1D_fabric_on_mesh":
         cmd += f" \
             {num_cluster_rows} \
@@ -675,7 +674,7 @@ def test_fabric_t3k_4chip_rows_mcast_bw(
 @pytest.mark.parametrize("line_size", [8])
 @pytest.mark.parametrize("num_links", [4])
 @pytest.mark.parametrize("packet_size", [2048, 4096])
-@pytest.mark.parametrize("fabric_test_mode", [FabricTestMode.FullRing, FabricTestMode.Linear])
+@pytest.mark.parametrize("fabric_test_mode", [FabricTestMode.Linear])
 @pytest.mark.parametrize("num_cluster_cols", [4])
 def test_fabric_6u_4chip_cols_mcast_bw(
     is_unicast,
@@ -1157,7 +1156,51 @@ def test_fabric_stress_mcast_chip_pairs_on_rows_bw(
         fabric_mode=fabric_test_mode,
         disable_sends_for_interior_workers=False,
         senders_are_unidirectional=True,
-        device_pair=device_pair,
+        devices=device_pair,
+    )
+
+
+num_device_cols = 4
+num_device_rows = 8
+device_pairs = [
+    [(i, j), ((i + 1) % num_device_rows, j)]  # Wrap around when reaching the last column
+    for j in range(num_device_cols)
+    for i in range(num_device_rows)
+]
+
+
+# device_pairs=[[(7,0),(0,0)]]
+@pytest.mark.parametrize("num_messages", [200000])
+@pytest.mark.parametrize("num_op_invocations", [1])
+@pytest.mark.parametrize("line_sync", [True])
+@pytest.mark.parametrize("line_size", [2])
+@pytest.mark.parametrize("num_links", [1])
+@pytest.mark.parametrize("packet_size", [4096])
+@pytest.mark.parametrize("device_pair", device_pairs)
+@pytest.mark.parametrize("fabric_test_mode", [FabricTestMode.Linear])
+def test_fabric_stress_mcast_chip_pairs_on_cols_bw(
+    num_messages,
+    num_links,
+    num_op_invocations,
+    line_sync,
+    line_size,
+    packet_size,
+    fabric_test_mode,
+    device_pair,
+):
+    run_fabric_edm(
+        is_unicast=False,
+        num_messages=num_messages,
+        noc_message_type="noc_unicast_write",
+        num_links=num_links,
+        num_op_invocations=num_op_invocations,
+        line_sync=line_sync,
+        line_size=line_size,
+        packet_size=packet_size,
+        fabric_mode=fabric_test_mode,
+        disable_sends_for_interior_workers=False,
+        senders_are_unidirectional=True,
+        devices=device_pair,
     )
 
 

@@ -2230,11 +2230,6 @@ enum class FabricTestMode {
     RingAsLinear,
 };
 
-struct DevicePair {
-    std::pair<size_t, size_t> dev_a;  // first device
-    std::pair<size_t, size_t> dev_b;  // second device
-};
-
 struct WriteThroughputStabilityTestWithPersistentFabricParams {
     size_t line_size = 4;
     size_t num_devices_with_workers = 0;
@@ -2251,6 +2246,8 @@ struct WriteThroughputStabilityTestWithPersistentFabricParams {
 
     bool disable_end_workers_in_backward_direction = false;
     bool senders_are_unidirectional = false;
+
+    std::vector<std::pair<size_t, size_t>> devices;
 };
 
 std::vector<CoreCoord> compute_top_row_ethernet_cores(
@@ -2415,16 +2412,12 @@ static std::vector<IDevice*> generate_default_line_fabric_under_test(
     return devices_;
 }
 
-static std::vector<IDevice*> generate_user_provided_device_pairs(std::vector<DevicePair> device_pairs) {
+static std::vector<IDevice*> generate_user_provided_devices(
+    const MeshDeviceView& view, std::vector<std::pair<size_t, size_t>> devices) {
     std::vector<IDevice*> devices_;
-    for (const auto& device_pair : device_pairs) {
+    for (const auto& device : devices) {
+        devices_.push_back(view.get_device(MeshCoordinate(device.first, device.second)));
     }
-    devices_ = {
-        view.get_device(MeshCoordinate(0, 0)),
-        view.get_device(MeshCoordinate(0, 1)),
-        view.get_device(MeshCoordinate(0, 2)),
-        view.get_device(MeshCoordinate(0, 3))};
-
     return devices_;
 }
 
@@ -2436,11 +2429,11 @@ static std::vector<std::vector<IDevice*>> generate_line_fabrics_under_test(
     ttnn::ccl::Topology topology,
     const MeshDeviceView& view) {
     bool use_default_device_selection = params.num_fabric_rows == 0 && params.num_fabric_cols == 0;
-    bool use_provided_device_pairs = params.device_pairs.size() != 0;
+    bool use_provided_devices = params.devices.size() != 0;
     std::vector<std::vector<IDevice*>> fabrics_under_test;
     if (use_default_device_selection) {
-        if (use_provided_device_pairs) {
-            fabrics_under_test.push_back(generate_default_line_fabric_under_test(params.device_pairs));
+        if (use_provided_devices) {
+            fabrics_under_test.push_back(generate_user_provided_devices(view, params.devices));
         } else {
             fabrics_under_test.push_back(
                 generate_default_line_fabric_under_test(use_galaxy, use_tg, line_size, topology, view));
