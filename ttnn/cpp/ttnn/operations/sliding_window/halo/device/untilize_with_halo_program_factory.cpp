@@ -367,18 +367,21 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core(
     cb_indices.src_cb_id = cb_indices.get_next_cb_id();
     auto src_cb =
         create_circular_buffer(program, all_cores, cb_indices.src_cb_id, in_df, input_npages, in_page_size, src_buffer);
+    // printf("src_cb pagesize = %d, numpages = %d\n", in_page_size, input_npages);
 
     uint32_t out_cb_pagesize = out_stick_nbytes;
     uint32_t out_cb_npages = max_out_nsticks_per_core;
     cb_indices.out_cb_id = cb_indices.get_next_cb_id();
     auto out_cb = create_circular_buffer(
         program, all_cores, cb_indices.out_cb_id, out_df, out_cb_npages, out_cb_pagesize, dst_buffer);
+    // printf("out_cb pagesize = %d, numpages = %d\n", out_stick_nbytes, out_cb_npages);
 
     uint32_t pad_cb_pagesize = out_stick_nbytes;
     uint32_t pad_cb_npages = 1;
     cb_indices.pad_cb_id = cb_indices.get_next_cb_id();
     auto pad_cb =
         create_circular_buffer(program, all_cores, cb_indices.pad_cb_id, out_df, pad_cb_npages, pad_cb_pagesize);
+    // printf("pad_cb pagesize = %d, numpages = %d\n", out_stick_nbytes, pad_cb_npages);
 
     tt::DataFormat kernel_config_df = tt::DataFormat::RawUInt16;  // NOTE: UInt16 is not supported for CB types
     uint32_t config_nbytes =
@@ -396,6 +399,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core(
             CircularBufferConfig(output_ntiles * out_tile_size, {{cb_indices.untilize_out_cb_id, out_df}})
                 .set_page_size(cb_indices.untilize_out_cb_id, out_tile_size)
                 .set_globally_allocated_address(*dst_buffer);  // untilize into the dst buffer for in place untilize
+        // printf("untilize_out_cb pagesize = %d, numpages = %d\n", out_tile_size, output_ntiles);
         auto untilize_out_cb = CreateCircularBuffer(program, all_cores, untilize_out_cb_config);
         log_debug(
             tt::LogOp,
@@ -491,6 +495,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core(
             CircularBufferConfig(
                 max_ref_size * output_shard_shape[1] * out_nbytes, {{remote_temp_cb_id, kernel_config_df}})
                 .set_page_size(remote_temp_cb_id, output_shard_shape[1] * out_nbytes);
+        // printf("temp CB pagesize = %d, numpages = %d\n", output_shard_shape[1] * out_nbytes, max_ref_size);
         CBHandle remote_temp_cb = CreateCircularBuffer(program, all_cores, remote_temp_cb_config);
     }
 
@@ -544,6 +549,9 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core(
     if (out_stick_nbytes % input_tensor.buffer()->alignment() != 0) {
         aligned_input_nstick_nbytes = tt::round_up(out_stick_nbytes, input_tensor.buffer()->alignment());
     }
+
+    // printf("num_active_cores = %d\n", num_active_cores);
+
     // reader kernel
     std::vector<uint32_t> reader_ct_args = {
         0,  // padding_config_cb_id

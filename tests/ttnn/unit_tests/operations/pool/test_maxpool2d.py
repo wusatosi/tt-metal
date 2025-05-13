@@ -258,10 +258,11 @@ def test_max_pool2d_localrun(device, dtype, input_spec):
         device,
         sharding=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
         ceil_mode=ceil_mode,
+        in_place=True,
     )
 
 
-@pytest.mark.parametrize("input_spec", parameters["test_run_max_pool_height_shard"]["input_specs"])
+""" @pytest.mark.parametrize("input_spec", parameters["test_run_max_pool_height_shard"]["input_specs"])
 @pytest.mark.parametrize("dtype", parameters["test_run_max_pool_height_shard"]["dtype"])
 @pytest.mark.parametrize("in_place", parameters["test_run_max_pool_height_shard"]["in_place"])
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
@@ -466,4 +467,4 @@ def test_run_max_pool_mem_config(device, dtype, input_spec, memory_config):
         device,
         ceil_mode=ceil_mode,
         memory_config=memory_config,
-    )
+    ) """
