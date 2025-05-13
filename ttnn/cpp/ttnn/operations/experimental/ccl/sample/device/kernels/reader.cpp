@@ -33,6 +33,7 @@ void kernel_main() {
     uint32_t device_id = get_arg_val<uint32_t>(arg_idx++);
     uint32_t device_order = get_arg_val<uint32_t>(arg_idx++);
     uint32_t input_tensor_page_size = get_arg_val<uint32_t>(arg_idx++);
+    volatile uint32_t* local_semaphore = (volatile uint32_t*)get_semaphore(get_arg_val<uint32_t>(arg_idx++));
 
     auto tensor0_addrgen = InterleavedAddrGenFast<true>{
         .bank_base_address = input_tensor_address,
@@ -52,18 +53,22 @@ void kernel_main() {
         cb_push_back(cb_index, 1);
     }
 
-    tile_id = 0;
-    for (; tile_id < input_num_tiles; tile_id++) {
-        cb_reserve_back(cb_index, 1);
-        tensor0_addrgen.noc_async_read_tile(tile_id, get_write_ptr(cb_index));
-        noc_async_read_barrier();
-        cb_push_back(cb_index, 1);
-    }
-
     volatile tt_l1_ptr uint32_t* signal_semaphore_addr_ptr =
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(receiver_semaphore_address);
 
-    noc_semaphore_wait(signal_semaphore_addr_ptr, 1);
+    for (int device_iter = 0; device_iter < 7; device_iter++) {
+        tile_id = 0;
+        uint32_t device_to_process = (((device_order - device_iter) % 8) + 8) % 8;
+        for (; tile_id < input_num_tiles; tile_id++) {
+            cb_reserve_back(cb_index, 1);
+            uint64_t tile_addr = output_tensor_addrgen.get_noc_addr(device_to_process * input_num_tiles + tile_id);
+            noc_async_read(tile_addr, get_write_ptr(cb_index), input_tensor_page_size);
+            noc_async_read_barrier();
+            cb_push_back(cb_index, 1);
+        }
+        noc_semaphore_wait(local_semaphore, 1);
+        noc_semaphore_set(local_semaphore, 0);
+    }
 
     DPRINT << "DONE READER\n";
 }

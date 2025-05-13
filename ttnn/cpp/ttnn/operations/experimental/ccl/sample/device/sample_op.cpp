@@ -1,5 +1,6 @@
 #include "sample_op.hpp"
 #include "tt-metalium/core_coord.hpp"
+#include "tt-metalium/semaphore.hpp"
 #include "ttnn/operations/functions.hpp"
 #include "ttnn/operations/math.hpp"
 #include "ttnn/operations/core/core.hpp"
@@ -68,7 +69,8 @@ void createReader(
     const ttnn::GlobalSemaphore& semaphore,
     bool is_forward,
     CoreCoord reader_core,
-    uint32_t device_order) {
+    uint32_t device_order,
+    const uint32_t local_semaphore_id) {
     auto reader_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
     reader_kernel_config.compile_args = {tt::CB::c_in0};
 
@@ -90,7 +92,8 @@ void createReader(
         num_tiles,
         device->id(),
         device_order,
-        tile_size};
+        tile_size,
+        local_semaphore_id};
 
     tt::tt_metal::SetRuntimeArgs(program, reader_kernel_id, {reader_core}, reader_rt_args);
 }
@@ -107,7 +110,8 @@ void createWriter(
     bool is_forward,
     CoreCoord writer_core,
     int link,
-    uint32_t device_order) {
+    uint32_t device_order,
+    const uint32_t local_semaphore_id) {
     tt::DataFormat data_format = tt::DataFormat::Bfp8_b;
     uint32_t src0_cb_index = tt::CB::c_in0;
     uint32_t dst0_cb_index = tt::CB::c_in1;
@@ -157,7 +161,8 @@ void createWriter(
         device->id(),
         device_order,
         num_tiles,
-        tile_size};
+        tile_size,
+        local_semaphore_id};
 
     // link is set to 0
     if (is_forward) {
@@ -195,6 +200,8 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
 
     // Reader
     CoreCoord fwd_reader_core = CoreCoord(0, 0);
+
+    auto local_semaphore = tt::tt_metal::CreateSemaphore(program, fwd_reader_core, 0);
     CoreCoord fwd_drain_sync_core = device->worker_core_from_logical_core(fwd_reader_core);
     createReader(
         program,
@@ -205,7 +212,8 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
         semaphore,
         true,
         fwd_reader_core,
-        device_order);
+        device_order,
+        local_semaphore);
 
     // Writer
     CoreCoord writer_core = CoreCoord(0, 0);
@@ -221,7 +229,8 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
         true,
         writer_core,
         0,
-        device_order);
+        device_order,
+        local_semaphore);
 
     // // Backward
     // CoreCoord bwd_reader_core = CoreCoord(0, 3);
