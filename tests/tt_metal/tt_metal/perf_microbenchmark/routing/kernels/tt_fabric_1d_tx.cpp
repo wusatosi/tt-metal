@@ -80,7 +80,8 @@ void kernel_main() {
     uint32_t fwd_dev_id = get_arg_val<uint32_t>(rt_args_idx++);
 
     uint64_t noc_dest_addr = get_noc_addr_helper(rx_noc_encoding, target_address);
-
+    DPRINT << "Dest ADDR" << (uint32_t)(noc_dest_addr) << ENDL();
+    DPRINT << "Dest ADDR" << (uint32_t)(noc_dest_addr >> 32) << ENDL();
     tt::tt_fabric::WorkerToFabricEdmSender fwd_fabric_connection;
     tt::tt_fabric::WorkerToFabricEdmSender bwd_fabric_connection;
 
@@ -130,8 +131,9 @@ void kernel_main() {
         zero_l1_buf((uint32_t*)packet_header_buffer_address, sizeof(PACKET_HEADER_TYPE));
 
         if constexpr (is_2d_fabric) {
+            DPRINT << "Set unicast route" << ENDL();
             fabric_set_unicast_route(
-                (LowLatencyMeshPacketHeader*)packet_header_buffer_address,
+                (MeshPacketHeader*)packet_header_buffer_address,
                 (eth_chan_directions)fwd_fabric_connection.direction,
                 my_dev_id,
                 fwd_dev_id,

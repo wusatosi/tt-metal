@@ -700,7 +700,7 @@ TEST_F(Fabric2DPullFixture, TestAsyncRawWrite) { RunAsyncWriteTest(this, fabric_
 
 TEST_F(Fabric2DPushFixture, TestUnicastRaw1HopE) { RunTestUnicastRaw(this, 1); }
 
-TEST_F(Fabric2DPushFixture, TestUnicastRaw2HopE) { RunTestUnicastRaw(this, 2); }
+TEST_F(Fabric2DPushFixture, TestUnicastRaw2HopE) { RunTestUnicastRaw(this, 3); }
 
 TEST_F(Fabric2DPushFixture, TestUnicastRaw1HopW) { RunTestUnicastRaw(this, 1, RoutingDirection::W); }
 

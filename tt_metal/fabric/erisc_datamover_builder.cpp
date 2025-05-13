@@ -137,7 +137,8 @@ FabricEriscDatamoverConfig::FabricEriscDatamoverConfig(std::size_t channel_buffe
         this->num_used_receiver_channels -= 1;
         this->num_fwd_paths -= 1;
     }
-    tt::tt_fabric::set_routing_mode(topology);
+    tt::tt_metal::FabricConfig fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
+    tt::tt_fabric::set_routing_mode(topology, fabric_config);
 
     for (uint32_t i = 0; i < this->num_used_receiver_channels; i++) {
         TT_FATAL(
@@ -412,6 +413,7 @@ FabricEriscDatamoverBuilder::FabricEriscDatamoverBuilder(
         sender_channel_connection_liveness_check_disable_array.begin(),
         sender_channel_connection_liveness_check_disable_array.end(),
         false);
+    std::cout << "Core: " << my_eth_core_logical.str() << " Dir: " << direction << std::endl;
 }
 
 std::vector<uint32_t> FabricEriscDatamoverBuilder::get_compile_time_args() const {
@@ -439,7 +441,6 @@ std::vector<uint32_t> FabricEriscDatamoverBuilder::get_compile_time_args() const
         num_receiver_channels,
         config.num_fwd_paths,
         this->wait_for_host_signal ? 1 : 0,
-
         this->firmware_context_switch_interval,
         this->enable_first_level_ack,
         this->fuse_receiver_flush_and_completion_ptr,
@@ -448,10 +449,8 @@ std::vector<uint32_t> FabricEriscDatamoverBuilder::get_compile_time_args() const
         is_handshake_master,
         this->handshake_address,
         this->channel_buffer_size,
-
         this->sender_channels_num_buffers[0],
         this->receiver_channels_num_buffers[0],
-
         config.sender_channels_base_address[0],
         config.sender_channels_worker_conn_info_base_address[0],
         config.sender_channels_base_address[1],
@@ -466,19 +465,15 @@ std::vector<uint32_t> FabricEriscDatamoverBuilder::get_compile_time_args() const
         config.receiver_channels_base_address[0],
         config.receiver_channels_base_address[1],
         config.receiver_channels_base_address[1],
-
         config.sender_channels_base_address[0],
         config.sender_channels_base_address[1],
         config.sender_channels_base_address[2],
         config.sender_channels_base_address[3],
         config.sender_channels_base_address[4],
-
         this->termination_signal_ptr,
         this->edm_local_sync_ptr,
         this->edm_status_ptr,
         this->enable_persistent_mode,
-
-        // fabric counters
         FabricEriscDatamoverConfig::enable_fabric_counters,
         config.receiver_channels_counters_address[0],
         config.receiver_channels_counters_address[1],
@@ -487,10 +482,7 @@ std::vector<uint32_t> FabricEriscDatamoverBuilder::get_compile_time_args() const
         config.sender_channels_counters_address[2],
         config.sender_channels_counters_address[3],
         config.sender_channels_counters_address[4],
-
-        // fabric pkt header recording
         FabricEriscDatamoverConfig::enable_fabric_pkt_header_recording,
-
         config.receivers_completed_packet_header_cb_address[0],
         FabricEriscDatamoverConfig::receiver_completed_packet_header_cb_size_headers,
         config.receivers_completed_packet_header_cb_address[1],
@@ -507,7 +499,6 @@ std::vector<uint32_t> FabricEriscDatamoverBuilder::get_compile_time_args() const
         FabricEriscDatamoverConfig::sender_completed_packet_header_cb_size_headers,
         config.topology == Topology::Mesh,
         this->direction,
-        // Special marker to help with identifying misalignment bugs
         0x00c0ffee};
 
     for (size_t i = 0; i < num_sender_channels; i++) {

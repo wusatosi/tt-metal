@@ -200,6 +200,7 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
     }
 
     // Create the sender program
+    std::cout << "Write sender kernel to: " << sender_device->id() << std::endl;
     auto sender_program = tt_metal::CreateProgram();
     auto sender_kernel = tt_metal::CreateKernel(
         sender_program,
@@ -258,6 +259,7 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
 
     std::vector<uint32_t> receiver_runtime_args = {packet_payload_size_bytes, num_packets, time_seed};
 
+    std::cout << "Write recv kernel to: " << receiver_device->id() << std::endl;
     // Create the receiver program for validation
     auto receiver_program = tt_metal::CreateProgram();
     auto receiver_kernel = tt_metal::CreateKernel(

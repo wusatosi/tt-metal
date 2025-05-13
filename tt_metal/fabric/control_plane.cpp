@@ -996,7 +996,7 @@ void ControlPlane::print_ethernet_channels() const {
             }
         }
     }
-    log_debug(tt::LogFabric, "{}", ss.str());
+    log_info(tt::LogFabric, "{}", ss.str());
 }
 
 void ControlPlane::set_routing_mode(uint16_t mode) {

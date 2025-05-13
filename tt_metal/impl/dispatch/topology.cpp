@@ -1089,7 +1089,7 @@ std::unique_ptr<Program> create_and_compile_tt_fabric_program(IDevice* device, F
     std::unordered_map<chan_id_t, tt::tt_fabric::FabricEriscDatamoverBuilder> edm_builders;
     auto routing_directions = {RoutingDirection::N, RoutingDirection::S, RoutingDirection::E, RoutingDirection::W};
     Topology topology = get_tt_fabric_topology(fabric_config);
-    tt::tt_fabric::set_routing_mode(topology);
+    tt::tt_fabric::set_routing_mode(topology, fabric_config);
     if (device->is_mmio_capable() &&
         (tt::tt_metal::MetalContext::instance().get_cluster().get_cluster_type() == tt::ClusterType::TG)) {
         // skip lauching on gateways for TG
@@ -1138,6 +1138,7 @@ std::unique_ptr<Program> create_and_compile_tt_fabric_program(IDevice* device, F
     bool wrap_around_mesh = corner_chip_connections == 2;
 
     for (const auto& [direction, remote_chip_id] : chip_neighbors) {
+        std::cout << "Direction: " << static_cast<uint32_t>(direction) << " " << remote_chip_id << std::endl;
         bool is_dateline = check_dateline(
             *control_plane,
             topology,
@@ -1252,7 +1253,8 @@ std::unique_ptr<Program> create_and_compile_tt_fabric_program(IDevice* device, F
             detail::WriteToDeviceL1(
                 device, eth_logical_core, edm_config.edm_local_sync_address, router_zero_buf, CoreType::ETH);
         }
-
+        // std::cout << "Using " << eth_logical_core.str() << " " << edm_builder.get_compile_time_args()[61] <<
+        // std::endl;
         auto eth_sender_kernel = tt::tt_metal::CreateKernel(
             *fabric_program_ptr,
             "tt_metal/fabric/impl/kernels/edm_fabric/fabric_erisc_datamover.cpp",
