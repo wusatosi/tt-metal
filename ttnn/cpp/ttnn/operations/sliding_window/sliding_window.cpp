@@ -1018,7 +1018,6 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
             uint32_t idx1 = 0, idx2 = 0;
             uint32_t len_idx1 = 0, len_idx2 = 0;
             uint32_t vector_id = 0;
-            int ref_size = 0;
             for (const auto& [key, subdata] : core_config) {
                 auto [nocx, nocy, len] = key;
                 int ref_ind = nocx - noc_00.x + (nocy - noc_00.y) * num_cores_x;
@@ -1031,44 +1030,19 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
                 flat_data[1][idx2++] = nocy;
                 len_idx2 = idx2;
                 flat_data[1][idx2++] = 0;
-                int local_count = flattened_local_config[0][ref_ind][2] / 4;
-                int first_local_dst_relative_src = flattened_local_config[0][ref_ind][3] + in_out_shard_size_delta;
-                int last_local_dst_relative_src =
-                    flattened_local_config[0][ref_ind][3 + 4 * (local_count - 1)] + in_out_shard_size_delta;
-                int first_local_size = flattened_local_config[0][ref_ind][5];
-                int last_local_size = flattened_local_config[0][ref_ind][5 + 4 * (local_count - 1)];
-                int low_local_bound;
-                int high_local_bound;
-                bool forward_local;
-                if (first_local_dst_relative_src < last_local_dst_relative_src) {
-                    low_local_bound = first_local_dst_relative_src;
-                    high_local_bound = last_local_dst_relative_src + last_local_size - 1;
-                    forward_local = true;
-                } else {
-                    low_local_bound = last_local_dst_relative_src;
-                    high_local_bound = first_local_dst_relative_src + first_local_size - 1;
-                    forward_local = false;
-                }
-                // printf("c %d: ref_ind: %d, high_local_bound: %d, low_local_bound: %d\n", core, ref_ind,
-                // high_local_bound, low_local_bound);
                 for (size_t i = 0; i < subdata.size(); ++i) {
                     auto [src_start, dst_start, length] = subdata[i];
                     if (in_place) {
-                        int no_wait = false;
-                        if ((int)dst_start > high_local_bound || (int)dst_start + (int)length - 1 < low_local_bound) {
-                            no_wait = true;
-                        }
                         int dst_relative_src = src_start + in_out_shard_size_delta;
                         remote_ref_low_bounds[core] = std::min(remote_ref_low_bounds[core], dst_relative_src);
                         remote_ref_high_bounds[core] =
-                            std::max(remote_ref_high_bounds[core], (int)dst_relative_src + (int)length - 1);
+                            std::max(remote_ref_high_bounds[core], dst_relative_src + (int)length - 1);
 
                         flat_data[0][idx1++] = src_start;
                         flat_data[0][idx1++] = dst_start;
                         flat_data[0][idx1++] = length;
-                        flat_data[0][idx1++] = no_wait;  // default no wait based on local only
+                        flat_data[0][idx1++] = 1;  // default no wait to true
                         flat_data[0][len_idx1] += 4;
-                        ref_size += length;  // TODO: we can reduce the size of the temp buffer now
 
                         idx1 = flat_data[0][len_idx1] ? idx1 : idx1 - 4;  // TODO: should this be 3 or 4
                     } else {
@@ -1092,11 +1066,10 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
 
             flattened_config[0].emplace_back(std::move(flat_data[0]));
             flattened_config[1].emplace_back(std::move(flat_data[1]));
-            max_ref_size = std::max(max_ref_size, ref_size);
             core++;
         }
 
-        // check the remote ref bounds to update the no wait conditions
+        // check the local and remote ref bounds to update the no wait conditions
         if (in_place) {
             core = 0;
             // printf("---REMOTE CONFIG---\n");
@@ -1111,17 +1084,40 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
                     auto [nocx, nocy, len] = key;
                     int ref_ind = nocx - noc_00.x + (nocy - noc_00.y) * num_cores_x;
                     // printf("        ref ind: %d\n", ref_ind);
+                    int local_count = flattened_local_config[0][ref_ind][2] / 4;
+                    int first_local_dst_relative_src = flattened_local_config[0][ref_ind][3] + in_out_shard_size_delta;
+                    int last_local_dst_relative_src =
+                        flattened_local_config[0][ref_ind][3 + 4 * (local_count - 1)] + in_out_shard_size_delta;
+                    int first_local_size = flattened_local_config[0][ref_ind][5];
+                    int last_local_size = flattened_local_config[0][ref_ind][5 + 4 * (local_count - 1)];
+                    int low_local_bound;
+                    int high_local_bound;
+                    bool forward_local;
+                    if (first_local_dst_relative_src < last_local_dst_relative_src) {
+                        low_local_bound = first_local_dst_relative_src;
+                        high_local_bound = last_local_dst_relative_src + last_local_size - 1;
+                        forward_local = true;
+                    } else {
+                        low_local_bound = last_local_dst_relative_src;
+                        high_local_bound = first_local_dst_relative_src + first_local_size - 1;
+                        forward_local = false;
+                    }
                     for (size_t i = 0; i < subdata.size(); ++i) {
                         idx1 += 3;
                         auto [src_start, dst_start, length] = subdata[i];
                         int dst_relative_src = src_start + in_out_shard_size_delta;
-                        bool no_wait = flattened_config[0][core][idx1];
-                        // printf("no_wait idx: %d\n", idx1);
-                        if (!(dst_relative_src > remote_ref_high_bounds[ref_ind] ||
-                              dst_relative_src + length - 1 < remote_ref_low_bounds[ref_ind])) {
-                            flattened_config[0][core][idx1] = 0;
+                        int no_wait = true;
+                        // local condition
+                        if (!((int)dst_start > high_local_bound ||
+                              (int)dst_start + (int)length - 1 < low_local_bound)) {
                             no_wait = false;
                         }
+                        // remote condition
+                        if (!(dst_relative_src > remote_ref_high_bounds[ref_ind] ||
+                              dst_relative_src + length - 1 < remote_ref_low_bounds[ref_ind])) {
+                            no_wait = false;
+                        }
+                        flattened_config[0][core][idx1] = no_wait;
                         idx1++;
 
                         // printf(
@@ -1135,6 +1131,30 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
                     }
                 }
                 core++;
+            }
+
+            // compute the max ref size
+            core = 0;
+            for (const auto& core_config : config) {
+                uint32_t idx1 = 0;
+                uint32_t len_idx1 = 0;
+                int ref_size = 0;
+                for (const auto& [key, subdata] : core_config) {
+                    idx1 += 2;
+                    len_idx1 = idx1;
+                    idx1++;
+                    for (size_t i = 0; i < subdata.size(); ++i) {
+                        idx1 += 3;
+                        auto [src_start, dst_start, length] = subdata[i];
+                        bool no_wait = flattened_config[0][core][idx1];
+                        if (!no_wait) {
+                            ref_size += length;
+                        }
+                        idx1++;
+                        idx1 = flattened_config[0][core][len_idx1] ? idx1 : idx1 - 4;
+                    }
+                }
+                max_ref_size = std::max(max_ref_size, ref_size);
             }
         }
 
