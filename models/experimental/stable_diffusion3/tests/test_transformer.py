@@ -163,7 +163,6 @@ def test_transformer(
         width=width // 8,
     )
 
-    torch_output = torch.unsqueeze(torch_output, 1)
     assert_quality(torch_output, tt_output, pcc=0.99989, relative_rmse=0.022)
 
 
