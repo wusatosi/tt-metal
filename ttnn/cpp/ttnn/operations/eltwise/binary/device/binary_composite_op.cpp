@@ -282,6 +282,9 @@ Tensor ExecuteDiv::invoke(
     tt::stl::Span<const ttnn::operations::unary::UnaryWithParam> rhs_activations,
     const std::optional<bool>& use_legacy) {
     if (not use_legacy.value_or(true)) {
+        TT_FATAL(
+            (!round_mode.has_value() && !accurate_mode),
+            "round_mode, accurate_mode are not valid when passing use_legacy parameter in div");
         return BinaryOperation<BinaryOpType::DIV>::invoke(
             queue_id,
             input_a,
