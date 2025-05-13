@@ -287,13 +287,12 @@ class TtLinear:
         *,
         memory_config: ttnn.MemoryConfig | None = None,
         program_config: ttnn.MatmulProgramConfig | None = None,
-        compute_kernel_config: ttnn.ComputeKernelConfig | None = None,
         core_grid: ttnn.CoreGrid | None = None,
         output_tile: list[int] | None = None,
         dtype: ttnn.DataType | None = None,
         activation: str | None = None,
         deallocate: bool = False,
-        prob: bool = False,
+        highest_quality: bool = True,
     ) -> ttnn.Tensor:
         if self._cpu_fallback is not None:
             torch_x = to_torch(x, dtype=torch.float32)
@@ -328,7 +327,14 @@ class TtLinear:
             bias=bias,
             memory_config=memory_config,
             program_config=program_config,
-            compute_kernel_config=compute_kernel_config,
+            compute_kernel_config=ttnn.WormholeComputeKernelConfig(
+                math_fidelity=ttnn.MathFidelity.HiFi4,
+                math_approx_mode=False,
+                fp32_dest_acc_en=True,
+                packer_l1_acc=True,
+            )
+            if highest_quality
+            else None,
             core_grid=core_grid,
             output_tile=output_tile,
             dtype=dtype,
