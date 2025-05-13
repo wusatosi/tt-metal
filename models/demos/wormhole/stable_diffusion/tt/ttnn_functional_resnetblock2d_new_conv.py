@@ -384,7 +384,17 @@ class resnetBlock2D:
             nonlinearity = ttnn.silu
 
         out_channels = in_channels if out_channels is None else out_channels
+
+        torch_input = ttnn.to_torch(input_tensor)
+        print(torch_input[0, -1, -1, 0])
+
         hidden_states = ttnn.to_layout(input_tensor, ttnn.ROW_MAJOR_LAYOUT, memory_config=ttnn.L1_MEMORY_CONFIG)
+
+        torch_input = ttnn.to_torch(input_tensor)
+        print(torch_input[0, -1, -1, 0])
+
+        breakpoint()
+
         if ttnn.get_memory_config(hidden_states) != self.first_gn_expected_input_sharded_memory_config:
             hidden_states = ttnn.to_memory_config(hidden_states, self.first_gn_expected_input_sharded_memory_config)
 
