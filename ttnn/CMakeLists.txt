@@ -11,6 +11,13 @@ if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_link_options(--coverage)
 endif()
 
+add_compile_options(
+    "$<$<CXX_COMPILER_ID:Clang>:-Wc++11-narrowing>"
+    "$<$<CXX_COMPILER_ID:Clang>:-Wno-error=c++11-narrowing>"
+    "$<$<CXX_COMPILER_ID:GNU>:-Wnarrowing>"
+    "$<$<CXX_COMPILER_ID:GNU>:-Wno-error=narrowing>"
+)
+
 ##################################################
 # Define a method build_library to define all the options and properties for a library
 ##################################################
