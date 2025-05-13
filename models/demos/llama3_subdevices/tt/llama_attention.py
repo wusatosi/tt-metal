@@ -535,8 +535,18 @@ class TtLlamaAttention(LightweightModule):
             page_len = fill_page_table.shape[1] * block_size
             k_fill_sliced = k_fill[:, :, :page_len, :] if page_len < k_fill.shape[2] else k_fill
             v_fill_sliced = v_fill[:, :, :page_len, :] if page_len < v_fill.shape[2] else v_fill
-            ttnn.experimental.paged_fill_cache(keys_BKSD, k_fill_sliced, fill_page_table, batch_idx=user_id)
-            ttnn.experimental.paged_fill_cache(values_BKSD, v_fill_sliced, fill_page_table, batch_idx=user_id)
+            user_id_tensor = ttnn.as_tensor(
+                torch.tensor([user_id]),
+                dtype=ttnn.uint32,
+                device=self.mesh_device,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            )
+            ttnn.experimental.paged_fill_cache(
+                keys_BKSD, k_fill_sliced, fill_page_table, batch_idx_tensor=user_id_tensor
+            )
+            ttnn.experimental.paged_fill_cache(
+                values_BKSD, v_fill_sliced, fill_page_table, batch_idx_tensor=user_id_tensor
+            )
         else:
             ttnn.fill_cache(
                 keys_BKSD,

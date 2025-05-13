@@ -168,8 +168,8 @@ def create_tt_model(
     "input_prompts, instruct, repeat_batches, max_seq_len, batch_size, max_generated_tokens, paged_attention, page_params, sampling_params, stop_at_eos, ci_only",
     [
         (  # Batch-32 run (Throughput) - 32 users, small prompt
-            "models/tt_transformers/demo/sample_prompts/input_data_questions_prefill_128.json",  # input_prompts
-            True,  # instruct mode
+            "models/demos/llama3_subdevices/demo/input_data_prefill_128.json",  # input_prompts
+            False,  # instruct mode
             1,  # repeat_batches
             1024,  # max_seq_len
             32,  # batch_size
@@ -309,7 +309,7 @@ def test_demo_text(
         pytest.skip("Llama TG only supports batch-32")
 
     enable_trace = True  # Use tracing for better perf
-    prefill_enable_trace = repeat_batches > 1
+    prefill_enable_trace = False  # repeat_batches > 1
     print_to_file = False  # Enable this flag to print the output of all users to a file
 
     # Override parameters from command line if they are provided
@@ -422,7 +422,7 @@ def test_demo_text(
             profiler.start(f"compile_prefill", iteration=batch_idx)
 
             logits = generator.prefill_forward_text(
-                input_tokens_prefill_pt[0].unsqueeze(0),  # Just warmup prefill for 1 user
+                input_tokens_prefill_pt,  # Just warmup prefill for 1 user
                 page_table=page_table,
                 kv_cache=tt_kv_cache,
                 prompt_lens=decoding_pos,
@@ -436,13 +436,14 @@ def test_demo_text(
         profiler.start(f"inference_prefill", iteration=batch_idx)
 
         logits = generator.prefill_forward_text(
-            input_tokens_prefill_pt[0].unsqueeze(0),
+            input_tokens_prefill_pt,
             page_table=page_table,
             kv_cache=tt_kv_cache,
             prompt_lens=decoding_pos,
             enable_trace=prefill_enable_trace,
         )
         prefilled_token = logits.view(-1, 1)  # torch.argmax(logits, dim=-1)
+        print("prefilled_token", prefilled_token, prefilled_token.shape)
         profiler.end(f"inference_prefill", iteration=batch_idx)
         logger.info(f"Prefill finished")
 
@@ -452,11 +453,11 @@ def test_demo_text(
         # Keep track of generated outputs to print out every iteration
         all_outputs = [encoded_prompts[b][: prefill_lens[b]] for b in range(batch_size)]
         for user in range(batch_size):
-            user_tok = int(prefilled_token[0].item())
+            user_tok = int(prefilled_token[user].item())
             all_outputs[user].append(user_tok)
-        # print("Prefill outputs:", [tokenizer.decode(output) for output in all_outputs])
-        # model.tt_ccl.close()
-        # return True
+        print("Prefill outputs:", [tokenizer.decode(output) for output in all_outputs])
+        model.tt_ccl.close()
+        return True
         user_done = [False] * batch_size  # Keeps track when a user reaches EoD token
 
         # TODO Argmax on device is only supported for batch_size=1
@@ -468,7 +469,7 @@ def test_demo_text(
             device_sampling_params = None
 
         # Initial positions
-        current_pos = torch.tensor([decoding_pos[0] for b in range(batch_size)])
+        current_pos = torch.tensor([decoding_pos[b] for b in range(batch_size)])
 
         # Start decoding
         iteration = 0
@@ -524,7 +525,8 @@ def test_demo_text(
 
             # Save output token to print out later
             for user in range(batch_size):
-                user_tok = tt_output_torch.tolist()[0]
+                print("tt_output_torch", tt_output_torch, tt_output_torch.shape)
+                user_tok = tt_output_torch.tolist()[user]
                 if (
                     user_tok not in tokenizer.stop_tokens and user_done[user] == False
                 ):  # Read until an eos token (e.g. <|eot_id|>); create_tokenizer adds stop_tokens to HF tokenizers
@@ -540,7 +542,7 @@ def test_demo_text(
 
             # Print out generated outputs for each user at the end of every iteration
             if not is_ci_env:
-                for user in range(1):
+                for user in range(batch_size):
                     text = "".join(tokenizer.decode(all_outputs[user]))
                     if len(text) > 100:
                         text = "..." + text[-97:]

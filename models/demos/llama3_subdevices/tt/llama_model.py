@@ -439,15 +439,15 @@ class TtTransformer(LightweightModule):
         )
 
         tt_logits = ttnn.untilize(tt_logits, use_multicore=True, sub_core_grids=sub_core_grids)
-        tt_logits = ttnn.reshape(
-            tt_logits,
-            ttnn.Shape([1, 1, 1, tt_logits.shape[-1]]),
-            ttnn.Shape([1, 1, tt_logits.shape[-2], tt_logits.shape[-1]]),
-        )
+        # tt_logits = ttnn.reshape(
+        #     tt_logits,
+        #     ttnn.Shape([1, 1, 1, tt_logits.shape[-1]]),
+        #     ttnn.Shape([1, 1, tt_logits.shape[-2], tt_logits.shape[-1]]),
+        # )
 
         if argmax_on_device:
             tt_logits = ttnn.argmax(  # TODO Add multicore support to batch > 1
-                tt_logits, dim=3, keepdim=True, use_multicore=True, sub_core_grids=sub_core_grids, output_tensor=x
+                tt_logits, dim=3, keepdim=True, use_multicore=False, sub_core_grids=sub_core_grids, output_tensor=x
             )
         else:
             # Send output logits to DRAM so L1 is not reserved for ttnn tracing and can be used by subsequent operations

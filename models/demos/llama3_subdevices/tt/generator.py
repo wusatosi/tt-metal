@@ -72,7 +72,7 @@ class Generator:
         page_table=None,
         kv_cache=None,
         prompt_lens=None,
-        enable_trace=True,
+        enable_trace=False,
         sampling_params=SamplingParams(temperature=0.0, top_k=-1, top_p=1.0),
     ):
         assert sampling_params.temperature == 0, "Currently only supporting greedy decoding (temperature=0) on device"
@@ -90,7 +90,7 @@ class Generator:
             ), "page_table must be a torch.Tensor when passing into prefill_forward"
 
             # only run 1 user prefill for now
-        for user_id in range(1):
+        for user_id in range(batch):
             logger.info(f"Prefilling User {user_id + 1}")
             seq_len = prompt_lens[user_id]
             last_token_idx = seq_len - 1
@@ -113,7 +113,7 @@ class Generator:
             else:
                 tt_logits = self.prefill_forward_single_user_text(**prefill_kwargs)
 
-        for user_id in range(batch):
+            # for user_id in range(batch):
             # Since we give unpadded_seq_len, only the tile containing the last token is returned
             output_logits[user_id] = tt_logits
 
