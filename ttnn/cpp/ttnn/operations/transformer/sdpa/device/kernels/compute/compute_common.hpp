@@ -42,7 +42,7 @@ void max_block_inplace(uint32_t in0, uint32_t in1) {
 }
 
 template <PoolType pool_type, ReduceDim reduce_dim, uint32_t in0_cb, uint32_t scale_cb, uint32_t rows, uint32_t cols>
-void reduce_c(uint32_t out_cb) {
+void reduce_cols(uint32_t out_cb) {
     DeviceZoneScopedN("REDUCE_C");
     // Precondition: in0_cb has rows*cols produced. in0_cb has tiles in row-major order
     // Precondition: scale_cb has 1 produced
@@ -56,13 +56,13 @@ void reduce_c(uint32_t out_cb) {
     constexpr uint32_t num_tiles = rows * cols;
     cb_wait_front(scale_cb, 1);
     cb_wait_front(in0_cb, num_tiles);
-    cb_reserve_back(out_cb, rows);
+    cb_reserve_back(out_cb, cols);
 
     constexpr uint32_t reduce_dst_idx = 0;
 
-    for (uint32_t i = 0; i < rows; i++) {
+    for (uint32_t j = 0; j < cols; j++) {
         acquire_dst();
-        for (uint32_t j = 0; j < cols; j++) {
+        for (uint32_t i = 0; i < rows; i++) {
             reduce_tile<pool_type, reduce_dim>(in0_cb, scale_cb, i * cols + j, 0, reduce_dst_idx);
         }
 
@@ -70,7 +70,7 @@ void reduce_c(uint32_t out_cb) {
         release_dst();
     }
 
-    cb_push_back(out_cb, rows);
+    cb_push_back(out_cb, cols);
     reduce_revert_delta<reduce_dim>(out_cb);
 }
 
@@ -97,7 +97,7 @@ void recip_block_inplace(uint32_t in_cb, uint32_t num_tiles) {
 }
 
 template <uint32_t in0_cb, uint32_t rows, uint32_t cols>
-void sub_exp_block_bcast_cols_inplace(uint32_t in1_cb) {
+void sub_exp_block_bcast_rows_inplace(uint32_t in1_cb) {
     DeviceZoneScopedN("SUB_EXP_BLOCK_BCAST_COLS_INPLACE");
     // Precondition: in0_cb has rows*cols produced
     // Precondition: in1_cb has rows produced
@@ -106,23 +106,25 @@ void sub_exp_block_bcast_cols_inplace(uint32_t in1_cb) {
     sub_bcast_cols_init_short(in0_cb, in1_cb);
     exp_tile_init<true, true>();
     cb_wait_front(in0_cb, rows * cols);
-    cb_wait_front(in1_cb, rows);
+    cb_wait_front(in1_cb, cols);
 
     constexpr uint32_t dst_tiles = SUB_EXP_GRANULARITY;
-    constexpr uint32_t granularity = cols >> LOG2_SUB_EXP_GRANULARITY;
-    uint32_t in0_index = 0;
-    for (uint32_t i = 0; i < rows; ++i) {
+    constexpr uint32_t granularity = rows >> LOG2_SUB_EXP_GRANULARITY;
+    for (uint32_t i = 0; i < cols; ++i) {
+        uint32_t in0_index = i;
+        uint32_t out_index = i;
         for (uint32_t u = 0; u < granularity; u++) {
             tile_regs_acquire();
             for (uint32_t j = 0; j < dst_tiles; ++j) {
                 sub_tiles_bcast_cols(in0_cb, in1_cb, in0_index, i, j);
                 exp_tile<true, true>(j);
-                in0_index++;
+                in0_index += cols;
             }
             tile_regs_commit();
             tile_regs_wait();
             for (uint32_t j = 0; j < dst_tiles; ++j) {
-                pack_tile(j, in0_cb);
+                pack_tile<true>(j, in0_cb, out_index);
+                out_index += cols;
             }
             tile_regs_release();
         }
@@ -365,73 +367,83 @@ void matmul_blocks(
     cb_push_back(out_cb, output_num_tiles);
 }
 
-template <uint32_t in0_cb, uint32_t in1_cb, uint32_t M, uint32_t K>
-void matmul_reduce(const uint32_t& out_cb) {
+template <uint32_t in0_cb, uint32_t in1_cb, uint32_t K, uint32_t N>
+void matmul_reduce_cols(const uint32_t& out_cb) {
     DeviceZoneScopedN("MATMUL_REDUCE");
+    /**
+     * This function takes an input of shape (K x N) and does reduce_sum on K to produce a 1xN output.
+     * in0 is the CB to reduce, in1 is the single tile CB with a row of ones.
+     *
+     * The first stage does binary addition to reduce (K x N) to (1 x N) tiles. This then follows to a matmul
+     * to reduce each column of a single tile to a single value.
+     *
+     */
     // precondition: in0_cb has M*K produced
     // preconditino: in1_cb has K*N produced
     // postcondition: in0_cb is full, in1_cb is empty
     // postcondition: out_cb has M*N produced
 
-    constexpr uint32_t N = 1;  // Result of reduce is 1 column
-    constexpr uint32_t in0_block_w = N;
-    constexpr uint32_t subblock_w = N;
+    constexpr uint32_t M = 1;  // Result of reduce is 1 column
+    constexpr uint32_t in0_block_w = M;
+    constexpr uint32_t subblock_h = M;
     // Reuse the Sq_chunk_t granularity chosen for sub_exp_block
-    constexpr uint32_t subblock_h = STATS_GRANULARITY;
-    constexpr uint32_t in0_num_subblocks = M >> LOG2_STATS_GRANULARITY;
+    constexpr uint32_t subblock_w = STATS_GRANULARITY;
+    constexpr uint32_t in1_num_subblocks = N >> LOG2_STATS_GRANULARITY;
 
     /**
      * Use DST accumulation to add tiles together to get an Mx1 output.
      */
     add_tiles_init(in0_cb, in0_cb, true);
-    cb_wait_front(in0_cb, M * K);
-    cb_reserve_back(out_cb, M);
+    cb_wait_front(in0_cb, K * N);
+    cb_reserve_back(out_cb, N);
 
-    uint32_t in0_index = 0;
-    for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; in0_subblock++) {
+    uint32_t in0_base_index = 0;
+    for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; in1_subblock++) {
         acquire_dst();
-        for (uint32_t row = 0; row < subblock_h; row++) {
-            for (uint32_t col = 0; col < K; col += 2) {
-                add_tiles(in0_cb, in0_cb, in0_index, in0_index + 1, row);
-                in0_index += 2;
+        for (uint32_t col = 0; col < subblock_w; col++) {
+            uint32_t in0_index = in0_base_index + col;
+            for (uint32_t row = 0; row < K; row += 2) {
+                add_tiles(in0_cb, in0_cb, in0_index, in0_index + N, col);
+                in0_index += 2 * N;
             }
-            pack_tile(row, out_cb);
+            pack_tile(col, out_cb);
         }
         release_dst();
+        in0_base_index += subblock_w;
     }
-    cb_push_back(out_cb, M);
+    cb_push_back(out_cb, N);
 
     /**
-     * Use matmul on Mx1 input to reduce rows within tile to produce Mx1 output.
+     * Use matmul on 1xN input to reduce rows within tile to produce 1xN output.
      */
 
     mm_block_init_short(
-        out_cb, in1_cb, 0 /*transpose*/, subblock_w /*ct_dim*/, subblock_h /*rt_dim*/, in0_block_w /*kt_dim*/);
+        in1_cb, out_cb, 0 /*transpose*/, subblock_w /*ct_dim*/, subblock_h /*rt_dim*/, in0_block_w /*kt_dim*/);
 
     constexpr uint32_t output_num_tiles = M * N;
     constexpr uint32_t out_subblock_num_tiles = subblock_h * subblock_w;
 
-    reconfig_data_format(in1_cb, in0_cb);
-    cb_wait_front(in1_cb, N);
-    cb_wait_front(out_cb, M);
+    reconfig_data_format(out_cb, in1_cb);
+    cb_wait_front(in1_cb, M);
+    cb_wait_front(out_cb, N);
 
-    for (uint32_t in0_subblock = 0; in0_subblock < in0_num_subblocks; ++in0_subblock) {
+    for (uint32_t in1_subblock = 0; in1_subblock < in1_num_subblocks; ++in1_subblock) {
         tile_regs_acquire();
 
         uint32_t dst_index = 0;
         uint32_t in0_index = 0;
         uint32_t in1_index = 0;
 
-        matmul_block(out_cb, in1_cb, in0_index, in1_index, dst_index, 0, subblock_w, subblock_h, in0_block_w);
+        matmul_block(in1_cb, out_cb, in0_index, in1_index, dst_index, 0, subblock_w, subblock_h, in0_block_w);
 
         tile_regs_commit();
-        cb_pop_front(out_cb, subblock_h);
+        cb_pop_front(out_cb, subblock_w);
 
         tile_regs_wait();
-        for (uint32_t i = 0; i < subblock_h; i++) {
+        for (uint32_t i = 0; i < subblock_w; i++) {
             pack_tile(i, out_cb);
         }
         tile_regs_release();
-        cb_push_back(out_cb, subblock_h);
+        cb_push_back(out_cb, subblock_w);
     }
 }

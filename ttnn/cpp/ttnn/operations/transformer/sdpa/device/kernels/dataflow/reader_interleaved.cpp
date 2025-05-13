@@ -154,7 +154,8 @@ void kernel_main() {
                     Sq_chunk_t,
                     DHt,
                     q_tile_bytes,
-                    barrier_threshold);
+                    barrier_threshold,
+                    true);
 
                 if constexpr (is_chunked) {
                     q_chunk = chunked_q_chunk_offset + q_chunk;
@@ -208,7 +209,7 @@ void kernel_main() {
                             DHt,
                             k_tile_bytes,
                             barrier_threshold,
-                            true  // transpose=true for K reads
+                            false  // transpose=true for K reads
                         );
                     }
 
@@ -269,7 +270,7 @@ void kernel_main() {
                             DHt,
                             v_tile_bytes,
                             barrier_threshold,
-                            false);
+                            true);
                     }
                 }
             }
