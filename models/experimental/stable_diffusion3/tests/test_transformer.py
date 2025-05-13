@@ -164,7 +164,7 @@ def test_transformer(
     )
 
     torch_output = torch.unsqueeze(torch_output, 1)
-    assert_quality(torch_output, tt_output, pcc=0.997, mse=0.06)
+    assert_quality(torch_output, tt_output, pcc=0.99989, relative_rmse=0.022)
 
 
 def reshape_noise_pred_torch(
