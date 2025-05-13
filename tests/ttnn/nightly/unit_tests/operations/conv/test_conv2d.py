@@ -251,6 +251,7 @@ def run_conv(
         return_output_dim=True,
         return_weights_and_bias=True,
     )
+    print(tt_output_tensor_on_device.memory_config())
     if run_twice:
         [tt_output_tensor_on_device, [out_height, out_width], [d_w, d_b]] = ttnn.conv2d(
             input_tensor=tt_input_tensor,
@@ -3561,3 +3562,81 @@ def test_segformer_channel_padding(device, enable_act_double_buffer, enable_spli
 
     _, pcc_message = assert_with_pcc(torch_output_tensor, ttnn_output_tensor[0], pcc=0.99)
     print(pcc_message)
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize(
+    "batch_size, input_channels , output_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, shard_layout, config_override, use_shallow_conv_variant",
+    (
+        (6 , 3 , 64 , 192 , 320 , 7 , 7 , 2 , 2 , 3 , 3 , HS, {"act_block_h": 32}, False),
+        (6 , 64 , 64 , 48 , 80 , 3 , 3 , 1 , 1 , 1 , 1 , HS, None, False),
+        (6 , 64 , 128 , 48 , 80 , 3 , 3 , 2 , 2 , 1 , 1 , HS, None, False),
+        (6 , 128 , 128 , 24 , 40 , 3 , 3 , 1 , 1 , 1 , 1 , HS, None, False),
+        (6 , 64 , 128 , 48 , 80 , 1 , 1 , 2 , 2 , 0 , 0 , HS, None, False),
+        (6 , 128 , 256 , 24 , 40 , 3 , 3 , 2 , 2 , 1 , 1 , HS, None, False),
+        (6 , 256 , 256 , 12 , 20 , 3 , 3 , 1 , 1 , 1 , 1 , HS, None, False),
+        (6 , 128 , 256 , 24 , 40 , 1 , 1 , 2 , 2 , 0 , 0 , HS, None, False),
+        (6 , 256 , 512 , 12 , 20 , 3 , 3 , 2 , 2 , 1 , 1 , HS, None, False),
+        (6 , 512 , 512 , 6 , 10 , 3 , 3 , 1 , 1 , 1 , 1 , BS, None, False),
+        (6 , 256 , 512 , 12 , 20 , 1 , 1 , 2 , 2 , 0 , 0 , HS, None, False),
+        (6 , 512 , 256 , 6 , 10 , 1 , 1 , 1 , 1 , 0 , 0 , HS, None, False),
+        (6 , 256 , 256 , 6 , 10 , 3 , 3 , 1 , 1 , 1 , 1 , BS, None, False),
+    ),
+)
+@pytest.mark.parametrize(
+    "weights_dtype",
+    [ttnn.bfloat16],
+)
+@pytest.mark.parametrize(
+    "activations_dtype",
+    [ttnn.bfloat8_b, ttnn.bfloat16],
+)
+@pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
+@pytest.mark.parametrize("output_layout", [ttnn.TILE_LAYOUT])
+def test_conv_for_maptr(
+    device,
+    torch_tensor_map,
+    use_program_cache,
+    math_fidelity,
+    activations_dtype,
+    weights_dtype,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_height,
+    input_width,
+    filter_height,
+    filter_width,
+    stride_h,
+    stride_w,
+    pad_h,
+    pad_w,
+    shard_layout,
+    config_override,
+    use_shallow_conv_variant,
+    output_layout,
+):
+    if device.core_grid.y == 7:
+        pytest.skip("This test is not supported for N300")
+    run_conv(
+        device,
+        torch_tensor_map,
+        math_fidelity,
+        activations_dtype,
+        weights_dtype,
+        batch_size,
+        output_channels,
+        input_channels,
+        input_height,
+        input_width,
+        filter_height,
+        filter_width,
+        stride_h,
+        stride_w,
+        (pad_h, pad_w),
+        config_override,
+        shard_layout=shard_layout,
+        use_shallow_conv_variant=use_shallow_conv_variant,
+        groups=1,
+        output_layout=output_layout,
+        has_bias=False,
+    )
