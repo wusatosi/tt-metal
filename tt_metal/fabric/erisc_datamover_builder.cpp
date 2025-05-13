@@ -22,6 +22,7 @@
 #include <variant>
 #include <vector>
 
+#include "impl/context/metal_context.hpp"
 #include "tt_metal/fabric/fabric_host_utils.hpp"
 #include "core_coord.hpp"
 #include "fabric_edm_types.hpp"
@@ -137,7 +138,8 @@ FabricEriscDatamoverConfig::FabricEriscDatamoverConfig(std::size_t channel_buffe
         this->num_used_receiver_channels -= 1;
         this->num_fwd_paths -= 1;
     }
-    tt::tt_fabric::set_routing_mode(topology);
+    tt::tt_metal::FabricConfig fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
+    tt::tt_fabric::set_routing_mode(topology, fabric_config);
 
     for (uint32_t i = 0; i < this->num_used_receiver_channels; i++) {
         TT_FATAL(

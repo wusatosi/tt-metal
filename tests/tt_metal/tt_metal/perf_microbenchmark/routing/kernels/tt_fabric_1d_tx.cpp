@@ -22,6 +22,7 @@ tt_l1_ptr uint32_t* const test_results = reinterpret_cast<tt_l1_ptr uint32_t*>(t
 constexpr uint32_t target_address = get_compile_time_arg_val(2);
 constexpr bool mcast_mode = get_compile_time_arg_val(3);
 constexpr bool is_2d_fabric = get_compile_time_arg_val(4);
+constexpr bool use_dynamic_routing = get_compile_time_arg_val(5);
 
 inline void setup_connection_and_headers(
     tt::tt_fabric::WorkerToFabricEdmSender& connection,
@@ -78,6 +79,7 @@ void kernel_main() {
     uint32_t ew_dim = get_arg_val<uint32_t>(rt_args_idx++);
     uint32_t my_dev_id = get_arg_val<uint32_t>(rt_args_idx++);
     uint32_t fwd_dev_id = get_arg_val<uint32_t>(rt_args_idx++);
+    uint32_t fwd_mesh_id = get_arg_val<uint32_t>(rt_args_idx++);
 
     uint64_t noc_dest_addr = get_noc_addr_helper(rx_noc_encoding, target_address);
 
@@ -130,12 +132,23 @@ void kernel_main() {
         zero_l1_buf((uint32_t*)packet_header_buffer_address, sizeof(PACKET_HEADER_TYPE));
 
         if constexpr (is_2d_fabric) {
-            fabric_set_unicast_route(
-                (LowLatencyMeshPacketHeader*)packet_header_buffer_address,
-                (eth_chan_directions)fwd_fabric_connection.direction,
-                my_dev_id,
-                fwd_dev_id,
-                ew_dim);
+            if constexpr (use_dynamic_routing) {
+                fabric_set_unicast_route(
+                    (MeshPacketHeader*)packet_header_buffer_address,
+                    (eth_chan_directions)fwd_fabric_connection.direction,
+                    my_dev_id,
+                    fwd_dev_id,
+                    fwd_mesh_id,
+                    ew_dim);
+            } else {
+                fabric_set_unicast_route(
+                    (LowLatencyMeshPacketHeader*)packet_header_buffer_address,
+                    (eth_chan_directions)fwd_fabric_connection.direction,
+                    my_dev_id,
+                    fwd_dev_id,
+                    fwd_mesh_id,
+                    ew_dim);
+            }
         }
 
         setup_connection_and_headers(
