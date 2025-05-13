@@ -6,6 +6,7 @@ import argparse
 import sys
 import pathlib
 import importlib
+import csv
 import datetime
 import os
 import json
@@ -67,8 +68,22 @@ def gather_single_test_perf(device, test_passed):
         return opPerfData[0]
 
 
-def run(test_module, input_queue, output_queue):
+def run(test_module, input_queue, output_queue, suite_name=""):
     device_generator = get_devices(test_module)
+    log_file = f"fmod_binary_ng_results/output_log_{suite_name}.csv"
+    log_file_full_pass = f"fmod_binary_ng_results/Log_pass/output_log_{suite_name}.csv"
+    log_file_full_fail = f"fmod_binary_ng_results/Log_fail/output_log_{suite_name}.csv"
+
+    # Open the file in write mode to clear its contents
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
+    with open(log_file, "w") as f:
+        pass  # This will empty the file
+    os.makedirs(os.path.dirname(log_file_full_pass), exist_ok=True)
+    with open(log_file_full_pass, "w") as f:
+        pass  # This will empty the file
+    os.makedirs(os.path.dirname(log_file_full_fail), exist_ok=True)
+    with open(log_file_full_fail, "w") as f:
+        pass  # This will empty the file
     try:
         device, device_name = next(device_generator)
         logger.info(f"Opened device configuration, {device_name}.")
@@ -95,6 +110,88 @@ def run(test_module, input_queue, output_queue):
                 output_queue.put([status, message, e2e_perf, perf_result])
             else:
                 output_queue.put([status, message, e2e_perf, None])
+            if status:
+                print("----------")
+                print("test_vector ", test_vector)
+                print("status ", status)
+                print("message ", message)
+                print("----------")
+                print(log_file)
+                data_full = {
+                    "input_a_dtype": test_vector["input_dtype"]["input_a_dtype"],
+                    "input_b_dtype": test_vector["input_dtype"]["input_b_dtype"],
+                    "a_mem": test_vector["input_mem_config"]["a_mem"],
+                    "b_mem": test_vector["input_mem_config"]["b_mem"],
+                    "status": status,
+                    "message": message,
+                }
+                file_exists = False
+                try:
+                    with open(log_file_full_pass, "r"):
+                        file_exists = True
+                except FileNotFoundError:
+                    pass
+
+                with open(log_file_full_pass, "a", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=data_full.keys())
+
+                    # Write header only if the file does not exist
+                    if not file_exists:
+                        writer.writeheader()
+
+                    # Write data row
+                    writer.writerow(data_full)
+            else:
+                data_full_fail = {
+                    "input_a_dtype": test_vector["input_dtype"]["input_a_dtype"],
+                    "input_b_dtype": test_vector["input_dtype"]["input_b_dtype"],
+                    "a_mem": test_vector["input_mem_config"]["a_mem"],
+                    "b_mem": test_vector["input_mem_config"]["b_mem"],
+                    "status": status,
+                    "message": message,
+                }
+                file_exists = False
+                try:
+                    with open(log_file_full_fail, "r"):
+                        file_exists = True
+                except FileNotFoundError:
+                    pass
+
+                with open(log_file_full_fail, "a", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=data_full_fail.keys())
+
+                    # Write header only if the file does not exist
+                    if not file_exists:
+                        writer.writeheader()
+
+                    # Write data row
+                    writer.writerow(data_full_fail)
+            # log_file = "/home/ubuntu/tt-metal/output_log.csv"
+            data = {
+                "input_a_dtype": test_vector["input_dtype"]["input_a_dtype"],
+                "input_b_dtype": test_vector["input_dtype"]["input_b_dtype"],
+                "a_mem": test_vector["input_mem_config"]["a_mem"],
+                "b_mem": test_vector["input_mem_config"]["b_mem"],
+                "status": status,
+            }
+
+            # Write to CSV
+            file_exists = False
+            try:
+                with open(log_file, "r"):
+                    file_exists = True
+            except FileNotFoundError:
+                pass
+
+            with open(log_file, "a", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=data.keys())
+
+                # Write header only if the file does not exist
+                if not file_exists:
+                    writer.writeheader()
+
+                # Write data row
+                writer.writerow(data)
     except Empty as e:
         try:
             # Run teardown in mesh_device_fixture
@@ -133,7 +230,7 @@ def execute_suite(test_module, test_vectors, pbar_manager, suite_name):
             test_vector.pop("status")
             test_vector.pop("validity")
             if p is None and len(test_vectors) > 1:
-                p = Process(target=run, args=(test_module, input_queue, output_queue))
+                p = Process(target=run, args=(test_module, input_queue, output_queue, suite_name))
                 p.start()
             try:
                 if MEASURE_PERF:
@@ -150,7 +247,7 @@ def execute_suite(test_module, test_vectors, pbar_manager, suite_name):
                     logger.info(
                         "Executing test on parent process (to allow debugger support) because there is only one test vector. Hang detection is disabled."
                     )
-                    run(test_module, input_queue, output_queue)
+                    run(test_module, input_queue, output_queue, suite_name)
                 response = output_queue.get(block=True, timeout=timeout)
                 status, message, e2e_perf, device_perf = response[0], response[1], response[2], response[3]
                 if status and MEASURE_DEVICE_PERF and device_perf is None:
