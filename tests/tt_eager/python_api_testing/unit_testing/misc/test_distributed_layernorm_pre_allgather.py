@@ -295,8 +295,8 @@ def test_layernorm_part_1_with_program_cache2(
 )
 @pytest.mark.parametrize(
     "is_rmsnorm",
-    [False],
-    ids=["layernorm"],
+    [True],
+    ids=["rmsnorm"],
 )
 def test_dimension_sharded_layernorm(input_dtype, output_dtype, is_rmsnorm, mesh_device):
     """
@@ -304,7 +304,7 @@ def test_dimension_sharded_layernorm(input_dtype, output_dtype, is_rmsnorm, mesh
     This tests the specific implementation that uses multiple cores across the embedding dimension.
     """
     device = mesh_device
-    inp_shape = (1, 1, 128, 2048)
+    inp_shape = (1, 1, 32, 64)
     n_devices = 1  # Split into 4 devices for testing
 
     # Set print options

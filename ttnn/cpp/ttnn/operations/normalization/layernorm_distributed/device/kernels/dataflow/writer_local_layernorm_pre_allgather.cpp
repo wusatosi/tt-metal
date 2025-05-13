@@ -1,85 +1,80 @@
+// SPDX-FileCopyrightText: © 2024 Tenstorrent Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include <stdint.h>
 #include "dataflow_api.h"
-#include "debug/dprint.h"
+// #include "ttnn/cpp/ttnn/operations/ccl/kernel_common/worker_sync_utils.hpp" // Not needed
+#include "debug/dprint.h"  // Re-add DPRINT
 
+// Args (RUNTIME):
+// 0: merge_core_noc_x
+// 1: merge_core_noc_y
+// 2: dim_shard_idx
+// 3: remote_merge_cb_base_addr
+// Args (COMPILE TIME):
+// 0: is_rmsnorm
+// 1: num_dims_per_group
+// 2: dim_shard_factor
+// 3: receiver_sem_compile_idx
+// 4: sender_sem_compile_idx
 void kernel_main() {
-    // Get runtime arguments
-    const uint32_t noc_final_core_x = get_arg_val<uint32_t>(0);  // X coordinate of merge core
-    const uint32_t noc_final_core_y = get_arg_val<uint32_t>(1);  // Y coordinate of merge core
-    const uint32_t dimension_id = get_arg_val<uint32_t>(2);      // Dimension ID
-    const uint32_t base_offset = get_arg_val<uint32_t>(3);       // Base offset in merge buffer
+    // Runtime Args
+    uint32_t merge_core_noc_x = get_arg_val<uint32_t>(0);
+    uint32_t merge_core_noc_y = get_arg_val<uint32_t>(1);
+    uint32_t dim_shard_idx = get_arg_val<uint32_t>(2);
+    uint32_t remote_merge_cb_base_addr = get_arg_val<uint32_t>(3);
 
-    DPRINT << "WL_START" << ENDL();
-
-    // Get compile time arguments
-    constexpr uint32_t semaphore_id = get_compile_time_arg_val(0);  // Semaphore ID base
-    constexpr bool is_rmsnorm = get_compile_time_arg_val(1);
+    // Compile time args
+    constexpr bool is_rmsnorm = get_compile_time_arg_val(0);
+    constexpr uint32_t num_dims_per_group = get_compile_time_arg_val(1);
     constexpr uint32_t dim_shard_factor = get_compile_time_arg_val(2);
-    constexpr uint32_t cores_per_dim = get_compile_time_arg_val(3);
+    constexpr uint32_t receiver_sem_compile_idx = get_compile_time_arg_val(3);
+    constexpr uint32_t sender_sem_compile_idx = get_compile_time_arg_val(4);
 
-    // Circular buffer indices
-    constexpr uint32_t partial_cb_index = tt::CBIndex::c_7;     // Partial results from compute
-    constexpr uint32_t merge_data_cb_index = tt::CBIndex::c_9;  // Data buffer at merge core
+    // Get semaphore L1 addresses using compile-time indices
+    uint32_t receiver_sem_addr = get_semaphore(receiver_sem_compile_idx);
+    uint32_t sender_sem_addr = get_semaphore(sender_sem_compile_idx);
 
-    // Calculate number of results per dimension
-    uint32_t results_per_dim = is_rmsnorm ? 1 : 2;
+    // Cast L1 addresses to pointers for noc_semaphore_wait/set
+    volatile tt_l1_ptr uint32_t* receiver_sem_addr_ptr =
+        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(receiver_sem_addr);
+    // volatile tt_l1_ptr uint32_t* sender_sem_addr_ptr   = reinterpret_cast<volatile tt_l1_ptr
+    // uint32_t*>(sender_sem_addr); // Sender pointer not needed locally
 
-    DPRINT << "WL_INIT_COMPLETE" << ENDL();
+    // Get remote NOC address for sender semaphore using the L1 address
+    uint64_t remote_sender_sem_noc_addr = get_noc_addr(merge_core_noc_x, merge_core_noc_y, sender_sem_addr);
 
-    // Sizes for transfers
-    constexpr uint32_t onetile = 1;
-    uint32_t partial_tile_bytes = get_tile_size(partial_cb_index);
+    // CBs
+    constexpr uint32_t partial_results_cb_id = tt::CBIndex::c_7;
+    constexpr uint32_t merge_data_cb_id = tt::CBIndex::c_9;  // Not used locally, only for remote address calculation
+    constexpr uint32_t single_tile_size = get_tile_size(partial_results_cb_id);
+    constexpr uint32_t num_tiles_per_shard = is_rmsnorm ? 1 : 2;
 
-    // Get the remote semaphore addresses at the merge core
-    uint32_t receiver_semaphore = get_semaphore(semaphore_id);
-    uint32_t sender_semaphore = get_semaphore(semaphore_id + 1);
+    // Destination address setup
+    uint64_t merge_core_base_noc_addr = get_noc_addr(merge_core_noc_x, merge_core_noc_y, remote_merge_cb_base_addr);
 
-    uint64_t noc_receiver_semaphore_addr = get_noc_addr(noc_final_core_x, noc_final_core_y, receiver_semaphore);
-    uint64_t noc_sender_semaphore_addr = get_noc_addr(noc_final_core_x, noc_final_core_y, sender_semaphore);
+    // Wait for receiver (on merge core) to signal ready via multicast
+    DPRINT << "WL_WAIT_RECEIVER sem_addr=" << receiver_sem_addr << ENDL();
+    noc_semaphore_wait(receiver_sem_addr_ptr, 1);  // Wait for VALID (1)
+    DPRINT << "WL_RECEIVER_READY val=" << *receiver_sem_addr_ptr << ENDL();
 
-    DPRINT << "WL_SEMAPHORES_OBTAINED" << ENDL();
-
-    // Calculate write location in merge buffer
-    // Start at the base_offset for this sequence
-    // Add offset for this dimension's results
-    uint32_t dimension_offset = dimension_id * results_per_dim * partial_tile_bytes;
-    uint32_t dest_addr = base_offset + dimension_offset;
-    uint64_t noc_merge_data_addr = get_noc_addr(noc_final_core_x, noc_final_core_y, dest_addr);
-
-    // Wait for the partial results from the compute kernel
-    cb_wait_front(partial_cb_index, results_per_dim);
-
-    DPRINT << "WL_PARTIAL_RESULTS_RECEIVED" << ENDL();
-
-    // Wait until the receiver semaphore is VALID (merge core is ready to receive)
-    volatile tt_l1_ptr uint32_t* local_receiver_semaphore =
-        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(get_semaphore(semaphore_id));
-    noc_semaphore_wait(local_receiver_semaphore, VALID);
-
-    DPRINT << "WL_RECEIVER_SEMAPHORE_VALID" << ENDL();
-
-    // Write E(x^2) partial result to merge core
-    uint32_t partial_read_addr = get_read_ptr(partial_cb_index);
-    noc_async_write(partial_read_addr, noc_merge_data_addr, partial_tile_bytes);
-    cb_pop_front(partial_cb_index, 1);
-
-    DPRINT << "WL_EX2_WRITTEN" << ENDL();
-
-    // If layernorm, also write E(x) partial result
-    if (!is_rmsnorm) {
-        partial_read_addr = get_read_ptr(partial_cb_index);
-        noc_async_write(partial_read_addr, noc_merge_data_addr + partial_tile_bytes, partial_tile_bytes);
-        cb_pop_front(partial_cb_index, 1);
-        DPRINT << "WL_EX_WRITTEN" << ENDL();
-    }
-
-    // Ensure all writes complete before signaling
+    // Write partial results to merge core
+    cb_wait_front(partial_results_cb_id, num_tiles_per_shard);
+    uint32_t l1_read_addr = get_read_ptr(partial_results_cb_id);
+    uint64_t dst_noc_addr = merge_core_base_noc_addr + (dim_shard_idx * num_tiles_per_shard * single_tile_size);
+    DPRINT << "WL_WRITE shard=" << dim_shard_idx << " to (" << merge_core_noc_x << "," << merge_core_noc_y
+           << ") addr=0x" << remote_merge_cb_base_addr
+           << " offset=" << dim_shard_idx * num_tiles_per_shard * single_tile_size << ENDL();
+    noc_async_write(l1_read_addr, dst_noc_addr, num_tiles_per_shard * single_tile_size);
     noc_async_write_barrier();
+    cb_pop_front(partial_results_cb_id, num_tiles_per_shard);
 
-    DPRINT << "WL_WRITE_BARRIER_COMPLETE" << ENDL();
+    // Signal sender done by incrementing semaphore on merge core
+    DPRINT << "WL_INC_SENDER noc_addr=" << remote_sender_sem_noc_addr << " (based on addr=" << sender_sem_addr << ")"
+           << ENDL();
+    noc_semaphore_inc(remote_sender_sem_noc_addr, 1);
+    DPRINT << "WL_SENDER_SIGNALED" << ENDL();
 
-    // Signal to the merge core that this dimension has completed
-    noc_semaphore_inc(noc_sender_semaphore_addr, 1);
-
-    DPRINT << "WL_COMPLETE" << ENDL();
-}
+    DPRINT << "WL_KRNL_END" << ENDL();
+}  // kernel_main()
