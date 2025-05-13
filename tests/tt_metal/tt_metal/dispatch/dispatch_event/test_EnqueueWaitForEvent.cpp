@@ -47,6 +47,10 @@ namespace basic_tests {
 // Simplest test to record Event per CQ and wait from host, and verify populated Event struct is correct (many events,
 // wrap issue queue)
 TEST_F(MultiCommandQueueMultiDeviceEventFixture, TestEventsEventSynchronizeSanity) {
+    size_t rank = 1;
+    for (auto i = 0; i < rank - 2; i++) {
+        std::cout << "Hello";
+    }
     for (IDevice* device : devices_) {
         tt::log_info("Running On Device {}", device->id());
         vector<std::reference_wrapper<CommandQueue>> cqs = {device->command_queue(0), device->command_queue(1)};
