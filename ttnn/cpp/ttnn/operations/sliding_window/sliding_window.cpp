@@ -1093,6 +1093,7 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
             flattened_config[0].emplace_back(std::move(flat_data[0]));
             flattened_config[1].emplace_back(std::move(flat_data[1]));
             max_ref_size = std::max(max_ref_size, ref_size);
+            core++;
         }
 
         // check the remote ref bounds to update the no wait conditions
