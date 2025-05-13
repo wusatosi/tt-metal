@@ -51,7 +51,7 @@ class TtCombinedTimestepTextProjEmbeddingsParameters:
         *,
         dtype: ttnn.DataType | None = None,
         device: ttnn.Device,
-        use_cpu_fallback: bool = False,
+        use_cpu_fallback: bool = True,
     ) -> TtCombinedTimestepTextProjEmbeddingsParameters | dict[str, torch.Tensor]:
         if use_cpu_fallback:
             return state
