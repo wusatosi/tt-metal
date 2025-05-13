@@ -24,6 +24,9 @@ namespace utils {
                 || (a == DataType::UINT32 && b == DataType::UINT32) || (a == DataType::UINT16 && b == DataType::UINT16));
         case BinaryOpType::SUB:
             return ((a == DataType::FLOAT32 && b == DataType::FLOAT32) || (a == DataType::INT32 && b == DataType::INT32) || (a == DataType::UINT16 && b == DataType::UINT16));
+        case BinaryOpType::LOGICAL_OR:
+        case BinaryOpType::LOGICAL_XOR:
+        case BinaryOpType::LOGICAL_AND: return ((a == DataType::FLOAT32 && b == DataType::FLOAT32) || (a == DataType::UINT16 && b == DataType::UINT16));
         case BinaryOpType::MUL:
         case BinaryOpType::DIV:
         case BinaryOpType::RSUB:
@@ -31,9 +34,6 @@ namespace utils {
         case BinaryOpType::LOGADDEXP2:
         case BinaryOpType::LDEXP:
         case BinaryOpType::SQUARED_DIFFERENCE:
-        case BinaryOpType::LOGICAL_OR:
-        case BinaryOpType::LOGICAL_XOR:
-        case BinaryOpType::LOGICAL_AND:
         case BinaryOpType::BIAS_GELU: return (a == DataType::FLOAT32 && b == DataType::FLOAT32);
         case BinaryOpType::GT:
         case BinaryOpType::LT:

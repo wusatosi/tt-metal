@@ -1848,7 +1848,7 @@ void py_module(py::module& module) {
         R"doc(Computes logical AND of :attr:`input_tensor_a` and :attr:`input_tensor_b` and returns the tensor with the same layout as :attr:`input_tensor_a`)doc",
         R"doc(\mathrm{{output\_tensor}}_i = \mathrm{{input\_tensor\_a}}_i \, \& \, \mathrm{{input\_tensor\_b}}_i)doc",
         ". ",
-        R"doc(BFLOAT16, BFLOAT8_B)doc",
+        R"doc(BFLOAT16, BFLOAT8_B, UINT16)doc",
         "INT32 for tensor-scalar is supported only when use_legacy= False.");
 
     detail::bind_binary_operation(
@@ -1857,7 +1857,7 @@ void py_module(py::module& module) {
         R"doc(Computes logical OR of :attr:`input_tensor_a` and :attr:`input_tensor_b` and returns the tensor with the same layout as :attr:`input_tensor_a`)doc",
         R"doc(\mathrm{{output\_tensor}}_i = \mathrm{{input\_tensor\_a}}_i \, | \, \mathrm{{input\_tensor\_b}}_i)doc",
         ". ",
-        R"doc(BFLOAT16, BFLOAT8_B)doc");
+        R"doc(BFLOAT16, BFLOAT8_B, UINT16)doc");
 
     detail::bind_binary_operation(
         module,
@@ -2007,28 +2007,28 @@ void py_module(py::module& module) {
         R"doc(Compute logical_xor :attr:`input_tensor_a` and :attr:`input_tensor_b` and returns the tensor with the same layout as :attr:`input_tensor_a`)doc",
         R"doc(\mathrm{output\_tensor}_i = (\mathrm{input\_tensor\_a}_i \land \lnot \mathrm{input\_tensor\_b}_i) \lor (\lnot \mathrm{input\_tensor\_a}_i \land \mathrm{input\_tensor\_b}_i))doc",
         ".",
-        R"doc(BFLOAT16, BFLOAT8_B)doc");
+        R"doc(BFLOAT16, BFLOAT8_B, UINT16)doc");
 
     detail::bind_logical_inplace_operation(
         module,
         ttnn::logical_or_,
         R"doc(Computes inplace logical OR of :attr:`input_tensor_a` and :attr:`input_tensor_b` and returns the tensor with the same layout as :attr:`input_tensor_a`)doc",
         R"doc(\mathrm{{input\_tensor\_a}}_i | \mathrm{{input\_tensor\_b}}_i)doc",
-        R"doc(BFLOAT16, BFLOAT8_B)doc");
+        R"doc(BFLOAT16, BFLOAT8_B, UINT16)doc");
 
     detail::bind_logical_inplace_operation(
         module,
         ttnn::logical_xor_,
         R"doc(Computes inplace logical XOR of :attr:`input_tensor_a` and :attr:`input_tensor_b` and returns the tensor with the same layout as :attr:`input_tensor_a`)doc",
         R"doc(\mathrm{input\_tensor\_a}_i \land \lnot \mathrm{input\_tensor\_b}_i) \lor (\lnot \mathrm{input\_tensor\_a}_i \land \mathrm{input\_tensor\_b}_i)doc",
-        R"doc(BFLOAT16, BFLOAT8_B)doc");
+        R"doc(BFLOAT16, BFLOAT8_B, UINT16)doc");
 
     detail::bind_logical_inplace_operation(
         module,
         ttnn::logical_and_,
         R"doc(Computes inplace logical AND of :attr:`input_tensor_a` and :attr:`input_tensor_b` and returns the tensor with the same layout as :attr:`input_tensor_a`)doc",
         R"doc(\mathrm{{input\_tensor\_a}}_i \& \mathrm{{input\_tensor\_b}}_i)doc",
-        R"doc(BFLOAT16, BFLOAT8_B)doc");
+        R"doc(BFLOAT16, BFLOAT8_B, UINT16)doc");
 
     detail::bind_binary_composite(
         module,

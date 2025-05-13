@@ -9,6 +9,7 @@ import ttnn
 from models.utility_functions import torch_random
 from functools import partial
 from tests.tt_eager.python_api_testing.sweep_tests.generation_funcs import gen_func_with_cast_tt
+from tests.ttnn.utils_for_testing import check_with_pcc
 
 
 @pytest.mark.parametrize(
@@ -322,3 +323,70 @@ def test_binary_sub_uint16_sharded(a_shape, b_shape, sharded_config, device):
     output_tensor = ttnn.to_torch(output_tensor, dtype=torch.int32)
 
     assert torch.equal(output_tensor, torch_output_tensor)
+
+
+@pytest.mark.parametrize(
+    "a_shape, b_shape",
+    [
+        (torch.Size([1, 2, 32]), torch.Size([1, 2, 32])),
+        # (torch.Size([1]), torch.Size([1, 5, 12])),
+        # (torch.Size([1, 2, 32, 64, 125]), torch.Size([1, 2, 32, 1, 1])),
+        # (torch.Size([]), torch.Size([])),
+        (torch.Size([5]), torch.Size([1])),
+    ],
+)
+@pytest.mark.parametrize(
+    "low_a, high_a, low_b, high_b",
+    [
+        (0, 100, 0, 300),
+        # (1000, 10000, 500, 1000),
+        # (30000, 40000, 10000, 15000),
+        # (50000, 55000, 1000, 2000),
+        # (0, 32000, 0, 32000),
+        (0, 65535, 0, 65535),
+        (-3, 3, -1, 1),
+    ],
+)
+def test_binary_logical_or_uint16_bcast(a_shape, b_shape, low_a, high_a, low_b, high_b, device):
+    num_elements = max(int(torch.prod(torch.tensor(a_shape)).item()), 1)
+    torch_input_tensor_a = torch.linspace(high_a, low_a, num_elements, dtype=torch.int32)
+    # torch_input_tensor_a = torch.randint(0, 2, (num_elements,), dtype=torch.int32)
+    torch_input_tensor_a = torch_input_tensor_a[:num_elements].reshape(a_shape)
+
+    num_elements = max(int(torch.prod(torch.tensor(b_shape)).item()), 1)
+    torch_input_tensor_b = torch.linspace(high_b, low_b, num_elements, dtype=torch.int32)
+    # torch_input_tensor_b = torch.randint(0, 2, (num_elements,), dtype=torch.int32)
+    torch_input_tensor_b = torch_input_tensor_b[:num_elements].reshape(b_shape)
+
+    golden_function = ttnn.get_golden_function(ttnn.logical_or)
+    torch_output_tensor = golden_function(torch_input_tensor_a, torch_input_tensor_b, device=device)
+
+    input_tensor_a = ttnn.from_torch(
+        torch_input_tensor_a,
+        dtype=ttnn.uint16,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
+
+    input_tensor_b = ttnn.from_torch(
+        torch_input_tensor_b,
+        dtype=ttnn.uint16,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
+    print(torch_input_tensor_a)
+    print(input_tensor_a)
+    print(torch_input_tensor_b)
+    output_tensor = ttnn.logical_or(input_tensor_a, input_tensor_b, use_legacy=False)
+    print("TT Out uint16: ", output_tensor)
+    # Since to_torch converts ttnn.uint16 to int16 and then to int32, there will be an output mismatch
+    # We can typecast ttnn.uint16 to ttnn.uint32 to avoid this mismatch
+    output_tensor = ttnn.typecast(output_tensor, dtype=ttnn.uint32)
+    output_tensor = ttnn.to_torch(output_tensor, dtype=torch.int32)
+    print(torch_output_tensor)
+    print(output_tensor)
+
+    assert check_with_pcc(torch_output_tensor, output_tensor, 0.999)
+    # assert torch.equal(output_tensor, torch_output_tensor)
