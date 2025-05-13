@@ -785,7 +785,7 @@ HaloGatherKernelConfig generate_halo_kernel_config_tensors(
         flattened_pad_config, serialized_gather_configs0, serialized_gather_configs1, number_of_blocks_per_core};
 }
 
-std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplace_halo_kernel_config_tensors(
+std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_inplace_halo_kernel_config_tensors(
     const std::vector<PixelMetadata>& tensor_metadata,
     const std::vector<ShardBoundary>& shard_boundaries,
     bool is_block_sharded,
@@ -915,8 +915,9 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
             : max_out_nsticks_per_core - in_nsticks_per_core;  // for in place with tilized data we untilize
                                                                // directly into the output buffer so delta is zero
 
-    auto flatten_local_config = [in_place, max_out_nsticks_per_core, in_nsticks_per_core, in_out_shard_size_delta](
-                                    auto& config) -> std::vector<std::vector<std::vector<uint16_t>>> {
+    auto flatten_local_config =
+        [in_place, max_out_nsticks_per_core, in_nsticks_per_core, in_out_shard_size_delta](
+            auto& config) -> std::tuple<std::vector<std::vector<std::vector<unsigned short>>>, int> {
         // find max length
         size_t max_len = 0;
         for (const auto& [_, data] : config) {
@@ -936,6 +937,7 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
         // printf("in_out_shard_size_delta: %d\n", in_out_shard_size_delta);
         // printf("---LOCAL CONFIG---\n");
         int core = 0;
+        int max_local_size = 0;
         for (const auto& [key, data] : config) {
             // printf("    core: %d\n", core);
             auto [nocx, nocy, len] = key;
@@ -981,6 +983,8 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                     flat_data[0][idx1++] = length;
                     flat_data[0][idx1++] = 1;  // default no_wait to 1
                     flat_data[0][2] += 4;
+
+                    max_local_size = std::max(max_local_size, (int)length);
                 }
                 for (int32_t i = data.size() - 1; i >= rev_i_end;
                      --i) {  // reverse direction local config in region where input / output shards overlap (for in
@@ -996,6 +1000,8 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
                     flat_data[0][idx1++] = length;
                     flat_data[0][idx1++] = 1;  // default no_wait to 1
                     flat_data[0][2] += 4;
+
+                    max_local_size = std::max(max_local_size, (int)length);
                 }
             }
 
@@ -1003,7 +1009,8 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
             flattened_config[0].emplace_back(std::move(flat_data[0]));
             flattened_config[1].emplace_back(std::move(flat_data[1]));
         }
-        return flattened_config;
+
+        return std::make_tuple(flattened_config, max_local_size);
     };
 
     auto flatten_remote_config = [in_place, core_id_to_noc_coords, &device, in_out_shard_size_delta](
@@ -1171,7 +1178,7 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
     };
 
     auto flattened_pad_config = flatten_pad_config(pad_config);
-    auto flattened_local_config = flatten_local_config(local_config);
+    auto [flattened_local_config, max_local_size] = flatten_local_config(local_config);
     auto [flattened_remote_config, max_ref_size] = flatten_remote_config(remote_config, flattened_local_config);
 
     auto align_config = [](auto& config, size_t align_granularity = 1, uint16_t align_value = 0) {
@@ -1210,7 +1217,7 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int> generate_inplac
 
     // printf("max_ref_size: %d\n", max_ref_size);
 
-    return std::make_tuple(std::move(config), max_ref_size);
+    return std::make_tuple(std::move(config), max_ref_size, max_local_size);
 }
 
 std::vector<std::vector<uint16_t>> generate_sliding_window_op_config(

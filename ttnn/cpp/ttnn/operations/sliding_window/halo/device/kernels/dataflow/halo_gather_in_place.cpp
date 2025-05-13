@@ -150,12 +150,14 @@ void copy_sticks_async_from_temp(
     }
 }
 
-template <uint32_t stick_nbytes, uint32_t input_aligned_page_size>
+template <uint32_t stick_nbytes, uint32_t input_aligned_page_size, uint32_t half_max_bandwidth_stick_size>
 void copy_sticks_async_local(
     const tt_l1_ptr uint16_t* config_data,
     const uint16_t my_noc_x,
     const uint16_t my_noc_y,
     const uint32_t in_base_l1_addr,
+    const uint32_t temp_base_l1_addr_write,
+    const uint32_t temp_base_l1_addr_read,
     const uint32_t out_base_l1_addr,
     const uint32_t in_out_buffer_start_delta) {
     int i = 0;
@@ -165,7 +167,7 @@ void copy_sticks_async_local(
         length = config_data[i + 2];
         i += 3;
         const uint64_t base_addr = get_noc_addr(my_noc_x, my_noc_y, out_base_l1_addr);
-        const uint64_t base_addr_src = get_noc_addr(my_noc_x, my_noc_y, in_base_l1_addr);
+        const uint64_t base_addr_temp = get_noc_addr(my_noc_x, my_noc_y, temp_base_l1_addr_write);
         for (uint16_t j = 0; j < length; j += 4) {
             uint16_t src_local_idx = config_data[i + j + 0];
             uint16_t dst_local_idx = config_data[i + j + 1];
@@ -176,27 +178,43 @@ void copy_sticks_async_local(
             uint32_t src_offset = src_local_idx * input_aligned_page_size;
 
             uint64_t dst_addr = base_addr + dst_offset;
+            uint64_t temp_addr = base_addr_temp;
             uint32_t src_addr = in_base_l1_addr + src_offset;
 
-            bool is_forward_copy = dst_local_idx > src_local_idx + in_out_buffer_start_delta &&
-                                   dst_local_idx <= src_local_idx + in_out_buffer_start_delta + nsticks;
-            bool is_overlap_copy = (dst_local_idx > src_local_idx + in_out_buffer_start_delta &&
-                                    dst_local_idx <= src_local_idx + in_out_buffer_start_delta + nsticks) ||
-                                   (dst_local_idx + nsticks >= src_local_idx + in_out_buffer_start_delta &&
-                                    dst_local_idx + nsticks < src_local_idx + in_out_buffer_start_delta + nsticks);
-            if (is_overlap_copy) {      // dst and src data overlaps, stick by stick copy is necessary
-                if (is_forward_copy) {  // dst data is being moved "in front" of the source data, reverse
-                                        // ordering of stick by stick copy is necessary
-                    for (int16_t k = nsticks - 1; k >= 0; k--) {
-                        noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
-                    }
+            int dst_relative_src = src_local_idx + in_out_buffer_start_delta;
+            bool is_not_overlap_copy =
+                dst_local_idx + nsticks < dst_relative_src || dst_relative_src + nsticks < dst_local_idx;
+            if (is_not_overlap_copy) {
+                noc_async_write(src_addr, dst_addr, size);
+                // DPRINT << "LOCAL copy, size: " << size << ENDL();
+            } else {  // dst and src data overlaps, stick by stick copy is necessary
+                if constexpr (stick_nbytes <= half_max_bandwidth_stick_size) {  // noc transfers with larger page sizes
+                                                                                // are faster, with a page
+                    // size of 256 bytes on WH the transfer rate is half of the maximum
+                    // thus, for stick sizes smaller that this it is faster to do a
+                    // double copy, doubling the total amount of data being copied but
+                    // avoiding the slow stick by stick copy, however with larger
+                    // stick sizes the stick by stick transfer is fast enough that it
+                    // is more efficient than the double copy.
+                    noc_async_write(src_addr, temp_addr, size);
+                    noc_async_write(temp_base_l1_addr_read, dst_addr, size);
+                    // DPRINT << "LOCAL copy, size: " << size << " x 2" << ENDL();
                 } else {
-                    for (uint16_t k = 0; k < nsticks; k++) {
-                        noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
+                    bool is_forward_copy = dst_local_idx > src_local_idx + in_out_buffer_start_delta &&
+                                           dst_local_idx <= src_local_idx + in_out_buffer_start_delta + nsticks;
+                    if (is_forward_copy) {  // dst data is being moved "in front" of the source data, reverse
+                                            // ordering of stick by stick copy is necessary
+                        for (int16_t k = nsticks - 1; k >= 0; k--) {
+                            noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
+                        }
+                        // DPRINT << "LOCAL copy, size: " << stick_nbytes << " x " << nsticks << ENDL();
+                    } else {
+                        for (uint16_t k = 0; k < nsticks; k++) {
+                            noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
+                        }
+                        // DPRINT << "LOCAL copy, size: " << stick_nbytes << " x " << nsticks << ENDL();
                     }
                 }
-            } else {
-                noc_async_write(src_addr, dst_addr, size);
             }
         }
 
@@ -225,32 +243,34 @@ void kernel_main() {
     constexpr uint32_t local_config_cb_id = get_compile_time_arg_val(1);
     constexpr uint32_t remote_config_cb_id = get_compile_time_arg_val(2);
     constexpr uint32_t remote_temp_cb_id = get_compile_time_arg_val(3);  // temp buffer for in place halo
-    constexpr uint32_t src_cb_id = get_compile_time_arg_val(4);          // the innput shard buffer
-    constexpr uint32_t in_cb_id = get_compile_time_arg_val(5);           // either the input shard or untilize output
-    constexpr uint32_t out_cb_id = get_compile_time_arg_val(6);      // output shard with padding and halo goes here
-    constexpr uint32_t pad_cb_id = get_compile_time_arg_val(7);      // cb for const pad val buffer
-    constexpr uint32_t pad_val_u32 = get_compile_time_arg_val(8);    // pad value to fill pad buffer with
-    constexpr uint32_t in_npages = get_compile_time_arg_val(9);      // number of sticks
-    constexpr uint32_t stick_nbytes = get_compile_time_arg_val(10);  // stick size in bytes (post untilize)
-    constexpr uint32_t is_block_sharded = get_compile_time_arg_val(11);
-    constexpr bool is_col_major = get_compile_time_arg_val(12) == 1;
-    constexpr uint32_t is_width_sharded = get_compile_time_arg_val(13);
-    constexpr uint32_t input_aligned_page_size = get_compile_time_arg_val(14);
-    constexpr uint32_t remote_read = get_compile_time_arg_val(15);  // Unused parameter
-    constexpr uint32_t num_active_cores = get_compile_time_arg_val(16);
-    constexpr uint32_t noc_TL_x = get_compile_time_arg_val(17);
-    constexpr uint32_t noc_TL_y = get_compile_time_arg_val(18);
-    constexpr uint32_t noc_BR_x = get_compile_time_arg_val(19);
-    constexpr uint32_t noc_BR_y = get_compile_time_arg_val(20);
-    constexpr uint32_t rectangular_x = get_compile_time_arg_val(21);
-    constexpr uint32_t rectangular_y = get_compile_time_arg_val(22);
-    constexpr uint32_t last_active_x = get_compile_time_arg_val(23);
-    constexpr uint32_t semaphore_id = get_compile_time_arg_val(24);
-    constexpr uint32_t in_out_buffer_start_delta = get_compile_time_arg_val(25);
+    constexpr uint32_t local_temp_cb_id = get_compile_time_arg_val(4);   // temp buffer for in place halo
+    constexpr uint32_t src_cb_id = get_compile_time_arg_val(5);          // the innput shard buffer
+    constexpr uint32_t in_cb_id = get_compile_time_arg_val(6);           // either the input shard or untilize output
+    constexpr uint32_t out_cb_id = get_compile_time_arg_val(7);          // output shard with padding and halo goes here
+    constexpr uint32_t pad_cb_id = get_compile_time_arg_val(8);          // cb for const pad val buffer
+    constexpr uint32_t pad_val_u32 = get_compile_time_arg_val(9);        // pad value to fill pad buffer with
+    constexpr uint32_t in_npages = get_compile_time_arg_val(10);         // number of sticks
+    constexpr uint32_t stick_nbytes = get_compile_time_arg_val(11);      // stick size in bytes (post untilize)
+    constexpr uint32_t is_block_sharded = get_compile_time_arg_val(12);
+    constexpr bool is_col_major = get_compile_time_arg_val(13) == 1;
+    constexpr uint32_t is_width_sharded = get_compile_time_arg_val(14);
+    constexpr uint32_t input_aligned_page_size = get_compile_time_arg_val(15);
+    constexpr uint32_t remote_read = get_compile_time_arg_val(16);  // Unused parameter
+    constexpr uint32_t num_active_cores = get_compile_time_arg_val(17);
+    constexpr uint32_t noc_TL_x = get_compile_time_arg_val(18);
+    constexpr uint32_t noc_TL_y = get_compile_time_arg_val(19);
+    constexpr uint32_t noc_BR_x = get_compile_time_arg_val(20);
+    constexpr uint32_t noc_BR_y = get_compile_time_arg_val(21);
+    constexpr uint32_t rectangular_x = get_compile_time_arg_val(22);
+    constexpr uint32_t rectangular_y = get_compile_time_arg_val(23);
+    constexpr uint32_t last_active_x = get_compile_time_arg_val(24);
+    constexpr uint32_t semaphore_id = get_compile_time_arg_val(25);
+    constexpr uint32_t in_out_buffer_start_delta = get_compile_time_arg_val(26);
     constexpr uint32_t untilize_temp_cb_id =
-        get_compile_time_arg_val(26);  // temp buffer for in place untilize with wide tensors
-    constexpr uint32_t tile_cols = get_compile_time_arg_val(27);
-    constexpr uint32_t tile_rows = get_compile_time_arg_val(28);
+        get_compile_time_arg_val(27);  // temp buffer for in place untilize with wide tensors
+    constexpr uint32_t tile_cols = get_compile_time_arg_val(28);
+    constexpr uint32_t tile_rows = get_compile_time_arg_val(29);
+    constexpr uint32_t half_max_bandwidth_stick_size = get_compile_time_arg_val(30);
 
     constexpr uint32_t elem_nbytes = sizeof(uint16_t);
     constexpr uint16_t pad_core_id = 0xFFFF;
@@ -320,10 +340,20 @@ void kernel_main() {
     if constexpr (local_config_cb_id) {
         // DPRINT << "LOCAL" << ENDL();
 
+        const uint32_t temp_base_l1_addr_write = get_write_ptr(local_temp_cb_id);
+        const uint32_t temp_base_l1_addr_read = get_read_ptr(local_temp_cb_id);
+
         uint32_t config_data_l1_addr = get_read_ptr(local_config_cb_id);
         const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
-        copy_sticks_async_local<stick_nbytes, input_aligned_page_size>(
-            config_data, my_noc_x, my_noc_y, in_base_l1_addr, out_base_l1_addr, in_out_buffer_start_delta);
+        copy_sticks_async_local<stick_nbytes, input_aligned_page_size, half_max_bandwidth_stick_size>(
+            config_data,
+            my_noc_x,
+            my_noc_y,
+            in_base_l1_addr,
+            temp_base_l1_addr_write,
+            temp_base_l1_addr_read,
+            out_base_l1_addr,
+            in_out_buffer_start_delta);
     }
 
     noc_async_read_barrier();

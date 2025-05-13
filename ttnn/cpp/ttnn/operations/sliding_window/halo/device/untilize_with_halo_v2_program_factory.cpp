@@ -319,6 +319,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
     const uint32_t ncores_c,
     const uint32_t max_out_nsticks_per_core,
     const uint32_t max_ref_size,
+    const uint32_t max_local_size,
     const Tensor& padding_config,
     const Tensor& local_config,
     const Tensor& remote_config,
@@ -495,6 +496,19 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         CBHandle remote_temp_cb = CreateCircularBuffer(program, all_cores, remote_temp_cb_config);
     }
 
+    // create the local temp CB
+    int half_max_bandwidth_stick_size =
+        device->arch() == tt::ARCH::WORMHOLE_B0 ? 256 : 512;  // 256 for wormhole, 512 for blackhole
+    uint32_t local_temp_cb_id = 0;
+    if (out_stick_nbytes <= half_max_bandwidth_stick_size && max_local_size > 0) {  // we will use the temp local buffer
+        local_temp_cb_id = cb_indices.get_next_cb_id();
+        auto local_temp_cb_config =
+            CircularBufferConfig(
+                max_local_size * output_shard_shape[1] * out_nbytes, {{local_temp_cb_id, kernel_config_df}})
+                .set_page_size(local_temp_cb_id, output_shard_shape[1] * out_nbytes);
+        CBHandle local_temp_cb = CreateCircularBuffer(program, all_cores, local_temp_cb_config);
+    }
+
     // noc conversion function
     auto core_id_to_noc_coords = [is_block_sharded, transpose_mcast, device](uint32_t core_id) -> CoreCoord {
         auto num_cores_x = device->compute_with_storage_grid_size().x;
@@ -554,6 +568,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         0,  // local_config_cb_id
         0,  // remote_config_cb_id
         0,  // remote_temp_cb_id
+        local_temp_cb_id,
         cb_indices.src_cb_id,
         input_to_writer_cb_id,
         cb_indices.out_cb_id,
@@ -578,7 +593,8 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core_v2(
         in_out_buffer_start_delta,
         temp_cb_id,
         ntiles_per_block,
-        input_nblocks_per_core};
+        input_nblocks_per_core,
+        half_max_bandwidth_stick_size};
 
     reader_ct_args[0] = 0;
     reader_ct_args[1] = cb_indices.local_config_cb_id;
