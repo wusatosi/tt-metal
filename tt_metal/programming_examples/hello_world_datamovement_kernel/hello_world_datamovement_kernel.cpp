@@ -17,7 +17,8 @@ int main() {
 
     constexpr CoreCoord core = {0, 0};
     int device_id = 1;
-    IDevice* device = CreateDevice(device_id);
+    auto devices = tt::tt_metal::detail::CreateDevices({0, 1});
+    IDevice* device = devices[1];
     CommandQueue& cq = device->command_queue();
     Program program = CreateProgram();
 
@@ -37,18 +38,30 @@ int main() {
 
     // // Configure Program and Start Program Execution on Device
 
-    // SetRuntimeArgs(program, void_dataflow_kernel_noc0_id, core, {});
+    SetRuntimeArgs(program, void_dataflow_kernel_noc0_id, core, {1, 2, 3, 4});
     // SetRuntimeArgs(program, void_dataflow_kernel_noc1_id, core, {});
-    for (int i = 0; i < 10; i++) {
-        EnqueueProgram(cq, program, false);
+
+    constexpr uint32_t transfer_size = 128;
+
+    auto buffer = tt_metal::Buffer::create(device, transfer_size, transfer_size, tt_metal::BufferType::DRAM);
+
+    std::vector<uint32_t> src_vec = create_random_vector_of_bfloat16(
+        transfer_size, 1000, std::chrono::system_clock::now().time_since_epoch().count());
+    printf("Source vector generated\n");
+    for (int i = 0; i < 1; i++) {
+        std::cout << "Enqueuing write buffer " << i << std::endl;
+        EnqueueWriteBuffer(device->command_queue(), *buffer, src_vec, true);
+        // EnqueueReadBuffer(device->command_queue(), *buffer, src_vec, true);
+        // EnqueueProgram(cq, program, false);
     }
+    std::cout << "Enqueuing write buffer done " << std::endl;
     printf("Hello, Core {0, 0} on Device 0, I am sending you some data. Standby awaiting communication.\n");
 
     // // Wait Until Program Finishes, Print "Hello World!", and Close Device
 
     Finish(cq);
     printf("Thank you, Core {0, 0} on Device 0, for the completed task.\n");
-    CloseDevice(device);
+    tt::tt_metal::detail::CloseDevices(devices);
 
     return 0;
 }

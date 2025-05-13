@@ -25,8 +25,7 @@ void FabricMux::GenerateStaticConfigs() {
 
     const uint16_t channel =
         tt::tt_metal::MetalContext::instance().get_cluster().get_assigned_channel_for_device(device_->id());
-    logical_core_ =
-        MetalContext::instance().get_dispatch_core_manager().mux_d_core(device_->id(), channel, this->cq_id_);
+    logical_core_ = MetalContext::instance().get_dispatch_core_manager().mux_core(device_->id(), channel, this->cq_id_);
 
     // Count number of value kernels that need the channels
     const auto kernels_requiring_full_size_channel =

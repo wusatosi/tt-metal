@@ -784,7 +784,6 @@ void run_fabric_edm_main_loop(
     while (!got_immediate_termination_signal(termination_signal_ptr)) {
         bool got_graceful_termination = got_graceful_termination_signal(termination_signal_ptr);
         if (got_graceful_termination) {
-            DPRINT << "EDM Graceful termination\n";
             bool all_drained = all_channels_drained<
                 RECEIVER_NUM_BUFFERS,
                 NUM_RECEIVER_CHANNELS,

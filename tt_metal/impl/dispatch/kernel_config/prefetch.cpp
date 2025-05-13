@@ -4,6 +4,7 @@
 #include "prefetch.hpp"
 
 #include <host_api.hpp>
+#include <ostream>
 #include <tt-metalium/dispatch_settings.hpp>
 #include <tt_metal.hpp>
 #include <array>

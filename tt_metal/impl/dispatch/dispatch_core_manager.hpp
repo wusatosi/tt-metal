@@ -112,6 +112,8 @@ public:
 
     const tt_cxy_pair& mux_d_core(chip_id_t device_id, uint16_t channel, uint8_t cq_id);
 
+    bool is_mux_d_core_allocated(chip_id_t device_id, uint16_t channel, uint8_t cq_id);
+
     /// @brief Gets the location of the kernel desginated for demultiplexing traffic to completion queues.
     /// @param device_id ID of the device that a fast dispatch command targets
     /// @param channel assigned to the command queue where commands are enqueued
@@ -128,6 +130,8 @@ public:
     /// @return tt_cxy_pair logical location (chip + core coordinate) of the demux_d core
     const tt_cxy_pair& demux_d_core(chip_id_t device_id, uint16_t channel, uint8_t cq_id);
 
+    bool is_demux_d_core_allocated(chip_id_t device_id, uint16_t channel, uint8_t cq_id);
+
     /// @brief Gets the location of the kernel desginated for tunneling over ethernet.
     /// @param device_id ID of the device that a fast dispatch command targets
     /// @param channel assigned to the command queue where commands are enqueued
@@ -136,7 +140,11 @@ public:
     const tt_cxy_pair& tunneler_core(
         chip_id_t upstream_device_id, chip_id_t device_id, uint16_t channel, uint8_t cq_id);
 
+    bool is_tunneler_core_allocated(chip_id_t device_id, uint16_t channel, uint8_t cq_id);
+
     const tt_cxy_pair& us_tunneler_core_local(chip_id_t device_id, uint16_t channel, uint8_t cq_id);
+
+    bool is_us_tunneler_core_local_allocated(chip_id_t device_id, uint16_t channel, uint8_t cq_id);
 
     /// @brief Gets the location of the kernel desginated to write to the completion queue region for a particular
     /// command queue
@@ -187,6 +195,14 @@ public:
     void add_dispatch_core_to_device(chip_id_t device_id, const CoreCoord& core);
 
     std::vector<CoreCoord> get_all_logical_dispatch_cores(chip_id_t device_id);
+
+    /// @brief Gets all cores that were allocated for dispatch only not including routing for a given device, channel,
+    /// and cq_id
+    /// @param device_id ID of the device that should be running the command
+    /// @param channel assigned to the command queue where commands are enqueued
+    /// @param cq_id ID of the command queue within the channel
+    /// @return List of logical core coordinates
+    std::vector<CoreCoord> get_allocated_dispatch_cores(chip_id_t device_id, uint16_t channel, uint8_t cq_id);
 
 private:
     /// @brief reset_dispatch_core_manager initializes vector of cores per device for dispatch kernels

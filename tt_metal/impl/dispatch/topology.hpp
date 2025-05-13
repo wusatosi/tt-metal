@@ -65,4 +65,8 @@ std::unique_ptr<tt::tt_metal::Program> create_and_compile_fabric_program(tt::tt_
 // Perform additional configuration (writing to specific L1 addresses, etc.) for fabric kernels on this device.
 void configure_fabric_cores(tt::tt_metal::IDevice* device);
 
+const std::unordered_map<chip_id_t, std::unordered_set<CoreCoord>>& get_fd_kernel_cores();
+
+const std::unordered_set<CoreCoord>& get_fd_kernel_cores(tt::tt_metal::IDevice* device);
+
 }  // namespace tt::tt_metal

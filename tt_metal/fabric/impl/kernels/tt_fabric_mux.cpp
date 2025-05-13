@@ -84,16 +84,6 @@ void forward_data(
         size_t buffer_address = channel.get_buffer_address(worker_interface.local_wrptr.get_buffer_index());
         auto packet_header = reinterpret_cast<PACKET_HEADER_TYPE*>(buffer_address);
 
-        if (packet_header->get_noc_send_type() == tt::tt_fabric::NocSendType::NOC_UNICAST_ATOMIC_INC) {
-            DPRINT << "MUX: SEM INC -> 0x" << HEX()
-                   << packet_header->get_noc_command_fields().unicast_seminc.noc_address << " value = " << DEC()
-                   << (uint32_t)packet_header->get_noc_command_fields().unicast_seminc.val << ENDL();
-        } else if (packet_header->get_noc_send_type() == tt::tt_fabric::NocSendType::NOC_UNICAST_WRITE) {
-            DPRINT << "MUX: UNICAST WRITE -> 0x" << HEX()
-                   << packet_header->get_noc_command_fields().unicast_write.noc_address << " length = " << DEC()
-                   << ((uint32_t)packet_header->get_payload_size_including_header() - sizeof(packet_header)) << ENDL();
-        }
-
         fabric_connection.wait_for_empty_write_slot();
         fabric_connection.send_payload_blocking_from_address(
             (uint32_t)packet_header, packet_header->get_payload_size_including_header());
@@ -115,6 +105,8 @@ void forward_data(
 }
 
 void kernel_main() {
+    DPRINT << "FABRIC MUX STARTED. Status 0x" << HEX() << (uint32_t)status_address << " Termination Address 0x" << HEX()
+           << (uint32_t)termination_signal_address << ENDL();
     auto status_ptr = reinterpret_cast<tt_l1_ptr uint32_t*>(status_address);
     status_ptr[0] = tt::tt_fabric::FabricMuxStatus::STARTED;
 

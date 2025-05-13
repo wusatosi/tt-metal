@@ -85,6 +85,11 @@ const tt_cxy_pair& dispatch_core_manager::mux_d_core(chip_id_t device_id, uint16
     return assignment.mux_d.value();
 }
 
+bool dispatch_core_manager::is_mux_d_core_allocated(chip_id_t device_id, uint16_t channel, uint8_t cq_id) {
+    dispatch_core_placement_t& assignment = this->dispatch_core_assignments[device_id][channel][cq_id];
+    return assignment.mux_d.has_value();
+}
+
 const tt_cxy_pair& dispatch_core_manager::demux_core(chip_id_t device_id, uint16_t channel, uint8_t cq_id) {
     dispatch_core_placement_t& assignment = this->dispatch_core_assignments[device_id][channel][cq_id];
     if (assignment.demux.has_value()) {
@@ -116,6 +121,11 @@ const tt_cxy_pair& dispatch_core_manager::demux_d_core(chip_id_t device_id, uint
     return assignment.demux_d.value();
 }
 
+bool dispatch_core_manager::is_demux_d_core_allocated(chip_id_t device_id, uint16_t channel, uint8_t cq_id) {
+    dispatch_core_placement_t& assignment = this->dispatch_core_assignments[device_id][channel][cq_id];
+    return assignment.demux_d.has_value();
+}
+
 const tt_cxy_pair& dispatch_core_manager::tunneler_core(
     chip_id_t upstream_device_id, chip_id_t device_id, uint16_t channel, uint8_t cq_id) {
     dispatch_core_placement_t& assignment = this->dispatch_core_assignments[device_id][channel][cq_id];
@@ -134,6 +144,11 @@ const tt_cxy_pair& dispatch_core_manager::tunneler_core(
     return assignment.tunneler.value();
 }
 
+bool dispatch_core_manager::is_tunneler_core_allocated(chip_id_t device_id, uint16_t channel, uint8_t cq_id) {
+    dispatch_core_placement_t& assignment = this->dispatch_core_assignments[device_id][channel][cq_id];
+    return assignment.tunneler.has_value();
+}
+
 const tt_cxy_pair& dispatch_core_manager::us_tunneler_core_local(chip_id_t device_id, uint16_t channel, uint8_t cq_id) {
     dispatch_core_placement_t& assignment = this->dispatch_core_assignments[device_id][channel][cq_id];
     if (assignment.tunneler_d.has_value()) {
@@ -142,6 +157,11 @@ const tt_cxy_pair& dispatch_core_manager::us_tunneler_core_local(chip_id_t devic
     TT_ASSERT(false, "Device {} has no allocation for Local Upstream Tunneler Core.", device_id);
     assignment.tunneler_d = tt_cxy_pair(0, 0, 0);
     return assignment.tunneler_d.value();
+}
+
+bool dispatch_core_manager::is_us_tunneler_core_local_allocated(chip_id_t device_id, uint16_t channel, uint8_t cq_id) {
+    dispatch_core_placement_t& assignment = this->dispatch_core_assignments[device_id][channel][cq_id];
+    return assignment.tunneler_d.has_value();
 }
 
 const tt_cxy_pair& dispatch_core_manager::completion_queue_writer_core(
@@ -257,6 +277,32 @@ std::vector<CoreCoord> dispatch_core_manager::get_all_logical_dispatch_cores(chi
     return tt::get_logical_dispatch_cores(device_id, MAX_NUM_HW_CQS, this->dispatch_core_config_);
 }
 
+std::vector<CoreCoord> dispatch_core_manager::get_allocated_dispatch_cores(
+    chip_id_t device_id, uint16_t channel, uint8_t cq_id) {
+    std::vector<CoreCoord> allocated_cores;
+
+    // Prefetcher
+    if (is_prefetcher_core_allocated(device_id, channel, cq_id)) {
+        allocated_cores.push_back(prefetcher_core(device_id, channel, cq_id));
+    }
+    if (is_prefetcher_d_core_allocated(device_id, channel, cq_id)) {
+        allocated_cores.push_back(prefetcher_d_core(device_id, channel, cq_id));
+    }
+
+    // Dispatcher
+    if (is_dispatcher_core_allocated(device_id, channel, cq_id)) {
+        allocated_cores.push_back(dispatcher_core(device_id, channel, cq_id));
+    }
+    if (is_dispatcher_s_core_allocated(device_id, channel, cq_id)) {
+        allocated_cores.push_back(dispatcher_s_core(device_id, channel, cq_id));
+    }
+    if (is_dispatcher_d_core_allocated(device_id, channel, cq_id)) {
+        allocated_cores.push_back(dispatcher_d_core(device_id, channel, cq_id));
+    }
+
+    return allocated_cores;
+}
+
 // private methods
 
 dispatch_core_manager::dispatch_core_manager(const DispatchCoreConfig& dispatch_core_config, uint8_t num_hw_cqs) {
@@ -307,7 +353,7 @@ CoreCoord dispatch_core_manager::get_next_available_dispatch_core(chip_id_t devi
 
 void dispatch_core_manager::log_dispatch_assignment(
     std::string name, tt_cxy_pair& cxy, chip_id_t device_id, uint16_t channel, uint8_t cq_id, bool force_ethernet) {
-    log_debug(
+    log_info(
         tt::LogMetal,
         "Allocated {} Core: {}({}) for Device {} Channel {} CQ ID {}",
         name,

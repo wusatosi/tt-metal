@@ -1323,10 +1323,6 @@ bool process_cmd(
     volatile CQPrefetchCmd tt_l1_ptr* cmd = (volatile CQPrefetchCmd tt_l1_ptr*)cmd_ptr;
     bool done = false;
 
-    // if constexpr (is_d_variant && !is_h_variant) {
-    //     DPRINT << "Prefetch D processed command " << (uint32_t)cmd->base.cmd_id << ENDL();
-    // }
-
     switch (cmd->base.cmd_id) {
         case CQ_PREFETCH_CMD_RELAY_LINEAR:
             // DPRINT << "relay linear: " << cmd_ptr << ENDL();
@@ -1483,7 +1479,6 @@ static uint32_t process_relay_inline_all(uint32_t data_ptr, uint32_t fence, bool
         // OK to continue prefetching once the page credits are returned
         stall_state = NOT_STALLED;
     }
-    DPRINT << "Prefetch H Relaying " << DEC() << length << " bytes to " << HEX() << downstream_data_ptr << ENDL();
 
     uint32_t downstream_pages_left = (downstream_cb_end - downstream_data_ptr) >> downstream_cb_log_page_size;
     if (downstream_pages_left >= npages) {
@@ -1513,9 +1508,6 @@ static uint32_t process_relay_inline_all(uint32_t data_ptr, uint32_t fence, bool
         downstream_data_ptr = downstream_cb_base + tail_pages * downstream_cb_page_size;
     }
 
-    // DPRINT << "Prefetch H releasing " << DEC() << npages << " pages to 0x" << HEX() <<
-    // get_noc_addr_helper(downstream_noc_xy, get_semaphore<fd_core_type>(downstream_cb_sem_id)) << " bytes = " << DEC()
-    // << length<<ENDL();
     cq_fabric_release_pages<
         downstream_noc_xy,
         downstream_cb_sem_id,
@@ -1582,7 +1574,6 @@ void kernel_main_h() {
         // Note: one fetch_q entry can contain multiple commands
         // The code below assumes these commands arrive individually, packing them would require parsing all cmds
         if (cmd_id == CQ_PREFETCH_CMD_TERMINATE) {
-            DPRINT << "prefetch terminating_10" << ENDL();
             done = true;
         }
     }
@@ -1635,9 +1626,6 @@ void kernel_main_d() {
         uint16_t total_length = length + sizeof(CQPrefetchHToPrefetchDHeader);
         uint16_t pages_to_free = (total_length + cmddat_q_page_size - 1) >> cmddat_q_log_page_size;
 
-        DPRINT << "Prefetch D releasing " << DEC() << pages_to_free << " pages to 0x" << HEX()
-               << get_noc_addr_helper(upstream_noc_xy, get_semaphore<fd_core_type>(upstream_cb_sem_id))
-               << " bytes = " << DEC() << length << ENDL();
         cq_fabric_release_pages<
             upstream_noc_xy,
             upstream_cb_sem_id,
@@ -1691,11 +1679,15 @@ void kernel_main() {
         is_h_variant && is_d_variant>
         mux_connection_scope(edm_sender);
 
-    DPRINT << "prefetcher_" << is_h_variant << is_d_variant << ": Ch Base 0x" << HEX()
-           << (uint32_t)fabric_mux_channel_base_address << "  Ch Buf Size " << DEC()
-           << (uint32_t)fabric_mux_channel_buffer_size_bytes << "  Ch Buf Flow Ctrl Addr 0x" << HEX()
-           << (uint32_t)fabric_mux_flow_control_address << "  Ch Info Addr 0x" << HEX()
-           << (uint32_t)fabric_mux_connection_info_address << ENDL();
+    DPRINT << "prefetcher_" << is_h_variant << is_d_variant << "\n\nCh Base 0x" << HEX()
+           << (uint32_t)fabric_mux_channel_base_address << "\nCh Buf Size " << DEC()
+           << (uint32_t)fabric_mux_channel_buffer_size_bytes << "\nCh Buf Flow Ctrl 0x" << HEX()
+           << (uint32_t)fabric_mux_flow_control_address << "\nCh Info 0x" << HEX()
+           << (uint32_t)fabric_mux_connection_info_address << "\nmy_downstream_cb_sem 0x" << HEX()
+           << get_semaphore<fd_core_type>(my_downstream_cb_sem_id) << "\nmy_upstream_cb_sem 0x" << HEX()
+           << get_semaphore<fd_core_type>(my_upstream_cb_sem_id) << "\nmy_downstream_sync_sem 0x" << HEX()
+           << get_semaphore<fd_core_type>(my_downstream_sync_sem_id) << "\nmy_dispatch_s_cb_sem 0x" << HEX()
+           << get_semaphore<fd_core_type>(my_dispatch_s_cb_sem_id) << ENDL();
     if (is_h_variant and is_d_variant) {
         kernel_main_hd();
     } else if (is_h_variant) {
@@ -1707,11 +1699,9 @@ void kernel_main() {
     }
     IDLE_ERISC_RETURN();
 
-    {
-        auto sem = (volatile uint32_t*)(get_semaphore<fd_core_type>(my_downstream_cb_sem_id));
-        DPRINT << "Wait for pages on sem " << my_downstream_cb_sem_id << " curr = " << DEC() << *sem
-               << " add = " << (int)my_downstream_cb_sem_additional_count << ENDL();
-    }
+    DPRINT << "prefetcher_" << is_h_variant << is_d_variant << ": teardown. downstream_cb_pages cb pages " << DEC()
+           << downstream_cb_pages << " additional count = " << DEC() << (int)my_downstream_cb_sem_additional_count
+           << ENDL();
 
     // Confirm expected number of pages, spinning here is a leak
     cb_wait_all_pages<my_downstream_cb_sem_id>(downstream_cb_pages, my_downstream_cb_sem_additional_count);

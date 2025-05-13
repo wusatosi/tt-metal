@@ -69,7 +69,7 @@ struct FDFabricMuxConnectionScope {
         if constexpr (is_hd_variant) {
             return;
         }
-        // tt::tt_fabric::fabric_client_disconnect<mux_num_buffers_per_channel>(*edm_ptr);
+        tt::tt_fabric::fabric_client_disconnect<mux_num_buffers_per_channel>(*edm_ptr);
     }
 };
 
@@ -80,7 +80,6 @@ template <
     uint32_t header_rb,
     typename T>
 inline void cq_fabric_write_any_len(T& edm, uint32_t data_ptr, uint64_t dst_ptr, uint32_t length) {
-    DPRINT << "CQ_FABRIC_WRITE_ANY_LEN" << ENDL();
     // Writing to a HEADER only buffer is wrong. This function requires a FULL SIZE buffer
     ASSERT(fabric_mux_channel_buffer_size_bytes >= sizeof(PACKET_HEADER_TYPE));
     constexpr uint32_t k_FabricMaxBurstSize = fabric_mux_channel_buffer_size_bytes - sizeof(PACKET_HEADER_TYPE);
@@ -118,7 +117,6 @@ template <
     uint32_t header_rb,
     typename T>
 inline void cq_fabric_release_pages(T& edm, uint16_t n) {
-    DPRINT << "CQ_FABRIC_RELEASE_PAGES" << ENDL();
     auto sem_addr = get_semaphore<static_cast<ProgrammableCoreType>(FD_CORE_TYPE)>(dest_sem_id);
     uint64_t noc_dest_addr = get_noc_addr_helper(dest_noc_xy, sem_addr);
 
@@ -137,5 +135,5 @@ template <uint32_t mux_x, uint32_t mux_y, uint32_t mux_termination_signal_addres
 inline void cq_fabric_terminate() {
     noc_inline_dw_write(
         get_noc_addr(mux_x, mux_y, mux_termination_signal_address),
-        static_cast<uint32_t>(tt::tt_fabric::TerminationSignal::GRACEFULLY_TERMINATE));
+        static_cast<uint32_t>(tt::tt_fabric::TerminationSignal::IMMEDIATELY_TERMINATE));
 }

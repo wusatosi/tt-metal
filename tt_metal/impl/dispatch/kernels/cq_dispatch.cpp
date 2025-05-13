@@ -218,7 +218,7 @@ void process_write_host_h(uint32_t& block_noc_writes_to_clear, uint32_t block_ne
     // We will send the cmd back in the first X bytes, this makes the logic of reserving/pushing completion queue
     // pages much simpler since we are always sending writing full pages (except for last page)
     uint32_t length = cmd->write_linear_host.length;
-    // DPRINT << "process_write_host_h: " << length << ENDL();
+    DPRINT << "process_write_host_h: " << DEC() << length << ENDL();
     uint32_t data_ptr = cmd_ptr;
     while (length != 0) {
         // Get a page if needed
@@ -371,9 +371,6 @@ void relay_to_next_cb(
             fabric_mux_num_buffers_per_channel,
             fabric_header_rb_base>(
             edm_sender, data_ptr, get_noc_addr_helper(downstream_noc_xy, downstream_cb_data_ptr), xfer_size);
-        DPRINT << "Dispatch D releasing " << DEC() << 1 << " pages to 0x" << HEX()
-               << get_noc_addr_helper(downstream_noc_xy, get_semaphore<fd_core_type>(downstream_cb_sem_id))
-               << " bytes = " << DEC() << xfer_size << ENDL();
         cq_fabric_release_pages<
             downstream_noc_xy,
             downstream_cb_sem_id,
@@ -436,11 +433,15 @@ void process_write_linear(
     uint32_t dst_addr = cmd->write_linear.addr + write_offset[write_offset_index];
     uint32_t length = cmd->write_linear.length;
     uint32_t data_ptr = cmd_ptr + sizeof(CQDispatchCmd);
-    if (multicast) {
-        cq_noc_async_write_init_state<CQ_NOC_sNdl, true>(0, get_noc_addr_helper(dst_noc, dst_addr));
-    } else {
-        cq_noc_async_write_init_state<CQ_NOC_sNdl, false>(0, get_noc_addr_helper(dst_noc, dst_addr));
-    }
+
+    auto init_noc_state = [&]() {
+        if (multicast) {
+            cq_noc_async_write_init_state<CQ_NOC_sNdl, true>(0, get_noc_addr_helper(dst_noc, dst_addr));
+        } else {
+            cq_noc_async_write_init_state<CQ_NOC_sNdl, false>(0, get_noc_addr_helper(dst_noc, dst_addr));
+        }
+    };
+    init_noc_state();
 
     while (length != 0) {
         // More data needs to be written, but we've exhausted the CB. Acquire more pages.
@@ -450,12 +451,25 @@ void process_write_linear(
                     cb_fence = dispatch_cb_base;
                     data_ptr = dispatch_cb_base;
                 }
-                move_rd_to_next_block_and_release_pages<
-                    upstream_noc_index,
-                    upstream_noc_xy,
-                    upstream_dispatch_cb_sem_id,
-                    dispatch_cb_pages_per_block,
-                    dispatch_cb_blocks>(block_noc_writes_to_clear, rd_block_idx);
+                // Dispatch H upstream is remote
+                if constexpr (is_h_variant && is_d_variant) {
+                    move_rd_to_next_block_and_release_pages<
+                        upstream_noc_index,
+                        upstream_noc_xy,
+                        upstream_dispatch_cb_sem_id,
+                        dispatch_cb_pages_per_block,
+                        dispatch_cb_blocks>(block_noc_writes_to_clear, rd_block_idx);
+                } else {
+                    move_rd_to_next_block_and_release_pages_remote<
+                        upstream_noc_index,
+                        upstream_noc_xy,
+                        upstream_dispatch_cb_sem_id,
+                        dispatch_cb_pages_per_block,
+                        dispatch_cb_blocks,
+                        fabric_mux_num_buffers_per_channel,
+                        fabric_header_rb_base>(edm_sender, block_noc_writes_to_clear, rd_block_idx);
+                    init_noc_state();
+                }
             }
             // Wait for dispatcher to supply a page (this won't go beyond the buffer end)
             uint32_t n_pages = cb_acquire_pages<my_dispatch_cb_sem_id, dispatch_cb_log_page_size>(
@@ -1060,9 +1074,7 @@ static inline bool process_cmd_d(
 re_run_command:
     volatile CQDispatchCmd tt_l1_ptr* cmd = (volatile CQDispatchCmd tt_l1_ptr*)cmd_ptr;
     DeviceTimestampedData("process_cmd_d_dispatch", (uint32_t)cmd->base.cmd_id);
-    if (!is_h_variant) {
-        DPRINT << "PROCESS_CMD_D: " << (uint32_t)cmd->base.cmd_id << ENDL();
-    }
+
     switch (cmd->base.cmd_id) {
         case CQ_DISPATCH_CMD_WRITE_LINEAR:
             WAYPOINT("DWB");
@@ -1181,7 +1193,7 @@ re_run_command:
             break;
 
         case CQ_DISPATCH_CMD_TERMINATE:
-            DPRINT << "dispatch terminate\n";
+            DPRINT << "dispatch_" << is_h_variant << is_d_variant << " terminate\n";
             if (is_d_variant && !is_h_variant) {
                 relay_to_next_cb<split_dispatch_page_preamble_size>(
                     cmd_ptr, sizeof(CQDispatchCmd), block_noc_writes_to_clear, block_next_start_addr);
@@ -1212,7 +1224,9 @@ static inline bool process_cmd_h(
     volatile CQDispatchCmd tt_l1_ptr* cmd = (volatile CQDispatchCmd tt_l1_ptr*)cmd_ptr;
 
     DeviceTimestampedData("process_cmd_h_dispatch", (uint32_t)cmd->base.cmd_id);
+
     DPRINT << "PROCESS_CMD_H: " << (uint32_t)cmd->base.cmd_id << ENDL();
+
     switch (cmd->base.cmd_id) {
         case CQ_DISPATCH_CMD_WRITE_LINEAR_H:
             // DPRINT << "dispatch_h write_linear_h\n";
@@ -1245,7 +1259,7 @@ static inline bool process_cmd_h(
             WAYPOINT("!CMD");
             ASSERT(0);
     }
-
+    DPRINT << "PROCESS_CMD_H: " << (uint32_t)cmd->base.cmd_id << " done" << ENDL();
     return done;
 }
 
@@ -1320,7 +1334,6 @@ void kernel_main() {
     while (!done) {
         if (cmd_ptr == cb_fence) {
             if constexpr (is_h_variant && !is_d_variant) {
-                DPRINT << "get_cb_page_and_release_pages_remote WAIT" << ENDL();
                 get_cb_page_and_release_pages_remote<
                     dispatch_cb_base,
                     dispatch_cb_blocks,
@@ -1339,7 +1352,6 @@ void kernel_main() {
                     block_next_start_addr,
                     rd_block_idx,
                     upstream_total_acquired_page_count);
-                DPRINT << "get_cb_page_and_release_pages_remote DONE" << ENDL();
             } else {
                 get_cb_page_and_release_pages<
                     dispatch_cb_base,
@@ -1368,6 +1380,8 @@ void kernel_main() {
         // Move to next page
         cmd_ptr = round_up_pow2(cmd_ptr, dispatch_cb_page_size);
     }
+
+    DPRINT << "dispatch_" << is_h_variant << is_d_variant << ": teardown" << ENDL();
 
     noc_async_write_barrier();
 
@@ -1405,10 +1419,6 @@ void kernel_main() {
     cb_wait_all_pages<my_dispatch_cb_sem_id>(upstream_total_acquired_page_count);
 
     noc_async_full_barrier();
-
-    if constexpr (is_h_variant ^ is_d_variant) {
-        cq_fabric_terminate<fabric_mux_x, fabric_mux_y, fabric_mux_termination_signal_address>();
-    }
 
     DPRINT << "dispatch_" << is_h_variant << is_d_variant << ": out" << ENDL();
 }

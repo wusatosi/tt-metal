@@ -513,6 +513,7 @@ static const std::vector<DispatchKernelNode> galaxy_nine_chip_arch_2cq = {
 
 std::vector<FDKernel*> node_id_to_kernel;
 std::unordered_map<chip_id_t, std::unique_ptr<Program>> command_queue_pgms;
+std::unordered_map<chip_id_t, std::unordered_set<CoreCoord>> cores_in_use;  // Logical coordinates
 
 // Helper function to automatically generate dispatch nodes given devices + num hw CQs + detection of card type.
 std::vector<DispatchKernelNode> generate_nodes(const std::set<chip_id_t>& device_ids, uint32_t num_hw_cqs) {
@@ -888,6 +889,12 @@ std::unique_ptr<Program> create_and_compile_cq_program(IDevice* device) {
     // Erase from map. Note: program in map is no longer valid
     // It is returned from this function and the caller will take ownership of it
     command_queue_pgms.erase(device->id());
+    // Register cores in use
+    for (auto node_and_kernel : node_id_to_kernel) {
+        if (node_and_kernel->GetDeviceId() == device->id()) {
+            cores_in_use[node_and_kernel->GetDeviceId()].insert(node_and_kernel->GetLogicalCore());
+        }
+    }
     return cq_program;
 }
 
@@ -1282,6 +1289,14 @@ void configure_fabric_cores(IDevice* device) {
     if (tt_fabric::is_2d_fabric_config(fabric_config)) {
         configure_2d_fabric_cores(device);
     }
+}
+
+const std::unordered_map<chip_id_t, std::unordered_set<CoreCoord>>& get_fd_kernel_cores() { return cores_in_use; }
+
+const std::unordered_set<CoreCoord>& get_fd_kernel_cores(tt::tt_metal::IDevice* device) {
+    TT_ASSERT(device != nullptr, "Device is null");
+    TT_ASSERT(cores_in_use.contains(device->id()), "Device not found in cores_in_use");
+    return cores_in_use[device->id()];
 }
 
 }  // namespace tt::tt_metal

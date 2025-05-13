@@ -395,10 +395,10 @@ cb_acquire_pages(uint32_t cb_fence, uint32_t block_next_start_addr[], uint32_t r
     return usable;
 }
 
-// Do not release pages on the first call to cb_block_release functions
-// This is because the first call means we don't have a previous block to release
 static bool cb_block_released_prev_block = false;
 
+// Do not release pages on the first call to cb_block_release functions
+// This is because the first call means we don't have a previous block to release
 template <uint8_t noc_idx, uint32_t noc_xy, uint32_t sem_id, uint32_t cb_pages_per_block>
 FORCE_INLINE void cb_block_release_pages(uint32_t& block_noc_writes_to_clear, uint8_t noc = noc_index) {
     if (cb_block_released_prev_block) {
