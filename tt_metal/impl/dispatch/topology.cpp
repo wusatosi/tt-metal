@@ -1137,6 +1137,10 @@ std::unique_ptr<Program> create_and_compile_tt_fabric_program(IDevice* device, F
     // This currently checks if chip 0 is a corner chip
     bool wrap_around_mesh = corner_chip_connections == 2;
 
+    auto is_north_south_dir = [](RoutingDirection dir) {
+        return dir == RoutingDirection::N || dir == RoutingDirection::S;
+    };
+
     for (const auto& [direction, remote_chip_id] : chip_neighbors) {
         bool is_dateline = check_dateline(
             *control_plane,
@@ -1147,6 +1151,17 @@ std::unique_ptr<Program> create_and_compile_tt_fabric_program(IDevice* device, F
             wrap_around_mesh);
 
         for (const auto& eth_chan : active_fabric_eth_channels[direction]) {
+            uint32_t line_size = 4;
+            if (is_galaxy && edm_config.topology == Topology::Linear) {
+                if (is_north_south_dir(direction)) {
+                    line_size = 8;
+                } else {
+                    line_size = 4;
+                }
+            }
+            const auto curr_edm_config = get_tt_fabric_config(line_size);
+            tt::log_info("direction {}, line_size {}", direction, line_size);
+
             auto eth_logical_core = soc_desc.get_eth_core_for_channel(eth_chan, CoordSystem::LOGICAL);
             auto edm_builder = tt::tt_fabric::FabricEriscDatamoverBuilder::build(
                 device,
@@ -1154,7 +1169,7 @@ std::unique_ptr<Program> create_and_compile_tt_fabric_program(IDevice* device, F
                 eth_logical_core,
                 device->id(),
                 remote_chip_id,
-                edm_config,
+                curr_edm_config,
                 true,
                 false,
                 is_dateline,
@@ -1219,9 +1234,11 @@ std::unique_ptr<Program> create_and_compile_tt_fabric_program(IDevice* device, F
         auto dir2 = it->first;
         connect_downstream_builders(dir1, dir2);
     } else {
+        tt::log_info("AAAA");
         connect_downstream_builders(RoutingDirection::N, RoutingDirection::S);
         connect_downstream_builders(RoutingDirection::E, RoutingDirection::W);
         if (edm_config.topology == Topology::Mesh) {
+            tt::log_info("BBBB");
             connect_downstream_builders(RoutingDirection::N, RoutingDirection::E);
             connect_downstream_builders(RoutingDirection::N, RoutingDirection::W);
             connect_downstream_builders(RoutingDirection::S, RoutingDirection::E);

@@ -2764,7 +2764,8 @@ void Run1DFabricPacketSendTest(
                         &program,
                         enable_persistent_fabric_mode,
                         params.num_links,
-                        topology);
+                        topology,
+                        devices.size());
             }
 
             // reserve CB
@@ -2791,7 +2792,11 @@ void Run1DFabricPacketSendTest(
                     .compile_args = worker_ct_args});
             worker_kernel_ids.push_back(worker_kernel_id);
 
-            auto build_connection_args = [use_device_init_fabric, &local_device_fabric_handle, device, &program](
+            auto build_connection_args = [use_device_init_fabric,
+                                          &local_device_fabric_handle,
+                                          device,
+                                          &program,
+                                          &devices](
                                              CoreCoord& worker_core,
                                              size_t link,
                                              bool is_connected_in_direction,
@@ -2802,7 +2807,13 @@ void Run1DFabricPacketSendTest(
                 if (is_connected_in_direction) {
                     if (use_device_init_fabric) {
                         tt::tt_fabric::append_fabric_connection_rt_args(
-                            device->id(), connected_device->id(), link, program, {worker_core}, rt_args_out);
+                            device->id(),
+                            connected_device->id(),
+                            link,
+                            program,
+                            {worker_core},
+                            rt_args_out,
+                            devices.size());
                     } else {
                         const auto connection = local_device_fabric_handle->uniquely_connect_worker(device, direction);
                         const auto new_rt_args = ttnn::ccl::worker_detail::generate_edm_connection_rt_args(

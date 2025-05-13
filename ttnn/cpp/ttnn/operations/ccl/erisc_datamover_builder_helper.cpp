@@ -59,7 +59,8 @@ EdmLineFabricOpInterface::EdmLineFabricOpInterface(
     static constexpr std::size_t edm_buffer_size =
         tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes +
         sizeof(tt::tt_fabric::PacketHeader);
-    const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, topology);
+    const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, topology, device_sequence.size());
+    tt::log_info("device_sequence.size() {}", device_sequence.size());
     TT_ASSERT(device_sequence.size() == program_sequence.size());
 
     for (size_t i = 0; i < device_sequence.size(); i++) {
@@ -308,12 +309,13 @@ EdmLineFabricOpInterface::EdmLineFabricOpInterface(
     bool enable_persistent_mode,
     std::optional<size_t> desired_num_links,
     bool build_in_worker_connection_mode,
-    Topology topology) :
+    Topology topology,
+    size_t num_devices) :
     device_sequence({local_device}), programs({program}) {
     static constexpr std::size_t edm_buffer_size =
         tt::tt_fabric::FabricEriscDatamoverBuilder::default_packet_payload_size_bytes +
         sizeof(tt::tt_fabric::PacketHeader);
-    const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, topology);
+    const auto config = tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, topology, num_devices);
 
     log_trace(tt::LogOp, "device id={}", local_device->id());
     log_trace(tt::LogOp, "EDM Fabric Factory ctor on device: {}", local_device->id());
@@ -447,7 +449,8 @@ EdmLineFabricOpInterface EdmLineFabricOpInterface::build_program_builder_worker_
     tt::tt_metal::Program* program,
     bool enable_persistent_mode,
     std::optional<size_t> desired_num_links,
-    Topology topology) {
+    Topology topology,
+    std::size_t num_devices) {
     return EdmLineFabricOpInterface(
         local_device,
         forward_device == nullptr ? std::nullopt : std::optional<tt::tt_metal::IDevice*>(forward_device),
@@ -456,7 +459,8 @@ EdmLineFabricOpInterface EdmLineFabricOpInterface::build_program_builder_worker_
         enable_persistent_mode,
         desired_num_links,
         true,
-        topology);
+        topology,
+        num_devices);
 }
 
 void EdmLineFabricOpInterface::build_kernels() const {

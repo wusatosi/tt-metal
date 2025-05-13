@@ -111,7 +111,8 @@ struct FabricEriscDatamoverConfig {
     std::size_t buffer_region_start;
     std::size_t available_channel_buffering_space;
 
-    FabricEriscDatamoverConfig(std::size_t channel_buffer_size_bytes, Topology topology = Topology::Linear);
+    FabricEriscDatamoverConfig(
+        std::size_t channel_buffer_size_bytes, Topology topology = Topology::Linear, std::size_t line_size = 4);
 
     std::size_t channel_buffer_size_bytes = 0;
 

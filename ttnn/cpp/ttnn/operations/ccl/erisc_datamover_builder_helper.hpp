@@ -42,7 +42,8 @@ public:
         bool enable_persistent_mode,
         std::optional<size_t> desired_num_links,
         bool build_in_worker_connection_mode = false,
-        Topology topology = Topology::Linear);
+        Topology topology = Topology::Linear,
+        size_t num_devices = 0);
 
     static EdmLineFabricOpInterface build_program_builder_worker_connection_fabric(
         const std::vector<tt::tt_metal::IDevice*>& device_sequence,
@@ -57,7 +58,8 @@ public:
         tt::tt_metal::Program* program,
         bool enable_persistent_mode,
         std::optional<size_t> desired_num_links = std::nullopt,
-        Topology topology = Topology::Linear);
+        Topology topology = Topology::Linear,
+        std::size_t num_devices = 0);
 
     // Will create a connection adapter for a worker which can be used to pass args to the worker kernel talking to the
     // corresponding fabric endpoint. This interface will guarantee unique connections only so requesting more unique

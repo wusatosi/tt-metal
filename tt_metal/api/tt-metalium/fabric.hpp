@@ -20,7 +20,7 @@ class Program;
 
 namespace tt::tt_fabric {
 
-tt::tt_fabric::FabricEriscDatamoverConfig get_tt_fabric_config();
+tt::tt_fabric::FabricEriscDatamoverConfig get_tt_fabric_config(std::size_t line_size = 4);
 
 // Used to get the run-time args for estabilishing connection with the fabric router.
 // The API appends the connection specific run-time args to the set of exisiting
@@ -50,6 +50,7 @@ void append_fabric_connection_rt_args(
     uint32_t link_idx,
     tt::tt_metal::Program& worker_program,
     const CoreCoord& worker_core,
-    std::vector<uint32_t>& worker_args);
+    std::vector<uint32_t>& worker_args,
+    std::size_t line_size = 4);
 
 }  // namespace tt::tt_fabric

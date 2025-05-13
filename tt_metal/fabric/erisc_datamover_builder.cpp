@@ -120,7 +120,8 @@ FabricEriscDatamoverConfig::FabricEriscDatamoverConfig(Topology topology) {
     this->available_channel_buffering_space = max_l1_loading_size - buffer_region_start;
 }
 
-FabricEriscDatamoverConfig::FabricEriscDatamoverConfig(std::size_t channel_buffer_size_bytes, Topology topology) :
+FabricEriscDatamoverConfig::FabricEriscDatamoverConfig(
+    std::size_t channel_buffer_size_bytes, Topology topology, std::size_t line_size) :
     FabricEriscDatamoverConfig(topology) {
     this->num_used_sender_channels = get_sender_channel_count(topology);
     if (topology == Topology::Mesh) {
@@ -193,7 +194,10 @@ FabricEriscDatamoverConfig::FabricEriscDatamoverConfig(std::size_t channel_buffe
         "size of {}",
         min_buffer_size);
     this->channel_buffer_size_bytes = channel_buffer_size_bytes;
-    constexpr std::array<std::pair<size_t, size_t>, 1> linear_buffer_slot_options = {std::pair<size_t, size_t>{8, 16}};
+    constexpr std::array<std::pair<size_t, size_t>, 1> linear_buffer_slot_options_1 = {
+        std::pair<size_t, size_t>{8, 16}};
+    constexpr std::array<std::pair<size_t, size_t>, 1> linear_buffer_slot_options_2 = {
+        std::pair<size_t, size_t>{12, 16}};
     constexpr std::array<std::pair<size_t, size_t>, 2> ring_buffer_slot_options = {
         std::pair<size_t, size_t>{8, 8}, std::pair<size_t, size_t>{4, 8}};
 
@@ -217,7 +221,12 @@ FabricEriscDatamoverConfig::FabricEriscDatamoverConfig(std::size_t channel_buffe
     if (topology == Topology::Ring) {
         get_optimal_num_slots(ring_buffer_slot_options, num_sender_buffer_slots, num_receiver_buffer_slots);
     } else {
-        get_optimal_num_slots(linear_buffer_slot_options, num_sender_buffer_slots, num_receiver_buffer_slots);
+        if (line_size <= 4) {
+            tt::log_info("line_size {}", line_size);
+            get_optimal_num_slots(linear_buffer_slot_options_1, num_sender_buffer_slots, num_receiver_buffer_slots);
+        } else {
+            get_optimal_num_slots(linear_buffer_slot_options_2, num_sender_buffer_slots, num_receiver_buffer_slots);
+        }
     }
 
     std::size_t total_slot_count = this->num_used_sender_channels * num_sender_buffer_slots +

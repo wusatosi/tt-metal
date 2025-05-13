@@ -30,12 +30,14 @@ class Program;
 
 namespace tt::tt_fabric {
 
+// add a static object to store the edm_config per edm cores
+
 // TODO: We should store this somewhere instead of constantly regenerating
-tt::tt_fabric::FabricEriscDatamoverConfig get_tt_fabric_config() {
+tt::tt_fabric::FabricEriscDatamoverConfig get_tt_fabric_config(std::size_t line_size) {
     tt::tt_metal::FabricConfig fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
     Topology topology = get_tt_fabric_topology(fabric_config);
     std::size_t edm_buffer_size = get_fabric_router_buffer_size(topology);
-    return tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, topology);
+    return tt::tt_fabric::FabricEriscDatamoverConfig(edm_buffer_size, topology, line_size);
 }
 
 void append_fabric_connection_rt_args(
@@ -44,7 +46,8 @@ void append_fabric_connection_rt_args(
     uint32_t link_idx,
     tt::tt_metal::Program& worker_program,
     const CoreCoord& worker_core,
-    std::vector<uint32_t>& worker_args) {
+    std::vector<uint32_t>& worker_args,
+    std::size_t line_size) {
     TT_FATAL(
         src_chip_id != dst_chip_id,
         "Expected different src and dst chip ids but got same, src: {}, dst: {}",
@@ -86,7 +89,7 @@ void append_fabric_connection_rt_args(
     auto fabric_router_channel = get_ordered_fabric_eth_chans(src_chip_id, candidate_ethernet_cores.value())[link_idx];
     auto router_direction =
         control_plane->get_eth_chan_direction(src_mesh_id, src_logical_chip_id, fabric_router_channel);
-    const auto& edm_config = get_tt_fabric_config();
+    const auto& edm_config = get_tt_fabric_config(line_size);
     CoreCoord fabric_router_virtual_core =
         tt::tt_metal::MetalContext::instance().get_cluster().get_virtual_eth_core_from_channel(
             src_chip_id, fabric_router_channel);
