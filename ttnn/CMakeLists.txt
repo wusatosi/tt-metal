@@ -2,6 +2,8 @@
 # Build TTNN and TTNNCPP
 ####################################################################################################
 
+find_package(OpenMP REQUIRED)
+
 ##################################################
 # Set options
 ##################################################
@@ -69,6 +71,8 @@ function(build_library LIBRARY_NAME ALIAS)
         PUBLIC
             ${TARGET_LINK_LIBRARIES}
             Boost::algorithm
+        PRIVATE
+            OpenMP::OpenMP_CXX
     )
 
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")

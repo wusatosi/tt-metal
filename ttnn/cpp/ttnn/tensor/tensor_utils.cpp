@@ -9,11 +9,21 @@
 #include "ttnn/distributed/api.hpp"
 #include "ttnn/tensor/host_buffer/functions.hpp"
 #include "ttnn/tensor/types.hpp"
+#include <omp.h>
 
 #include <tracy/Tracy.hpp>
 
 namespace tt {
 namespace tt_metal {
+
+namespace {
+
+// Threshold for parallelizing work over tensor shards.
+// If the number of shards is less than this threshold, the cost of wake ups, data transfers, and synchronization
+// is greater than the cost of doing the work sequentially.
+constexpr size_t kOMPParallelThreshold = 4;
+
+}  // namespace
 
 ttnn::Shape infer_dims_for_reshape(const Tensor& tensor, tt::stl::Span<const int32_t> shape) {
     int64_t old_volume = tensor.get_logical_volume();
@@ -102,20 +112,34 @@ bool is_device_tensor(const Tensor& tensor) { return tensor.storage_type() == St
 Tensor transform(const Tensor& tensor, const std::function<Tensor(const Tensor&)>& transform_func) {
     TT_FATAL(is_multi_device_host_tensor(tensor), "transform only supports multi-device host tensors");
     auto input_tensors = ttnn::distributed::get_device_tensors(tensor);
-    std::vector<Tensor> output_tensors;
-    output_tensors.reserve(input_tensors.size());
-    std::transform(
-        input_tensors.begin(), input_tensors.end(), std::back_inserter(output_tensors), [&](const auto& device_tensor) {
-            return transform_func(device_tensor);
-        });
+    std::vector<Tensor> output_tensors(input_tensors.size());
+
+    if (input_tensors.size() >= kOMPParallelThreshold) {
+#pragma omp parallel for
+        for (size_t i = 0; i < input_tensors.size(); i++) {
+            output_tensors[i] = transform_func(input_tensors[i]);
+        }
+    } else {
+        for (size_t i = 0; i < input_tensors.size(); i++) {
+            output_tensors[i] = transform_func(input_tensors[i]);
+        }
+    }
     return ttnn::distributed::aggregate_as_tensor(output_tensors, tensor.get_distributed_tensor_config());
 }
 
 void apply(const Tensor& tensor, const std::function<void(const Tensor&)>& callable) {
     TT_FATAL(is_multi_device_host_tensor(tensor), "apply only supports multi-device host tensors");
     auto input_tensors = ttnn::distributed::get_device_tensors(tensor);
-    for (const auto& device_tensor : input_tensors) {
-        callable(device_tensor);
+
+    if (input_tensors.size() >= kOMPParallelThreshold) {
+#pragma omp parallel for
+        for (size_t i = 0; i < input_tensors.size(); i++) {
+            callable(input_tensors[i]);
+        }
+    } else {
+        for (size_t i = 0; i < input_tensors.size(); i++) {
+            callable(input_tensors[i]);
+        }
     }
 }
 
