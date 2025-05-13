@@ -217,7 +217,7 @@ def run_line_reduce_scatter_on_TG_with_mesh_tensor_along_rows(
             mesh_device=mesh_device,
             math_op=math_op,
             output_mem_config=output_mem_config,
-            all_gather_topology=ttnn.Topology.Linear,
+            all_gather_topology=ttnn.Topology.Ring,
             num_links=num_links,
             num_iter=num_iters,
         )
@@ -275,6 +275,7 @@ def run_line_reduce_scatter_on_TG_with_mesh_tensor_along_rows(
             ]
         for _ in range(num_iters):
             if use_reduce_scatter_async:
+                print("here ring\n")
                 ttnn_tensor_out = ttnn.experimental.reduce_scatter_async(
                     ttnn_tensor,
                     dim=dim,
@@ -285,7 +286,7 @@ def run_line_reduce_scatter_on_TG_with_mesh_tensor_along_rows(
                     math_op=math_op,
                     persistent_output_tensors=persistent_buffers,
                     memory_config=output_mem_config,
-                    topology=ttnn.Topology.Linear,
+                    topology=ttnn.Topology.Ring,
                     num_links=num_links,
                     subdevice_id=worker_sub_device_id,
                 )

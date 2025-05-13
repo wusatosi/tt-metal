@@ -24,6 +24,9 @@ class TtFalconCausalLM(TtFalconModelShared):
         model_config,
         tt_cache_path,
         use_global_cos_sin_cache,
+        ccl_semaphore_handle,
+        from_remote_semaphore_handles,
+        to_remote_semaphore_handles,
     ):
         assert base_url == "", "base_url should be empty at the root of the model!"
 
@@ -37,6 +40,9 @@ class TtFalconCausalLM(TtFalconModelShared):
             model_config=model_config,
             tt_cache_path=tt_cache_path,
             use_global_cos_sin_cache=use_global_cos_sin_cache,
+            ccl_semaphore_handle=ccl_semaphore_handle,
+            from_remote_semaphore_handles=from_remote_semaphore_handles,
+            to_remote_semaphore_handles=to_remote_semaphore_handles,
         )
         self.model_config = model_config
         self.mesh_device = mesh_device

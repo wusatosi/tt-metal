@@ -124,6 +124,7 @@ class TtFalconAttention:
         model_config=None,
         tt_cache_path=None,
         global_cos_sin_cache=None,
+        ccl_semaphore_handle=None,
     ):
         super().__init__()
         self.hidden_size = config.hidden_size
@@ -138,6 +139,7 @@ class TtFalconAttention:
         self.num_heads_per_device = self.num_heads // mesh_device.get_num_devices()
         self.tt_cache_path = tt_cache_path
         self.max_batch_size = 32
+        self.ccl_semaphore_handle = ccl_semaphore_handle
 
         if (self.head_dim * self.num_heads) != self.hidden_size:
             raise ValueError(
@@ -363,11 +365,22 @@ class TtFalconAttention:
             attn_output,
             memory_config=self.model_config["CONCAT_HEADS_OUTPUT_MEMCFG"],
         )
+        """
         attn_output = ttnn.all_gather(
             attn_output,
             dim=3,
             num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
             memory_config=self.model_config["DEFAULT_MEMCFG"],
+        )
+        """
+        attn_output = ttnn.experimental.all_gather_async(
+            attn_output,
+            dim=3,
+            multi_device_global_semaphore=self.ccl_semaphore_handle,
+            num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
+            memory_config=self.model_config["DEFAULT_MEMCFG"],
+            topology=ttnn.Topology.Ring,
+            # subdevice_id=self.worker_sub_device_id,
         )
         attn_output = falcon_prefill_matmul(
             attn_output,
@@ -584,11 +597,22 @@ class TtFalconAttention:
             attn_output,
             memory_config=self.model_config["DEFAULT_MEMCFG"],
         )
+        """
         attn_output = ttnn.all_gather(
             attn_output,
             dim=3,
             num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
             memory_config=self.model_config["DEFAULT_MEMCFG"],
+        )
+        """
+        attn_output = ttnn.experimental.all_gather_async(
+            attn_output,
+            dim=3,
+            multi_device_global_semaphore=self.ccl_semaphore_handle,
+            num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
+            memory_config=self.model_config["DEFAULT_MEMCFG"],
+            topology=ttnn.Topology.Ring,
+            # subdevice_id=self.worker_sub_device_id,
         )
         attn_output = ttnn.interleaved_to_sharded(
             attn_output,

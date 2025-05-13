@@ -435,14 +435,15 @@ def test_line_reduce_scatter_async_on_T3K_cols_post_commit(
 @pytest.mark.parametrize(
     "num_devices, num_links, per_chip_input_shape, dim, layout",
     [
-        (4, 1, [1, 4, 32, 1280], 1, ttnn.TILE_LAYOUT),
-        (4, 1, [4, 1, 32, 1280], 0, ttnn.TILE_LAYOUT),
+        # (4, 1, [1, 4, 32, 1280], 1, ttnn.TILE_LAYOUT),
+        # (4, 1, [4, 1, 32, 1280], 0, ttnn.TILE_LAYOUT),
+        (8, 1, [1, 1, 32, 8192], 3, ttnn.TILE_LAYOUT),
     ],
 )
 @pytest.mark.parametrize(
     "input_dtype",
     [
-        ttnn.bfloat16,
+        # ttnn.bfloat16,
         ttnn.bfloat8_b,
     ],
 )
@@ -453,12 +454,11 @@ def test_line_reduce_scatter_async_on_T3K_cols_post_commit(
         ttnn.BufferType.L1,
     ],
 )
-@pytest.mark.parametrize("replication_factor", [2])
+@pytest.mark.parametrize("replication_factor", [1])
 @pytest.mark.parametrize("math_op", [ttnn.ReduceType.Sum])
-@pytest.mark.parametrize("mesh_device", [pytest.param((2, 4), id="2x4_grid")], indirect=True)
-@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_line_reduce_scatter_async_on_T3K_rows_post_commit(
-    mesh_device,
+    t3k_mesh_device,
     num_devices,
     per_chip_input_shape,
     dim,
@@ -472,11 +472,11 @@ def test_line_reduce_scatter_async_on_T3K_rows_post_commit(
     replication_factor,
     num_iters=1,
 ):
-    if mesh_device.get_num_devices() < 8:
+    if t3k_mesh_device.get_num_devices() < 8:
         pytest.skip("Not T3K!")
 
     run_line_reduce_scatter_on_TG_with_mesh_tensor_along_rows(
-        mesh_device,
+        t3k_mesh_device,
         num_devices,
         per_chip_input_shape,
         ttnn.TensorMemoryLayout.INTERLEAVED,

@@ -232,8 +232,8 @@ def run_all_gather_on_t3000_impl(
     use_program_cache,
     function_level_defaults,
     all_gather_topology,
-    num_iters=1,
-    trace_mode=False,
+    num_iters=50,
+    trace_mode=True,
     tile=(32, 32),
 ):
     if mesh_device.get_num_devices() < num_devices:
@@ -521,7 +521,8 @@ def test_all_gather_on_t3000_post_commit_for_profiler_regression(
 @pytest.mark.parametrize(
     "num_devices, num_links, input_shape, dim, layout",
     [
-        (8, 1, [8, 1, 33, 256], 0, ttnn.ROW_MAJOR_LAYOUT),  # https://github.com/tenstorrent/tt-metal/issues/9686
+        # (8, 1, [8, 1, 33, 256], 0, ttnn.ROW_MAJOR_LAYOUT),  # https://github.com/tenstorrent/tt-metal/issues/9686
+        (8, 1, [1, 1, 32, 8192], 3, ttnn.TILE_LAYOUT)
         # (8, 1, [8, 8, 256, 384], 1, ttnn.ROW_MAJOR_LAYOUT),           # https://github.com/tenstorrent/tt-metal/issues/9686
         # (8, 1, [8, 8, 256, 384], 1, ttnn.TILE_LAYOUT),           # https://github.com/tenstorrent/tt-metal/issues/9686
         # (8, 1, [8, 5, 13, 512], 3, ttnn.ROW_MAJOR_LAYOUT),           # https://github.com/tenstorrent/tt-metal/issues/9686
@@ -557,8 +558,8 @@ def test_all_gather_on_t3000_post_commit_for_profiler_regression(
 @pytest.mark.parametrize(
     "input_dtype",
     [
-        ttnn.bfloat16,
-        # ttnn.bfloat8_b,          # https://github.com/tenstorrent/tt-metal/issues/9686
+        # ttnn.bfloat16,
+        ttnn.bfloat8_b,  # https://github.com/tenstorrent/tt-metal/issues/9686
     ],
 )
 @pytest.mark.parametrize(
@@ -568,6 +569,7 @@ def test_all_gather_on_t3000_post_commit_for_profiler_regression(
         # ttnn.MemoryConfig(buffer_type=ttnn.BufferType.L1),  # https://github.com/tenstorrent/tt-metal/issues/9686
     ],
 )
+@pytest.mark.parametrize("device_params", [{"trace_region_size": 23887872}], indirect=True)
 def test_all_gather_on_t3000_post_commit(
     t3k_mesh_device,
     num_devices,

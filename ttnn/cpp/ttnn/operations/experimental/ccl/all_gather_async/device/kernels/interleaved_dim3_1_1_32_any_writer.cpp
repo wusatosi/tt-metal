@@ -128,31 +128,52 @@ void kernel_main() {
         DPRINT << "tile_id: " << tile_id << "\n";
         cb_wait_front(cb0_id, packet_size_in_pages);
         size_t l1_read_addr = get_read_ptr(cb0_id);
+        size_t l1_read_addr_local = get_read_ptr(cb0_id);
         uint32_t num_pages_to_read = std::min(tile_id_end - tile_id, packet_size_in_pages);
+        DPRINT << "num_pages_to_read: " << (uint32_t)(num_pages_to_read) << ENDL();
 
-        uint32_t contig_pages_advanced = 1;  // always 1 for interleaved
+        uint32_t contig_pages_advanced = 2;  // always 1 for interleaved
         for (uint32_t j = 0; j < num_pages_to_read; j += contig_pages_advanced) {
-            uint64_t noc0_dest_noc_addr = get_noc_addr(tile_id, tensor0_addrgen, 0 /*offset*/, 0 /*noc_id*/);
-
             DPRINT << "j: " << j << "\n";
-            DPRINT << "noc0_dest_noc_addr: " << noc0_dest_noc_addr << "\n";
+
+            uint64_t noc0_dest_noc_addr0 = get_noc_addr(tile_id, tensor0_addrgen, 0, 0);
+            DPRINT << "after noc0_dest_noc_addr0\n";
+
+            uint64_t noc0_dest_noc_addr1 = get_noc_addr(tile_id + 1, tensor0_addrgen, 0, 0);
+            DPRINT << "after noc0_dest_noc_addr1\n";
+
+            DPRINT << "noc0_dest_noc_addr0: " << noc0_dest_noc_addr0 << "\n";
+            DPRINT << "noc0_dest_noc_addr1: " << noc0_dest_noc_addr1 << "\n";
             DPRINT << "tile_id: " << tile_id << "\n";
 
             // This issues a flush barrier
+
+            const auto [dest_noc_xy0, dest_addr0] = get_noc_address_components(noc0_dest_noc_addr0);
+            const auto [dest_noc_xy1, dest_addr1] = get_noc_address_components(noc0_dest_noc_addr1);
+            noc_async_write(
+                l1_read_addr_local, safe_get_noc_addr(dest_noc_xy0.x, dest_noc_xy0.y, dest_addr0), tensor0_page_size);
+            l1_read_addr_local += tensor0_page_size;
+            noc_async_write(
+                l1_read_addr_local, safe_get_noc_addr(dest_noc_xy1.x, dest_noc_xy1.y, dest_addr1), tensor0_page_size);
+            l1_read_addr_local += tensor0_page_size;
+            DPRINT << "WRITE PACKET WITH SIZE: " << (uint32_t)(contig_pages_advanced * tensor0_page_size) << ENDL();
+
             write_and_advance_local_read_address_for_fabric_write(
-                noc0_dest_noc_addr,
+                noc0_dest_noc_addr0,
+                noc0_dest_noc_addr1,
                 pkt_hdr_forward,
                 pkt_hdr_backward,
                 fabric_connection,
                 l1_read_addr,
                 contig_pages_advanced * tensor0_page_size);
+
             if constexpr (dynamic_alternate) {
                 std::swap(
                     pkt_hdr_forward->routing_fields.value,
                     pkt_hdr_backward->routing_fields
                         .value);  // alternate the packet header distance for better balancing
             }
-            tile_id++;
+            tile_id += contig_pages_advanced;
         }
 
         cb_pop_front(cb0_id, packet_size_in_pages);

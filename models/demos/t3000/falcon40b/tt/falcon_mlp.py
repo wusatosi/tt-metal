@@ -21,6 +21,8 @@ class TtFalconMLP:
         hidden_size: int,
         model_config,
         tt_cache_path,
+        from_remote_semaphore_handles,
+        to_remote_semaphore_handles,
     ):
         super().__init__()
 
@@ -28,6 +30,8 @@ class TtFalconMLP:
         self.mesh_device = mesh_device
         self.hidden_size = hidden_size
         self.model_config = model_config
+        self.to_remote_semaphore_handles = to_remote_semaphore_handles
+        self.from_remote_semaphore_handles = from_remote_semaphore_handles
 
         layer_name = f"{base_url}.{layer_num}"
 
@@ -122,10 +126,13 @@ class TtFalconMLP:
         )  # Workaround for reduce_scatter only taking a vector of tensors and not mesh_device
 
         hidden_states = ttnn.get_device_tensors(
-            ttnn.reduce_scatter(
+            ttnn.experimental.reduce_scatter_async(
                 ttnn.aggregate_as_tensor(hidden_states),
                 dim=3,
                 math_op=ttnn.ReduceType.Sum,
+                topology=ttnn.Topology.Ring,
+                from_remote_multi_device_global_semaphore=self.from_remote_semaphore_handles,
+                to_remote_multi_device_global_semaphore=self.to_remote_semaphore_handles,
                 num_links=1,  # only unidirectional supported for now
                 memory_config=self.model_config["DEFAULT_MEMCFG"],
             )
@@ -198,11 +205,14 @@ class TtFalconMLP:
         )  # Workaround for reduce_scatter only taking a vector of tensors and not mesh_device
 
         hidden_states = ttnn.get_device_tensors(
-            ttnn.reduce_scatter(
+            ttnn.experimental.reduce_scatter_async(
                 ttnn.aggregate_as_tensor(hidden_states),
                 dim=3,
                 math_op=ttnn.ReduceType.Sum,
-                num_links=1,  # only one link supported for now
+                topology=ttnn.Topology.Ring,
+                from_remote_multi_device_global_semaphore=self.from_remote_semaphore_handles,
+                to_remote_multi_device_global_semaphore=self.to_remote_semaphore_handles,
+                num_links=1,  # only unidirectional supported for now
                 memory_config=self.model_config["DEFAULT_MEMCFG"],
             )
         )

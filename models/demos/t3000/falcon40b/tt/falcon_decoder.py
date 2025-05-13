@@ -26,6 +26,9 @@ class TtFalconDecoderLayer:
         tt_cache_path,
         global_cos_sin_cache,
         ln_output_tensors_dict,
+        ccl_semaphore_handle,
+        from_remote_semaphore_handles,
+        to_remote_semaphore_handles,
     ):
         super().__init__()
         self.hidden_size = config.hidden_size
@@ -37,6 +40,9 @@ class TtFalconDecoderLayer:
         self.model_config = model_config
         self.num_devices = len(mesh_device.get_device_ids())
         self.ln_output_tensors_dict = ln_output_tensors_dict
+        self.ccl_semaphore_handle = ccl_semaphore_handle
+        self.from_remote_semaphore_handles = from_remote_semaphore_handles
+        self.to_remote_semaphore_handles = to_remote_semaphore_handles
 
         assert config.parallel_attn, "Path for config.parallel_attn=False is not implemented in TtFalconDecoderLayer!"
 
@@ -50,6 +56,7 @@ class TtFalconDecoderLayer:
             model_config=model_config,
             tt_cache_path=tt_cache_path,
             global_cos_sin_cache=global_cos_sin_cache,
+            ccl_semaphore_handle=ccl_semaphore_handle,
         )
 
         self.mlp = TtFalconMLP(
@@ -60,6 +67,8 @@ class TtFalconDecoderLayer:
             hidden_size=config.hidden_size,
             model_config=model_config,
             tt_cache_path=tt_cache_path,
+            from_remote_semaphore_handles=from_remote_semaphore_handles,
+            to_remote_semaphore_handles=to_remote_semaphore_handles,
         )
 
         layer_name = f"{base_url}.{layer_num}"
@@ -206,12 +215,22 @@ class TtFalconDecoderLayer:
             replicated_hidden_states = ttnn.experimental.typecast(
                 replicated_hidden_states, self.model_config["BFP8_DTYPE"], memory_config=ttnn.DRAM_MEMORY_CONFIG
             )
-
+        """
         replicated_hidden_states = ttnn.all_gather(
             replicated_hidden_states,
             dim=3,
             num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
             memory_config=self.model_config["DEFAULT_MEMCFG"],
+        )
+        """
+        replicated_hidden_states = ttnn.experimental.all_gather_async(
+            replicated_hidden_states,
+            dim=3,
+            multi_device_global_semaphore=self.ccl_semaphore_handle,
+            num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
+            memory_config=self.model_config["DEFAULT_MEMCFG"],
+            topology=ttnn.Topology.Ring,
+            # subdevice_id=self.worker_sub_device_id,
         )
 
         if self.model_config["LN_INPUT_DTYPE"] != self.model_config["BFP8_DTYPE"]:
@@ -304,12 +323,22 @@ class TtFalconDecoderLayer:
             hidden_states,
             memory_config=self.model_config["DEFAULT_MEMCFG"],
         )
-
+        """
         replicated_hidden_states = ttnn.all_gather(
             replicated_hidden_states,
             dim=3,
             num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
             memory_config=self.model_config["DEFAULT_MEMCFG"],
+        )
+        """
+        replicated_hidden_states = ttnn.experimental.all_gather_async(
+            replicated_hidden_states,
+            dim=3,
+            multi_device_global_semaphore=self.ccl_semaphore_handle,
+            num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
+            memory_config=self.model_config["DEFAULT_MEMCFG"],
+            topology=ttnn.Topology.Ring,
+            # subdevice_id=self.worker_sub_device_id,
         )
         replicated_hidden_states = ttnn.interleaved_to_sharded(
             replicated_hidden_states,

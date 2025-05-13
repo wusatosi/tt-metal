@@ -30,6 +30,9 @@ class TtFalconModelShared:
         model_config,
         tt_cache_path,
         use_global_cos_sin_cache,
+        ccl_semaphore_handle,
+        from_remote_semaphore_handles,
+        to_remote_semaphore_handles,
     ):
         super().__init__()
 
@@ -44,6 +47,9 @@ class TtFalconModelShared:
         self.num_layers = num_layers
         self.hidden_size = config.hidden_size
         self.num_devices = mesh_device.get_num_devices()
+        self.ccl_semaphore_handle = ccl_semaphore_handle
+        self.from_remote_semaphore_handles = from_remote_semaphore_handles
+        self.to_remote_semaphore_handles = to_remote_semaphore_handles
         self.ln_output_tensors_dict = {
             "final_layernorm": dict(),
             "mlp_layernorm": dict(),
@@ -83,6 +89,9 @@ class TtFalconModelShared:
                 tt_cache_path=tt_cache_path,
                 global_cos_sin_cache=global_cos_sin_cache,
                 ln_output_tensors_dict=self.ln_output_tensors_dict,
+                ccl_semaphore_handle=self.ccl_semaphore_handle,
+                from_remote_semaphore_handles=self.from_remote_semaphore_handles,
+                to_remote_semaphore_handles=self.to_remote_semaphore_handles,
             )
             for layer_num in tqdm(range(num_layers), desc="Loading decoder layers")
         ]
@@ -307,14 +316,23 @@ class TtFalconModelShared:
             layer_output = ttnn.experimental.typecast(
                 layer_output, self.model_config["BFP8_DTYPE"], memory_config=ttnn.DRAM_MEMORY_CONFIG
             )
-
+        """
         layer_output = ttnn.all_gather(
             layer_output,
             dim=3,
             num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
             memory_config=self.model_config["DEFAULT_MEMCFG"],
         )
-
+        """
+        layer_output = ttnn.experimental.all_gather_async(
+            layer_output,
+            dim=3,
+            multi_device_global_semaphore=self.ccl_semaphore_handle,
+            num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
+            memory_config=self.model_config["DEFAULT_MEMCFG"],
+            topology=ttnn.Topology.Ring,
+            # subdevice_id=self.worker_sub_device_id,
+        )
         if self.model_config["LN_INPUT_DTYPE"] != self.model_config["BFP8_DTYPE"]:
             layer_output = ttnn.experimental.typecast(
                 layer_output, self.model_config["LN_INPUT_DTYPE"], memory_config=ttnn.DRAM_MEMORY_CONFIG
@@ -365,11 +383,22 @@ class TtFalconModelShared:
             layer_output,
             memory_config=self.model_config["DEFAULT_MEMCFG"],
         )
+        """
         layer_output = ttnn.all_gather(
             layer_output,
             dim=3,
             num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
             memory_config=self.model_config["DEFAULT_MEMCFG"],
+        )
+        """
+        layer_output = ttnn.experimental.all_gather_async(
+            layer_output,
+            dim=3,
+            multi_device_global_semaphore=self.ccl_semaphore_handle,
+            num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
+            memory_config=self.model_config["DEFAULT_MEMCFG"],
+            topology=ttnn.Topology.Ring,
+            # subdevice_id=self.worker_sub_device_id,
         )
         layer_output = ttnn.interleaved_to_sharded(
             layer_output,
