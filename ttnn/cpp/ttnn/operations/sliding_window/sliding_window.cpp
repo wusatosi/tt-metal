@@ -1009,7 +1009,6 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
         int num_cores_y = device->compute_with_storage_grid_size().y;
         int num_cores = num_cores_x * num_cores_y;
         CoreCoord noc_00 = core_id_to_noc_coords(0);
-        int max_ref_size = 0;  // track the max remote ref size for sizing the remote temp tensor
         int core = 0;
         std::vector<int> remote_ref_low_bounds(num_cores, INT_MAX);
         std::vector<int> remote_ref_high_bounds(num_cores, -INT_MAX);
@@ -1070,6 +1069,7 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
         }
 
         // check the local and remote ref bounds to update the no wait conditions
+        int max_ref_size = 0;  // track the max remote ref size for sizing the remote temp tensor
         if (in_place) {
             core = 0;
             // printf("---REMOTE CONFIG---\n");
@@ -1092,15 +1092,12 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
                     int last_local_size = flattened_local_config[0][ref_ind][5 + 4 * (local_count - 1)];
                     int low_local_bound;
                     int high_local_bound;
-                    bool forward_local;
                     if (first_local_dst_relative_src < last_local_dst_relative_src) {
                         low_local_bound = first_local_dst_relative_src;
                         high_local_bound = last_local_dst_relative_src + last_local_size - 1;
-                        forward_local = true;
                     } else {
                         low_local_bound = last_local_dst_relative_src;
                         high_local_bound = first_local_dst_relative_src + first_local_size - 1;
-                        forward_local = false;
                     }
                     for (size_t i = 0; i < subdata.size(); ++i) {
                         idx1 += 3;
@@ -1155,6 +1152,7 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
                     }
                 }
                 max_ref_size = std::max(max_ref_size, ref_size);
+                core++;
             }
         }
 
