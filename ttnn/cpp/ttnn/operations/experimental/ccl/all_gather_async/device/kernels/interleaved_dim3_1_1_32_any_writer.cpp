@@ -27,6 +27,8 @@ constexpr uint32_t tensor0_page_size = get_compile_time_arg_val(6);
 constexpr uint32_t num_targets_forward_direction = get_compile_time_arg_val(7);
 constexpr uint32_t num_targets_backward_direction = get_compile_time_arg_val(8);
 constexpr bool dynamic_alternate = get_compile_time_arg_val(9);
+constexpr bool mult_32 = get_compile_time_arg_val(10);
+constexpr uint32_t num_tiles_width = get_compile_time_arg_val(11);
 constexpr uint32_t num_max_targets = std::max(num_targets_forward_direction, num_targets_backward_direction);
 constexpr uint32_t num_sync_targets_forward = dynamic_alternate ? num_max_targets : num_targets_forward_direction;
 constexpr uint32_t num_sync_targets_backward = dynamic_alternate ? num_max_targets : num_targets_backward_direction;
@@ -124,11 +126,13 @@ void kernel_main() {
     DPRINT << "tensor -> CB: " << (uint32_t)cb0_id << "\n";
     DPRINT << "packet size in pages: " << (uint32_t)packet_size_in_pages << "\n";
     uint32_t tile_id = tile_id_start;
-    while (tile_id < tile_id_end) {
+    uint32_t count_tile = 0;
+    while (count_tile < (tile_id_end - tile_id_start)) {
         DPRINT << "tile_id: " << tile_id << "\n";
         cb_wait_front(cb0_id, packet_size_in_pages);
         size_t l1_read_addr = get_read_ptr(cb0_id);
-        uint32_t num_pages_to_read = std::min(tile_id_end - tile_id, packet_size_in_pages);
+        uint32_t num_pages_to_read =
+            mult_32 ? packet_size_in_pages : std::min(tile_id_end - tile_id, packet_size_in_pages);
 
         uint32_t contig_pages_advanced = 1;  // always 1 for interleaved
         for (uint32_t j = 0; j < num_pages_to_read; j += contig_pages_advanced) {
@@ -137,6 +141,7 @@ void kernel_main() {
             DPRINT << "j: " << j << "\n";
             DPRINT << "noc0_dest_noc_addr: " << noc0_dest_noc_addr << "\n";
             DPRINT << "tile_id: " << tile_id << "\n";
+            DPRINT << "WRITING SIZE: " << (uint32_t)(contig_pages_advanced * tensor0_page_size) << "\n";
 
             // This issues a flush barrier
             write_and_advance_local_read_address_for_fabric_write(
@@ -152,7 +157,10 @@ void kernel_main() {
                     pkt_hdr_backward->routing_fields
                         .value);  // alternate the packet header distance for better balancing
             }
-            tile_id++;
+            count_tile++;
+            DPRINT << "mult_32: " << (uint32_t)(mult_32) << ENDL();
+            DPRINT << "NUM_TILES_WIDTH :" << (uint32_t)num_tiles_width << ENDL();
+            tile_id = mult_32 ? tile_id + count_tile * num_tiles_width : tile_id + 1;
         }
 
         cb_pop_front(cb0_id, packet_size_in_pages);

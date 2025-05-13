@@ -364,12 +364,14 @@ class TtFalconAttention:
             attn_output,
             memory_config=self.model_config["CONCAT_HEADS_OUTPUT_MEMCFG"],
         )
+        breakpoint()
         attn_output = ttnn.all_gather(
             attn_output,
             dim=3,
             num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
             memory_config=self.model_config["DEFAULT_MEMCFG"],
         )
+        breakpoint()
         attn_output = falcon_prefill_matmul(
             attn_output,
             self.dense_weights,
@@ -585,12 +587,14 @@ class TtFalconAttention:
             attn_output,
             memory_config=self.model_config["DEFAULT_MEMCFG"],
         )
+        breakpoint()
         attn_output = ttnn.all_gather(
             attn_output,
             dim=3,
             num_links=self.model_config["ALL_GATHER_NUM_LINKS"],
             memory_config=self.model_config["DEFAULT_MEMCFG"],
         )
+        breakpoint()
         attn_output = ttnn.interleaved_to_sharded(
             attn_output,
             self.model_config["ATTN_ALL_GATHER_OUTPUT_MEMCFG"],

@@ -145,6 +145,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_multi_core_with_w
     if (!mesh_device) {
         mesh_device = input_tensor.device();
     }
+    printf("executing all_gather_async multi core with workers\n");
     const bool enable_persistent_fabric_mode = true;
     const bool enable_async_output_tensor = false;
     const bool lower_command_stream_to_noc_commands =

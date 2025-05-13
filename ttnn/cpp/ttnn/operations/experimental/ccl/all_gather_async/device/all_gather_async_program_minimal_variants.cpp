@@ -79,6 +79,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
         sender_device->id(),
         is_first_chip,
         is_last_chip);
+    printf("executing minimal interleaved 32\n");
 
     // Get OP Config, topology config
     std::vector<Tensor> input_tensors = {input_tensor};
@@ -123,6 +124,9 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
     const auto output_tensor_layout = output_tensor.buffer()->buffer_layout();
     const auto output_tensor_buffer_type = output_tensor.buffer()->buffer_type();
     const auto output_tensor_page_layout = output_tensor.layout();
+    const bool mult_32 = input_tensor.get_padded_shape()[2] > 32;
+    const uint32_t num_tiles_width = ring_size * (input_tensor.get_padded_shape()[3] / 32);
+    printf("num_tiles_width: %u\n", num_tiles_width);
 
     // KERNEL CREATION
     // Reader
@@ -157,8 +161,9 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
         op_config.get_page_size(),                         // tensor0_page_size
         num_targets_forward,                               // num_targets_forward_direction
         num_targets_backward,                              // num_targets_backward_direction
-        dynamic_alternate                                  // alternate
-    };
+        dynamic_alternate,                                 // alternate
+        mult_32,
+        num_tiles_width};
     for (const auto& arg : writer_kernel_config.compile_args) {
         log_trace(tt::LogOp, "\t{}", arg);
     }
@@ -182,6 +187,10 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
         // Set reader runtime args
         uint32_t base_pages_per_worker = input_tensor_num_pages / num_links;
         uint32_t remainder = input_tensor_num_pages % num_links;
+        printf("base_pages_per_worker: %u\n", base_pages_per_worker);
+        printf("remainder: %u\n", remainder);
+        printf("input_tile start : %u\n", link * base_pages_per_worker + std::min(link, remainder));
+        printf("input_tile_id_end: %u\n", (link + 1) * base_pages_per_worker + std::min(link + 1, remainder));
         uint32_t input_tile_id_start = link * base_pages_per_worker + std::min(link, remainder);
         uint32_t input_tile_id_end = (link + 1) * base_pages_per_worker + std::min(link + 1, remainder);
         std::vector<uint32_t> reader_rt_args = {
@@ -199,8 +208,18 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
         bool wait_output_semaphore = (link == 0) && !enable_async_output_tensor;
         bool reset_global_semaphore = (link == 0) && !enable_async_output_tensor;
         uint32_t out_ready_sem_wait_value = (dynamic_alternate ? (ring_size + 1) : ring_size) * num_links;
-        uint32_t output_tile_id_start = ring_index * input_tensor_num_pages + input_tile_id_start;
-        uint32_t output_tile_id_end = ring_index * input_tensor_num_pages + input_tile_id_end;
+        printf("ring_index: %u\n", ring_index);
+        printf("input_tensor_num_pages: %u\n", input_tensor_num_pages);
+        uint32_t output_tile_id_start = ring_index;
+        uint32_t output_tile_id_end = output_tile_id_start + input_tensor.get_padded_shape()[2] / 32;
+        if (input_tensor.get_padded_shape()[2] == 32) {
+            output_tile_id_start = ring_index * input_tensor_num_pages + input_tile_id_start;
+            output_tile_id_end = ring_index * input_tensor_num_pages + input_tile_id_end;
+        }
+
+        printf("output_tile_id_start: %u\n", output_tile_id_start);
+        printf("output_tile_id_end: %u\n", output_tile_id_end);
+
         std::vector<uint32_t> writer_rt_args = {
             output_tensor.buffer()->address(),  // tensor_address0
             semaphore.address(),                // out_ready_sem_bank_addr (absolute address)
