@@ -4,18 +4,21 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import torch
 import ttnn
 from models.experimental.stable_diffusion3.tt.linear import TtLinear, TtLinearParameters
 
+from ..reference.transformer import SD3Transformer2DModel
 from . import utils
 from .normalization import TtLayerNorm, TtLayerNormParameters
 from .patch_embedding import TtPatchEmbed, TtPatchEmbedParameters
 from .substate import indexed_substates, substate
 from .timestep_embedding import TtCombinedTimestepTextProjEmbeddings, TtCombinedTimestepTextProjEmbeddingsParameters
 from .transformer_block import TtTransformerBlock, TtTransformerBlockParameters, chunk_time
+from .utils import to_torch
 
 
 @dataclass
@@ -40,7 +43,11 @@ class TtSD3Transformer2DModelParameters:
         hidden_dim_padding: int,
         dtype: ttnn.DataType | None = None,
         device: ttnn.MeshDevice,
-    ) -> TtSD3Transformer2DModelParameters:
+        use_cpu_fallback: bool = False,
+    ) -> TtSD3Transformer2DModelParameters | dict[str, torch.Tensor]:
+        if use_cpu_fallback:
+            return state
+
         return cls(
             pos_embed=TtPatchEmbedParameters.from_torch(
                 substate(state, "pos_embed"),
@@ -95,34 +102,51 @@ class ShardingProjection:
 class TtSD3Transformer2DModel:
     def __init__(
         self,
-        parameters: TtSD3Transformer2DModelParameters,
+        parameters: TtSD3Transformer2DModelParameters | dict[str, torch.Tensor],
         *,
         guidance_cond: int = 2,
         num_heads: int,
-        device,
+        device: ttnn.MeshDevice,
     ) -> None:
         super().__init__()
 
-        self.mesh_device = device
-        self._pos_embed = TtPatchEmbed(parameters.pos_embed, device=device)
-        self._time_text_embed = TtCombinedTimestepTextProjEmbeddings(
-            parameters.time_text_embed,
-            device=device,
-            batch_size=guidance_cond,
-        )
-        self._context_embedder = TtLinear(parameters.context_embedder)
-        self._transformer_blocks = [
-            TtTransformerBlock(block, num_heads=num_heads, device=device) for block in parameters.transformer_blocks
-        ]
-        self._time_embed_out = TtLinear(parameters.time_embed_out)
-        self._norm_out = TtLayerNorm(parameters.norm_out, eps=1e-6, use_cpu_fallback=True)
-        self._proj_out = TtLinear(parameters.proj_out)
+        self._device = device
 
-        self._patch_size = self._pos_embed.patch_size
+        if isinstance(parameters, dict):
+            with torch.device("meta"):
+                self._cpu_fallback = SD3Transformer2DModel(
+                    num_layers=38,
+                    num_attention_heads=num_heads,
+                    caption_projection_dim=parameters["context_embedder.weight"].shape[0],
+                    pos_embed_max_size=math.isqrt(parameters["pos_embed.pos_embed"].shape[1]),
+                )
+            self._cpu_fallback.load_state_dict(parameters, assign=True)
+            self._cpu_fallback.eval()
+            self._cpu_fallback.to(torch.float32)
 
-        # TODO: get dimensions from other parameters
-        self._sharding = ShardingProjection(dim=2432, device=device)
-        self._distributed = parameters.distributed
+            self._patch_size = self._cpu_fallback.patch_size
+        else:
+            self._cpu_fallback = None
+
+            self._pos_embed = TtPatchEmbed(parameters.pos_embed, device=device)
+            self._time_text_embed = TtCombinedTimestepTextProjEmbeddings(
+                parameters.time_text_embed,
+                device=device,
+                batch_size=guidance_cond,
+            )
+            self._context_embedder = TtLinear(parameters.context_embedder)
+            self._transformer_blocks = [
+                TtTransformerBlock(block, num_heads=num_heads, device=device) for block in parameters.transformer_blocks
+            ]
+            self._time_embed_out = TtLinear(parameters.time_embed_out)
+            self._norm_out = TtLayerNorm(parameters.norm_out, eps=1e-6, use_cpu_fallback=True)
+            self._proj_out = TtLinear(parameters.proj_out)
+
+            self._patch_size = self._pos_embed.patch_size
+
+            # TODO: get dimensions from other parameters
+            self._sharding = ShardingProjection(dim=2432, device=device)
+            self._distributed = parameters.distributed
 
     def __call__(
         self,
@@ -134,6 +158,27 @@ class TtSD3Transformer2DModel:
         N: int,
         L: int,
     ) -> ttnn.Tensor:
+        if self._cpu_fallback is not None:
+            torch_spatial = to_torch(spatial).to(torch.float32).permute([0, 3, 1, 2])
+            torch_prompt = to_torch(prompt).to(torch.float32)
+            torch_pooled_projection = to_torch(pooled_projection).to(torch.float32)
+            torch_timestep = to_torch(timestep).to(torch.float32).squeeze(1)
+
+            with torch.no_grad():
+                torch_result = self._cpu_fallback(
+                    spatial=torch_spatial,
+                    prompt_embed=torch_prompt,
+                    pooled_projections=torch_pooled_projection,
+                    timestep=torch_timestep,
+                )
+
+            return ttnn.from_torch(
+                torch_result.unsqueeze(1),
+                device=self._device,
+                layout=ttnn.TILE_LAYOUT,
+                dtype=spatial.dtype,
+            )
+
         spatial = self._pos_embed(spatial)
         time_embed = self._time_text_embed(timestep=timestep, pooled_projection=pooled_projection)
         prompt = self._context_embedder(prompt)
