@@ -13,6 +13,47 @@
 #include "ttnn/operations/core/core.hpp"
 
 namespace ttnn::operations::binary {
+
+int get_priority(ttnn::DataType dt) {
+    switch (dt) {
+        case ttnn::DataType::FLOAT32: return 5;
+        case ttnn::DataType::BFLOAT16: return 4;
+        case ttnn::DataType::BFLOAT8_B: return 3;
+        case ttnn::DataType::BFLOAT4_B: return 2;
+        case ttnn::DataType::INT32: return 1;
+        default: return -1;
+    }
+}
+
+ttnn::DataType get_higher_dtype(ttnn::DataType dt_a, ttnn::DataType dt_b, bool& is_lhs_smaller) {
+    int prio_a = get_priority(dt_a);
+    int prio_b = get_priority(dt_b);
+
+    if (prio_a == -1) {
+        is_lhs_smaller = true;
+        return dt_b;
+    }
+    if (prio_b == -1) {
+        is_lhs_smaller = false;
+        return dt_a;
+    }
+
+    if (prio_a >= prio_b) {
+        is_lhs_smaller = false;
+        return dt_a;
+    } else {
+        is_lhs_smaller = true;
+        return dt_b;
+    }
+}
+
+ttnn::Tensor typecast_to(ttnn::DataType dtype, const ttnn::Tensor& input) {
+    return input.get_dtype() == dtype ? input : ttnn::typecast(input, dtype);
+}
+
+bool needs_typecast_to_bfloat16(const ttnn::DataType input) {
+    return (input == ttnn::DataType::BFLOAT8_B || input == ttnn::DataType::BFLOAT4_B);
+}
 namespace detail {
 
 inline Tensor to_dtype(const Tensor& input, DataType dtype) {
@@ -342,18 +383,38 @@ Tensor RelationalBinary<binary_op_type>::invoke(
     tt::stl::Span<const ttnn::operations::unary::UnaryWithParam> lhs_activations,
     tt::stl::Span<const ttnn::operations::unary::UnaryWithParam> rhs_activations,
     const std::optional<bool>& use_legacy) {
-    return detail::invoke_binary_ng(
-        queue_id,
-        lhs,
-        rhs,
-        binary_op_type,
-        dtype,
-        memory_config,
-        output,
-        post_activations,
-        lhs_activations,
-        rhs_activations,
-        use_legacy);
+    bool lhs_smaller = false;
+    auto higher_dtype = get_higher_dtype(lhs.get_dtype(), rhs.get_dtype(), lhs_smaller);
+
+    if (lhs_smaller) {
+        auto lhs_typecasted = ttnn::typecast(lhs, higher_dtype);
+        return detail::invoke_binary_ng(
+            queue_id,
+            lhs_typecasted,
+            rhs,
+            binary_op_type,
+            dtype,
+            memory_config,
+            output,
+            post_activations,
+            lhs_activations,
+            rhs_activations,
+            use_legacy);
+    } else {
+        auto rhs_typecasted = ttnn::typecast(rhs, higher_dtype);
+        return detail::invoke_binary_ng(
+            queue_id,
+            lhs,
+            rhs_typecasted,
+            binary_op_type,
+            dtype,
+            memory_config,
+            output,
+            post_activations,
+            lhs_activations,
+            rhs_activations,
+            use_legacy);
+    }
 }
 
 template <BinaryOpType binary_op_type>
