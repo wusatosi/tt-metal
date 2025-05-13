@@ -1,4 +1,5 @@
 #include "sample_op.hpp"
+#include <sys/types.h>
 #include "tt-metalium/core_coord.hpp"
 #include "tt-metalium/semaphore.hpp"
 #include "ttnn/operations/functions.hpp"
@@ -36,7 +37,7 @@ std::vector<ttnn::TensorSpec> Sample::compute_output_specs(const std::vector<Ten
     // Return the same spec as the input tensor
     std::vector<ttnn::TensorSpec> output_specs;
     auto input_shape = input_tensors[0].get_padded_shape();
-    auto output_shape = ttnn::Shape({input_shape[0] * 8, input_shape[1]});
+    auto output_shape = ttnn::Shape({input_shape[0], input_shape[1] * 8});
     output_specs.push_back(ttnn::TensorSpec(output_shape, input_tensors[0].tensor_spec().tensor_layout()));
     return output_specs;
 }
@@ -56,7 +57,7 @@ tt::tt_metal::operation::MeshWorkloadWithCallbacks Sample::create_mesh_workload(
     std::vector<Tensor>& output_tensors) const {
     return ccl::create_mesh_workload_from_programs(
         tensor_coords, input_tensors, output_tensors, [&, this](const ttnn::MeshCoordinate& coord) {
-            return create_program_at(coord, input_tensors, output_tensors, this->semaphore);
+            return create_program_at(coord, input_tensors, output_tensors, this->semaphores);
         });
 }
 
@@ -66,13 +67,13 @@ void createReader(
     CoreCoord drain_sync_core,
     Tensor& input_tensor,
     Tensor& output_tensor,
-    const ttnn::GlobalSemaphore& semaphore,
+    const std::vector<ttnn::GlobalSemaphore>& semaphores,
     bool is_forward,
     CoreCoord reader_core,
     uint32_t device_order,
     const uint32_t local_semaphore_id) {
     auto reader_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
-    reader_kernel_config.compile_args = {tt::CB::c_in0};
+    reader_kernel_config.compile_args = {tt::CB::c_in0, (uint32_t)is_forward};
 
     uint32_t tile_size = 1088;
 
@@ -88,12 +89,12 @@ void createReader(
     std::vector<uint32_t> reader_rt_args = {
         input_tensor.buffer()->address(),   // tensor_address0
         output_tensor.buffer()->address(),  // tensor_address1
-        semaphore.address(),
         num_tiles,
         device->id(),
         device_order,
         tile_size,
-        local_semaphore_id};
+        local_semaphore_id,
+    };
 
     tt::tt_metal::SetRuntimeArgs(program, reader_kernel_id, {reader_core}, reader_rt_args);
 }
@@ -106,7 +107,7 @@ void createWriter(
     CoreCoord drain_sync_core,
     Tensor& input_tensor,
     Tensor& output_tensor,
-    const ttnn::GlobalSemaphore& semaphore,
+    const std::vector<ttnn::GlobalSemaphore>& semaphores,
     bool is_forward,
     CoreCoord writer_core,
     int link,
@@ -143,7 +144,7 @@ void createWriter(
         tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_reserved_packet_header_config);
 
     auto writer_kernel_config = tt::tt_metal::WriterDataMovementConfig{};
-    writer_kernel_config.compile_args = {src0_cb_index, dst0_cb_index, header_cb_index};
+    writer_kernel_config.compile_args = {src0_cb_index, dst0_cb_index, header_cb_index, (uint32_t)is_forward};
 
     auto writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
@@ -152,30 +153,30 @@ void createWriter(
         writer_core,
         writer_kernel_config);
 
+    auto semaphore_sent = semaphores.at(0);
+    auto semaphore_can_receive = semaphores.at(1);
+
     std::vector<uint32_t> writer_rt_args = {
         input_tensor.buffer()->address(),
         output_tensor.buffer()->address(),
-        semaphore.address(),
+        semaphore_sent.address(),
+        semaphore_can_receive.address(),
         drain_sync_core.x,  // out_ready_sem_noc0_x
         drain_sync_core.y,  // out_ready_sem_noc0_y
         device->id(),
         device_order,
         num_tiles,
         tile_size,
-        local_semaphore_id};
+        local_semaphore_id,
+    };
 
-    // link is set to 0
-    if (is_forward) {
-        writer_rt_args.push_back(1);
-        tt::tt_fabric::append_fabric_connection_rt_args(
-            device->id(), fwd_device->id(), link, program, writer_core, writer_rt_args);
-        writer_rt_args.push_back(0);
-    } else {
-        writer_rt_args.push_back(0);
-        writer_rt_args.push_back(1);
-        tt::tt_fabric::append_fabric_connection_rt_args(
-            device->id(), bwd_device->id(), link, program, writer_core, writer_rt_args);
-    }
+    // fabric connection
+    writer_rt_args.push_back(1);
+    tt::tt_fabric::append_fabric_connection_rt_args(
+        device->id(), fwd_device->id(), link, program, writer_core, writer_rt_args);
+    writer_rt_args.push_back(1);
+    tt::tt_fabric::append_fabric_connection_rt_args(
+        device->id(), bwd_device->id(), link, program, writer_core, writer_rt_args);
 
     tt::tt_metal::SetRuntimeArgs(program, writer_kernel_id, writer_core, writer_rt_args);
 }
@@ -186,7 +187,7 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     IDevice* device,
     IDevice* fwd_device,
     IDevice* bwd_device,
-    const ttnn::GlobalSemaphore& semaphore,
+    const std::vector<ttnn::GlobalSemaphore>& semaphores,
     uint32_t device_order) {
     tt::tt_metal::Program program{};
     std::optional<tt::tt_metal::operation::OverrideRuntimeArgumentsCallback<std::vector<Tensor>>>
@@ -196,27 +197,28 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     auto input_tensor = input_tensors[0];
     auto output_tensor = output_tensors[0];
     auto mesh_device = input_tensor.mesh_device();
+
+    CoreCoord fwd_core = CoreCoord(0, 0);
+    CoreCoord fwd_drain_sync_core = device->worker_core_from_logical_core(fwd_core);
+    CoreCoord bwd_core = CoreCoord(0, 1);
+    CoreCoord bwd_drain_sync_core = device->worker_core_from_logical_core(bwd_core);
+
     // Forward
-
     // Reader
-    CoreCoord fwd_reader_core = CoreCoord(0, 0);
-
-    auto local_semaphore = tt::tt_metal::CreateSemaphore(program, fwd_reader_core, 0);
-    CoreCoord fwd_drain_sync_core = device->worker_core_from_logical_core(fwd_reader_core);
+    auto fwd_local_semaphore = tt::tt_metal::CreateSemaphore(program, fwd_core, 0);
     createReader(
         program,
         device,
         fwd_drain_sync_core,
         input_tensor,
         output_tensor,
-        semaphore,
+        semaphores,
         true,
-        fwd_reader_core,
+        fwd_core,
         device_order,
-        local_semaphore);
+        fwd_local_semaphore);
 
     // Writer
-    CoreCoord writer_core = CoreCoord(0, 0);
     createWriter(
         program,
         device,
@@ -225,28 +227,29 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
         fwd_drain_sync_core,
         input_tensor,
         output_tensor,
-        semaphore,
+        semaphores,
         true,
-        writer_core,
+        fwd_core,
         0,
         device_order,
-        local_semaphore);
+        fwd_local_semaphore);
 
-    // // Backward
-    // CoreCoord bwd_reader_core = CoreCoord(0, 3);
-    // CoreCoord bwd_drain_sync_core = device->worker_core_from_logical_core(bwd_reader_core);
+    // Backward
+    // Reader
+    // auto bwd_local_semaphore = tt::tt_metal::CreateSemaphore(program, bwd_core, 0);
     // createReader(
     //     program,
     //     device,
     //     bwd_drain_sync_core,
     //     input_tensor,
+    //     output_tensor,
     //     semaphore,
     //     false,
-    //     bwd_reader_core
-    // );
+    //     bwd_core,
+    //     device_order,
+    //     bwd_local_semaphore);
 
     // // Writer
-    // CoreCoord bwd_writer_core = CoreCoord(0, 1);
     // createWriter(
     //     program,
     //     device,
@@ -254,11 +257,13 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     //     bwd_device,
     //     bwd_drain_sync_core,
     //     input_tensor,
+    //     output_tensor,
     //     semaphore,
     //     false,
-    //     bwd_writer_core,
-    //     0
-    // );
+    //     bwd_core,
+    //     0,
+    //     device_order,
+    //     bwd_local_semaphore);
 
     return {.program = std::move(program), .override_runtime_arguments_callback = override_runtime_arguments_callback};
 }
@@ -270,7 +275,7 @@ tt::tt_metal::operation::ProgramWithCallbacks Sample::create_program_at(
     const ttnn::MeshCoordinate& coord,
     const std::vector<Tensor>& input_tensors,
     std::vector<Tensor>& output_tensors,
-    const ttnn::GlobalSemaphore& semaphore) const {
+    const std::vector<ttnn::GlobalSemaphore>& semaphores) const {
     const auto& mesh_view = input_tensors[0].mesh_device()->get_view();
     auto devices = mesh_view.get_devices();
     // print each device id
@@ -288,6 +293,7 @@ tt::tt_metal::operation::ProgramWithCallbacks Sample::create_program_at(
         }
         backward_device = i != 0 ? devices.at(i - 1) : devices.at(7);
         forward_device = i != 7 ? devices.at(i + 1) : devices.at(0);
+        break;
     }
 
     std::cout << "Coords: " << coord[0] << ", " << coord[1] << std::endl;
@@ -297,18 +303,14 @@ tt::tt_metal::operation::ProgramWithCallbacks Sample::create_program_at(
     std::cout << "Bwd device id: " << backward_device->id() << std::endl;
     auto device_order = device_id_order_map.at(current_device->id());
     return sample(
-        input_tensors, output_tensors, current_device, forward_device, backward_device, semaphore, device_order);
+        input_tensors, output_tensors, current_device, forward_device, backward_device, semaphores, device_order);
 };
 
 namespace operations::experimental::ccl {
-ttnn::Tensor sample(const ttnn::Tensor& input_tensor, const ttnn::GlobalSemaphore& semaphore) {
-    auto result = tt::tt_metal::operation::run(ttnn::Sample{semaphore}, {input_tensor});
+ttnn::Tensor sample(const ttnn::Tensor& input_tensor, const std::vector<ttnn::GlobalSemaphore>& semaphores) {
+    auto result = tt::tt_metal::operation::run(ttnn::Sample{semaphores}, {input_tensor});
     // Return the first tensor from the result vector
-    if (!result.empty()) {
-        return result[0];
-    }
-    // Return an empty tensor if the result is empty
-    return input_tensor;  // Return input as fallback
+    return result[0];
 }
 }  // namespace operations::experimental::ccl
 }  // namespace ttnn

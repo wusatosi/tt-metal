@@ -15,7 +15,7 @@
 using address_t = uint32_t;
 using tt::tt_metal::BufferType;
 
-constexpr uint32_t cb_index = get_compile_time_arg_val(0);
+constexpr uint32_t in_cb_index = get_compile_time_arg_val(0);
 
 void kernel_main() {
     ///////////////////////////////////////////////////

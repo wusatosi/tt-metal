@@ -26,13 +26,13 @@ namespace ttnn {
 using ccl::EriscDatamoverBuilder;
 
 struct Sample {
-    const ttnn::GlobalSemaphore& semaphore;
-    Sample(const ttnn::GlobalSemaphore& semaphore) : semaphore(semaphore) {}
+    const std::vector<ttnn::GlobalSemaphore>& semaphores;
+    Sample(const std::vector<ttnn::GlobalSemaphore>& semaphores) : semaphores(semaphores) {}
 
     auto attributes() const {
         using tt::stl::reflection::Attribute;
         std::vector<std::tuple<std::string, Attribute>> attrs;
-        attrs.emplace_back("semaphore", semaphore);
+        attrs.emplace_back("semaphores", semaphores);
         return attrs;
     }
 
@@ -49,7 +49,7 @@ struct Sample {
         const ttnn::MeshCoordinate& mesh_coord,
         const std::vector<Tensor>& input_tensors,
         std::vector<Tensor>& output_tensors,
-        const ttnn::GlobalSemaphore& semaphore) const;
+        const std::vector<ttnn::GlobalSemaphore>& semaphores) const;
 
     std::vector<Tensor> create_output_tensors(
         const std::vector<Tensor>& input_tensors, const std::vector<std::optional<Tensor>>& output_tensors) const;
@@ -61,7 +61,7 @@ namespace operations {
 namespace experimental {
 namespace ccl {
 
-Tensor sample(const ttnn::Tensor& input_tensor, const ttnn::GlobalSemaphore& semaphore);
+Tensor sample(const ttnn::Tensor& input_tensor, const std::vector<ttnn::GlobalSemaphore>& semaphores);
 
 }  // namespace ccl
 }  // namespace experimental

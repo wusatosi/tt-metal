@@ -16,8 +16,9 @@
 namespace ttnn::operations::experimental::ccl {
 namespace detail {}  // namespace detail
 
-ttnn::Tensor ExecuteSample::invoke(const ttnn::Tensor& input_tensor, const ttnn::GlobalSemaphore& semaphore) {
-    return ttnn::operations::experimental::ccl::sample(input_tensor, semaphore);
+ttnn::Tensor ExecuteSample::invoke(
+    const ttnn::Tensor& input_tensor, const std::vector<ttnn::GlobalSemaphore>& semaphores) {
+    return ttnn::operations::experimental::ccl::sample(input_tensor, semaphores);
 }
 
 }  // namespace ttnn::operations::experimental::ccl

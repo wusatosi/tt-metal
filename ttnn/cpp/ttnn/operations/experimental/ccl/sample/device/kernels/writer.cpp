@@ -12,12 +12,16 @@
 #include <cstdint>
 #include <utility>
 
+#define UNICAST_HDR \
+    tt::tt_fabric::MulticastRoutingCommandHeader { 1, static_cast<uint8_t>(1) }
+
 using address_t = uint32_t;
 using tt::tt_metal::BufferType;
 
-constexpr uint32_t cb_index = get_compile_time_arg_val(0);
+constexpr uint32_t in_cb_index = get_compile_time_arg_val(0);
 constexpr uint32_t dst_cb_index = get_compile_time_arg_val(1);
 constexpr uint32_t header_cb_index = get_compile_time_arg_val(2);
+constexpr uint32_t is_forward = get_compile_time_arg_val(3);
 
 void kernel_main() {
     ///////////////////////////////////////////////////
@@ -27,16 +31,30 @@ void kernel_main() {
     size_t arg_idx = 0;
     uint32_t input_tensor_address = get_arg_val<uint32_t>(arg_idx++);
     uint32_t output_tensor_address = get_arg_val<uint32_t>(arg_idx++);
-    uint32_t out_ready_sem_bank_addr = get_arg_val<uint32_t>(arg_idx++);
-    uint32_t out_ready_sem_noc0_x = get_arg_val<uint32_t>(arg_idx++);
-    uint32_t out_ready_sem_noc0_y = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t global_sem_addr_sent = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t global_sem_addr_can_receive = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t out_noc_x = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t out_noc_y = get_arg_val<uint32_t>(arg_idx++);
     uint32_t device_id = get_arg_val<uint32_t>(arg_idx++);
     uint32_t device_order = get_arg_val<uint32_t>(arg_idx++);
     uint32_t input_num_tiles = get_arg_val<uint32_t>(arg_idx++);
     uint32_t input_tensor_page_size = get_arg_val<uint32_t>(arg_idx++);
     uint32_t local_semaphore = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
-    uint64_t local_noc_semaphore_addr =
-        safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, local_semaphore, 0);
+
+    volatile tt_l1_ptr uint32_t* local_sem_addr_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(local_semaphore);
+
+    volatile tt_l1_ptr uint32_t* global_sem_addr_sent_ptr =
+        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(global_sem_addr_sent);
+
+    volatile tt_l1_ptr uint32_t* global_sem_addr_can_receive_ptr =
+        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(global_sem_addr_can_receive);
+
+    uint64_t local_noc_sem_addr = safe_get_noc_addr(out_noc_x, out_noc_y, local_semaphore, 0);
+
+    uint64_t out_global_sem_sent_noc_addr = safe_get_noc_addr(out_noc_x, out_noc_y, global_sem_addr_sent, 0);
+
+    uint64_t out_global_sem_can_receive_noc_addr =
+        safe_get_noc_addr(out_noc_x, out_noc_y, global_sem_addr_can_receive, 0);
 
     auto fabric_connection =
         FabricConnectionManager::build_from_args<FabricConnectionManager::BUILD_AND_OPEN_CONNECTION_START_ONLY>(
@@ -44,126 +62,106 @@ void kernel_main() {
 
     // packet header cb
     cb_reserve_back(header_cb_index, 1);
-    auto packet_header_buffer_addr_forward = get_write_ptr(header_cb_index);
-    cb_push_back(header_cb_index, 1);
-    cb_reserve_back(header_cb_index, 1);
-    auto packet_header_buffer_addr_backward = get_write_ptr(header_cb_index);
+    auto packet_header_buffer_addr = get_write_ptr(header_cb_index);
     cb_push_back(header_cb_index, 1);
 
     // pre-populate packet headers
-    volatile PACKET_HEADER_TYPE* pkt_hdr_forward =
-        reinterpret_cast<volatile PACKET_HEADER_TYPE*>(packet_header_buffer_addr_forward);
-    volatile PACKET_HEADER_TYPE* pkt_hdr_backward =
-        reinterpret_cast<volatile PACKET_HEADER_TYPE*>(packet_header_buffer_addr_backward);
-    pkt_hdr_forward->to_chip_multicast(tt::tt_fabric::MulticastRoutingCommandHeader{1, static_cast<uint8_t>(1)});
-    pkt_hdr_backward->to_chip_multicast(tt::tt_fabric::MulticastRoutingCommandHeader{1, static_cast<uint8_t>(1)});
+    volatile PACKET_HEADER_TYPE* pkt_hdr = reinterpret_cast<volatile PACKET_HEADER_TYPE*>(packet_header_buffer_addr);
+
+    pkt_hdr->to_chip_multicast(UNICAST_HDR);
 
     auto in_tensor_addrgen = InterleavedAddrGenFast<true>{
         .bank_base_address = input_tensor_address,
         .page_size = input_tensor_page_size,
-        .data_format = get_dataformat(cb_index)};
+        .data_format = get_dataformat(in_cb_index)};
 
     auto out_tensor_addrgen = InterleavedAddrGenFast<true>{
         .bank_base_address = output_tensor_address,
         .page_size = input_tensor_page_size,
-        .data_format = get_dataformat(cb_index)};
+        .data_format = get_dataformat(in_cb_index)};
 
-    // stage 0: cb -> output tensor
-    DPRINT << "Device id: " << device_id << ", device order: " << device_order << "\n";
-    DPRINT << "Reader reading...\n";
-    DPRINT << "Num tiles: " << input_num_tiles << "\n";
+    // Copy all tiles from cb to output tensor (local data)
     for (uint32_t i = 0; i < input_num_tiles; i++) {
-        DPRINT << "STAGE 0: WAITING ON TILE: " << i << "\n";
-        cb_wait_front(cb_index, 1);
-        DPRINT << "STAGE 0: Tile: " << i << ", page size: " << input_tensor_page_size << "\n";
+        cb_wait_front(in_cb_index, 1);
         uint64_t dest_addr = out_tensor_addrgen.get_noc_addr(device_order * input_num_tiles + i);
-        DPRINT << "STAGE 0: For device order: " << device_order
-               << ", writing tile: " << device_order * input_num_tiles + i << " to " << dest_addr << "\n";
-        noc_async_write(get_read_ptr(cb_index), dest_addr, input_tensor_page_size);
+        noc_async_write(get_read_ptr(in_cb_index), dest_addr, input_tensor_page_size);
         noc_async_write_barrier();
-        cb_pop_front(cb_index, 1);
+        cb_pop_front(in_cb_index, 1);
     }
 
-    DPRINT << "Real done stage 0...\n";
     fabric_connection.open_finish();
 
-    DPRINT << "Done stage 0...\n";
-    // // stage 1: output tensor -> eth
+    auto conn = is_forward ? fabric_connection.get_forward_connection() : fabric_connection.get_backward_connection();
+    auto bwd_conn =
+        is_forward ? fabric_connection.get_backward_connection() : fabric_connection.get_forward_connection();
 
-    for (int device_iter = 0; device_iter < 7; device_iter++) {
-        noc_semaphore_wait(reinterpret_cast<volatile uint32_t*>(local_semaphore), 0);
+    constexpr uint32_t start_tile = 0;
+    constexpr uint32_t end_tile = 2;
+
+    for (uint32_t device_iter = 0; device_iter < 7; device_iter++) {
+        // sync up
+        pkt_hdr->to_noc_unicast_atomic_inc(tt::tt_fabric::NocUnicastAtomicIncCommandHeader{
+            out_global_sem_can_receive_noc_addr,
+            static_cast<uint16_t>(1),  // increment 1
+            32,
+            true});
+        bwd_conn.wait_for_empty_write_slot();
+        bwd_conn.send_payload_flush_non_blocking_from_address(
+            reinterpret_cast<uint32_t>(pkt_hdr), sizeof(PACKET_HEADER_TYPE));
+
+        // Wait until the next device told us it can recieve data
+        while (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(global_sem_addr_can_receive_ptr) < (device_iter + 1));
 
         uint32_t device_to_process = (((device_order - device_iter) % 8) + 8) % 8;
+        uint32_t prev_device = (((device_to_process - 1) % 8) + 8) % 8;
+
         uint32_t l1_dst_addr = get_write_ptr(dst_cb_index);
-        for (uint32_t i = 0; i < input_num_tiles; i++) {
-            DPRINT << "STAGE 1: WAITING ON TILE: " << i << "\n";
-            cb_wait_front(cb_index, 1);
-            DPRINT << "STAGE 1: Tile: " << i << ", page size: " << input_tensor_page_size << "\n";
-            // uint64_t dest_addr = out_tensor_addrgen.get_noc_addr(device_order*input_num_tiles + i);
-            DPRINT << "STAGE 1: For device order: " << device_order
-                   << ", writing tile: " << device_to_process * input_num_tiles + i << "\n";
-            uint32_t l1_read_addr = get_read_ptr(cb_index);
 
-            uint64_t dst_noc_addr = safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, l1_dst_addr, 0);
+        // Send all eth packets from CB
+        for (uint32_t i = start_tile; i < end_tile; i++) {
+            cb_wait_front(in_cb_index, 1);
+            uint32_t l1_read_addr = get_read_ptr(in_cb_index);
+            uint64_t dst_noc_addr = safe_get_noc_addr(out_noc_x, out_noc_y, l1_dst_addr, 0);
 
-            pkt_hdr_forward->to_noc_unicast_write(
-                tt::tt_fabric::NocUnicastCommandHeader{dst_noc_addr}, input_tensor_page_size);
-            fabric_connection.get_forward_connection().wait_for_empty_write_slot();
-            fabric_connection.get_forward_connection().send_payload_without_header_non_blocking_from_address(
-                l1_read_addr, input_tensor_page_size);
-            fabric_connection.get_forward_connection().send_payload_flush_non_blocking_from_address(
-                (uint32_t)pkt_hdr_forward, sizeof(PACKET_HEADER_TYPE));
+            pkt_hdr->to_noc_unicast_write(tt::tt_fabric::NocUnicastCommandHeader{dst_noc_addr}, input_tensor_page_size);
+            conn.wait_for_empty_write_slot();
+            conn.send_payload_without_header_non_blocking_from_address(l1_read_addr, input_tensor_page_size);
+            conn.send_payload_flush_non_blocking_from_address((uint32_t)pkt_hdr, sizeof(PACKET_HEADER_TYPE));
             noc_async_writes_flushed();
 
             l1_dst_addr += input_tensor_page_size;
 
-            cb_pop_front(cb_index, 1);
+            cb_pop_front(in_cb_index, 1);
         }
-        DPRINT << "Done stage 1...\n";
 
-        uint64_t out_ready_sem_noc_addr_in_pkt =
-            safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, out_ready_sem_bank_addr, 0);
-
-        DPRINT << "Sending forward semaphore increase...\n";
-        auto* pkt_hdr_fwd = reinterpret_cast<PACKET_HEADER_TYPE*>(packet_header_buffer_addr_forward);
-        pkt_hdr_fwd->to_noc_unicast_atomic_inc(tt::tt_fabric::NocUnicastAtomicIncCommandHeader{
-            out_ready_sem_noc_addr_in_pkt,
+        // Increase global semaphore of next device
+        DPRINT << "Sending semaphore increase...\n";
+        pkt_hdr->to_noc_unicast_atomic_inc(tt::tt_fabric::NocUnicastAtomicIncCommandHeader{
+            out_global_sem_sent_noc_addr,
             static_cast<uint16_t>(1),  // increment 1
-            32});
+            32,
+            true});
+        conn.wait_for_empty_write_slot();
+        conn.send_payload_flush_non_blocking_from_address(
+            reinterpret_cast<uint32_t>(pkt_hdr), sizeof(PACKET_HEADER_TYPE));
 
-        pkt_hdr_fwd->to_chip_multicast(tt::tt_fabric::MulticastRoutingCommandHeader{1, static_cast<uint8_t>(1)});
-        fabric_connection.get_forward_connection().wait_for_empty_write_slot();
-        fabric_connection.get_forward_connection().send_payload_flush_non_blocking_from_address(
-            reinterpret_cast<uint32_t>(pkt_hdr_fwd), sizeof(PACKET_HEADER_TYPE));
-
-        volatile tt_l1_ptr uint32_t* signal_semaphore_addr_ptr =
-            reinterpret_cast<volatile tt_l1_ptr uint32_t*>(out_ready_sem_bank_addr);
-
-        noc_semaphore_wait(signal_semaphore_addr_ptr, 1);
-        noc_semaphore_set(signal_semaphore_addr_ptr, 0);
-
-        noc_async_read_barrier();
-        noc_async_write_barrier();
+        DPRINT << "Waiting on semaphore val: " << (device_iter + 1) << "\n";
+        // Wait to recieve the data
+        while (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(global_sem_addr_sent_ptr) < (device_iter + 1));
 
         DPRINT << "!!! GOT SEMAPHORE !!!\n";
 
-        DPRINT << "Stage 2\n";
-
         // Recieved from eth -> output tensor
         uint32_t read_ptr = get_read_ptr(dst_cb_index);
-        for (uint32_t i = 0; i < input_num_tiles; i++) {
-            auto prev_device = (((device_to_process - 1) % 8) + 8) % 8;
-            DPRINT << "STAGE 2: WRITING TILE ID: " << prev_device * input_num_tiles + i << " on device " << prev_device
-                   << " for device " << device_order << " id " << device_id << "\n";
+        for (uint32_t i = start_tile; i < end_tile; i++) {
             uint64_t dest_addr = out_tensor_addrgen.get_noc_addr(prev_device * input_num_tiles + i);
-            DPRINT << "STAGE 2: " << "tile id " << prev_device * input_num_tiles + i << " read ptr " << read_ptr
-                   << " dest addr " << dest_addr << "\n";
             noc_async_write(read_ptr, dest_addr, input_tensor_page_size);
             noc_async_write_barrier();
             read_ptr += input_tensor_page_size;
         }
+        DPRINT << "Increasing local semaphore...\n";
 
-        noc_semaphore_inc(local_noc_semaphore_addr, 1);
+        noc_semaphore_inc(local_noc_sem_addr, 1);
     }
 
     fabric_connection.close();

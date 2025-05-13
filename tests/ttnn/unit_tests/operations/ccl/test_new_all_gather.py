@@ -623,20 +623,32 @@ def test_all_gather_ring_async_on_T3K(mesh_device):
         dtype=ttnn.bfloat8_b,
     )
 
-    semaphore_crs = ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(0, 0))])
-    semaphore = ttnn.create_global_semaphore(mesh_device=mesh_device, cores=semaphore_crs, initial_value=0)
+    semaphore_crs = ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(6, 6))])
+    semaphore_sent = ttnn.create_global_semaphore(mesh_device=mesh_device, cores=semaphore_crs, initial_value=0)
+    semaphore_can_receive = ttnn.create_global_semaphore(mesh_device=mesh_device, cores=semaphore_crs, initial_value=0)
+    semaphores = [semaphore_sent, semaphore_can_receive]
     # Execute Line All-Gather on the tensor
     print(mesh_tensor)
 
-    output_tensor = ttnn.experimental.sample(mesh_tensor, semaphore)
-
-    # import pdb; pdb.set_trace()
+    output_tensor = ttnn.experimental.sample(mesh_tensor, semaphores)
 
     # ttnn.set_printoptions(profile="full")
+
     for i in range(8):
         j = i * 32
-        print("DEROW", i, output_tensor[j : j + 32, :])
+        print("DEBUG_ROW", i, output_tensor[0, j : j + 64])
     print(output_tensor)
+
+    mesh_composer = ttnn.ConcatMesh2dToTensor(mesh_device, mesh_shape=(1, 8), dims=[0, 1])
+
+    tt_output_tensor = ttnn.to_torch(output_tensor, mesh_composer=mesh_composer).to(torch_tensor.dtype)
+    # take 1/8 of this
+    tt_output_tensor = tt_output_tensor[:, : torch_tensor.shape[1]]
+
+    print(torch_tensor.shape, tt_output_tensor.shape, tt_output_tensor)
+    assert torch.allclose(torch_tensor, tt_output_tensor), "Tensor comparison failed"
+
+    # assert comp_equal(torch_tensor, tt_output_tensor)
 
 
 # Enumerate the post-commit cases explicitly
