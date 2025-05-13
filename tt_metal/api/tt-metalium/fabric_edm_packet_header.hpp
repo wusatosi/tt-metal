@@ -539,8 +539,10 @@ struct LowLatencyMeshPacketHeader : public PacketHeaderBase<LowLatencyMeshPacket
 };
 
 struct MeshPacketHeader : public PacketHeaderBase<MeshPacketHeader> {
-    uint16_t dst_chip_id;
-    uint16_t dst_mesh_id;
+    uint16_t dst_start_chip_id;
+    uint16_t dst_start_mesh_id;
+    uint16_t mcast_params[4];
+    uint8_t is_mcast_active;
     void to_chip_unicast_impl(uint8_t distance_in_hops) {}
     void to_chip_multicast_impl(const MulticastRoutingCommandHeader& chip_multicast_command_header) {}
 

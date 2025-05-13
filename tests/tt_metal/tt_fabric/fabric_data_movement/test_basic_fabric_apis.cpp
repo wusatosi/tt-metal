@@ -715,7 +715,7 @@ TEST_F(Fabric2DPushFixture, TestUnicastRaw1HopS) { RunTestUnicastRaw(this, 1, Ro
 TEST_F(Fabric2DPushFixture, TestUnicastRaw2HopS) { RunTestUnicastRaw(this, 2, RoutingDirection::S); }
 
 TEST_F(Fabric2DPushFixture, TestUnicastRaw) {
-    for (uint32_t i = 0; i < 10; i++) {
+    for (uint32_t i = 0; i < 100; i++) {
         RunTestUnicastRaw(this);
     }
 }

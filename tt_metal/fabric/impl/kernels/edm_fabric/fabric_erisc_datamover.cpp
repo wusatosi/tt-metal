@@ -384,7 +384,7 @@ FORCE_INLINE void send_next_data(
     // DPRINT << "TXQ busy" << ENDL();
     while (internal_::eth_txq_is_busy(DEFAULT_ETH_TXQ)) {
     };
-    // DPRINT << "TXQ note busy" << ENDL();
+    // DPRINT << "TXQ not busy" << ENDL();
     // DPRINT << "Write to dest_addr " << (uint32_t)dest_addr << ENDL();
     internal_::eth_send_packet_bytes_unsafe(DEFAULT_ETH_TXQ, src_addr, dest_addr, payload_size_bytes);
     // DPRINT << "Done write to dest_addr" << ENDL();
@@ -451,31 +451,65 @@ FORCE_INLINE bool can_forward_packet_completely(
     return deliver_locally_only || downstream_edm_interface.edm_has_space_for_packet();
 }
 
+FORCE_INLINE eth_chan_directions get_mcast_dir(tt_l1_ptr PACKET_HEADER_TYPE* packet_header) {
+    // Check if an mcast hop count is specified for a particular direction
+    for (uint32_t i = eth_chan_directions::EAST; i < eth_chan_directions::COUNT; i++) {
+        if (packet_header->mcast_params[i]) {
+            return (eth_chan_directions)(i);
+        }
+    }
+    return eth_chan_directions::COUNT;
+}
+
 template <uint8_t SENDER_NUM_BUFFERS>
 FORCE_INLINE __attribute__((optimize("jump-tables"))) bool can_forward_packet_completely(
-    uint16_t dest_mesh_id,
-    uint16_t dest_chip_id,
+    tt_l1_ptr PACKET_HEADER_TYPE* packet_header,
     std::array<tt::tt_fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>, NUM_USED_RECEIVER_CHANNELS>&
         downstream_edm_interface) {
     volatile tt_l1_ptr fabric_router_l1_config_t* routing_table =
         reinterpret_cast<tt_l1_ptr fabric_router_l1_config_t*>(eth_l1_mem::address_map::FABRIC_ROUTER_CONFIG_BASE);
-    DPRINT << dest_mesh_id << " " << (uint16_t)(routing_table->my_mesh_id) << ENDL();
-    if (dest_mesh_id != routing_table->my_mesh_id) {
-        while (true) {
+    DPRINT << "MCAST ACTIVE:  " << +(packet_header->is_mcast_active) << ENDL();
+    if (packet_header->is_mcast_active) {
+        // mcast downstream needs to check if downstream has space (lookup from set direction field)
+        // forward to local and remote
+        auto mcast_dir = get_mcast_dir(packet_header);
+        if (mcast_dir != eth_chan_directions::COUNT) {
+            return downstream_edm_interface[mcast_dir].edm_has_space_for_packet();
         }
         return true;
     } else {
-        if (dest_chip_id == routing_table->my_device_id) {
+        // check if header matches curr. If so, check mcast fields, set mcast true and forward to specific direction
+        auto dest_chip_id = packet_header->dst_start_chip_id;
+        auto dest_mesh_id = packet_header->dst_start_mesh_id;
+        // DPRINT << "DEST MESH: " << dest_mesh_id <<  " " << dest_chip_id << ENDL();
+        if (dest_mesh_id != routing_table->my_mesh_id) {
+            // Currently hang if mesh_ids dont match (support to be added)
+            while (true) {
+            }
             return true;
+        } else {
+            if (dest_chip_id == routing_table->my_device_id) {
+                // Packet has reached its intended chip. Check if this is an mcast or unicast txn.
+                // If mcast, this packet needs to be forwarded to remote and unicasted locally.
+                auto mcast_dir = get_mcast_dir(packet_header);
+                if (mcast_dir != eth_chan_directions::COUNT) {
+                    packet_header->is_mcast_active = 1;  // Set mcast mode if a valid mcast direction is specified
+                    // Issuing Mcast, check if downstream has space for packet
+                    return downstream_edm_interface[mcast_dir].edm_has_space_for_packet();
+                }
+                return true;
+            } else {
+                // Unicast packet needs to be forwarded
+                uint8_t port_direction_table[16];
+                for (uint32_t i = eth_chan_directions::EAST; i < eth_chan_directions::COUNT; i++) {
+                    auto forwarding_channel = routing_table->port_direction.directions[i];
+                    port_direction_table[forwarding_channel] = i;
+                }
+                auto downstream_channel = routing_table->intra_mesh_table.dest_entry[(uint8_t)dest_chip_id];
+                auto downstream_direction = port_direction_table[downstream_channel];
+                return downstream_edm_interface[downstream_direction].edm_has_space_for_packet();
+            }
         }
-        uint8_t port_direction_table[16];
-        for (uint32_t i = eth_chan_directions::EAST; i < eth_chan_directions::COUNT; i++) {
-            auto forwarding_channel = routing_table->port_direction.directions[i];
-            port_direction_table[forwarding_channel] = i;
-        }
-        auto downstream_channel = routing_table->intra_mesh_table.dest_entry[(uint8_t)dest_chip_id];
-        auto downstream_direction = port_direction_table[downstream_channel];
-        return downstream_edm_interface[downstream_direction].edm_has_space_for_packet();
     }
 }
 
@@ -591,19 +625,34 @@ FORCE_INLINE __attribute__((optimize("jump-tables"))) void receiver_forward_pack
     uint8_t rx_channel_id) {
     volatile tt_l1_ptr fabric_router_l1_config_t* routing_table =
         reinterpret_cast<tt_l1_ptr fabric_router_l1_config_t*>(eth_l1_mem::address_map::FABRIC_ROUTER_CONFIG_BASE);
-    auto dest_mesh_id = packet_start->dst_mesh_id;
-    auto dest_chip_id = packet_start->dst_chip_id;
+    auto dest_mesh_id = packet_start->dst_start_mesh_id;
+    auto dest_chip_id = packet_start->dst_start_chip_id;
+    auto mcast_active = packet_start->is_mcast_active;
+
     uint16_t payload_size_bytes = packet_start->payload_size_bytes;
 
     if (dest_mesh_id != routing_table->my_mesh_id) {
         while (true) {
         }
     } else {
-        DPRINT << "DEST: " << dest_chip_id << " " << routing_table->my_device_id << ENDL();
-        if (dest_chip_id == routing_table->my_device_id) {
+        // DPRINT << "DEST: " << dest_chip_id << " " << routing_table->my_device_id << ENDL();
+        if (dest_chip_id == routing_table->my_device_id || mcast_active) {
             DPRINT << "NOC UNICAST" << ENDL();
             execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id, rx_channel_id);
+            if (mcast_active) {
+                // This packet is in an active mcast
+                auto mcast_dir = get_mcast_dir(packet_start);  // Query downstream mcast dir
+                DPRINT << "Issue mcast " << (uint32_t)(mcast_dir) << " " << packet_start->mcast_params[mcast_dir]
+                       << ENDL();
+                if (mcast_dir != eth_chan_directions::COUNT) {
+                    // Valid dir found - this packet needs to be sent downstream
+                    packet_start->mcast_params[mcast_dir]--;
+                    forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support, false>(
+                        packet_start, payload_size_bytes, downstream_edm_interface[mcast_dir], transaction_id);
+                }
+            }
         } else {
+            // Unicast forward packet to downstream
             uint8_t port_direction_table[16];
             for (uint32_t i = eth_chan_directions::EAST; i < eth_chan_directions::COUNT; i++) {
                 uint32_t forwarding_channel = routing_table->port_direction.directions[i];
@@ -885,9 +934,9 @@ void run_receiver_channel_step(
             //  - Hop command of [0011] instructs fabric router to write the packet locally AND forward East (a line
             //  mcast)
 #if defined(FABRIC_2D) && defined(DYNAMIC_ROUTING_ENABLED)
-            DPRINT << "CHECK FOR SPACE WITH DYNAMIC ROUTING" << ENDL();
-            can_send_to_all_local_chip_receivers = can_forward_packet_completely(
-                packet_header->dst_mesh_id, packet_header->dst_chip_id, downstream_edm_interface);
+            // DPRINT << "CHECK FOR SPACE WITH DYNAMIC ROUTING" << ENDL();
+            can_send_to_all_local_chip_receivers =
+                can_forward_packet_completely(packet_header, downstream_edm_interface);
 #elif defined(FABRIC_2D)
             cached_routing_fields = packet_header->routing_fields;
             // need this ifdef since the packet header for 1D does not have router_buffer field in it.
@@ -1342,34 +1391,39 @@ void kernel_main() {
         erisc::datamover::handshake::receiver_side_start(handshake_addr);
     }
 
-    DPRINT << "SENDER_NUM_BUFFERS: " << (uint32_t)SENDER_NUM_BUFFERS << "\n";
-    DPRINT << "RECEIVER_NUM_BUFFERS: " << (uint32_t)RECEIVER_NUM_BUFFERS << "\n";
-    DPRINT << "local_sender_0_channel_address: " << (uint32_t)local_sender_0_channel_address << "\n";
-    DPRINT << "local_sender_channel_0_connection_info_addr: " << (uint32_t)local_sender_channel_0_connection_info_addr
-           << "\n";
-    DPRINT << "local_sender_1_channel_address: " << (uint32_t)local_sender_1_channel_address << "\n";
-    DPRINT << "local_sender_channel_1_connection_info_addr: " << (uint32_t)local_sender_channel_1_connection_info_addr
-           << "\n";
-    DPRINT << "local_sender_2_channel_address: " << (uint32_t)local_sender_2_channel_address << "\n";
-    DPRINT << "local_sender_channel_2_connection_info_addr: " << (uint32_t)local_sender_channel_2_connection_info_addr
-           << "\n";
+    // DPRINT << "SENDER_NUM_BUFFERS: " << (uint32_t)SENDER_NUM_BUFFERS << "\n";
+    // DPRINT << "RECEIVER_NUM_BUFFERS: " << (uint32_t)RECEIVER_NUM_BUFFERS << "\n";
+    // DPRINT << "local_sender_0_channel_address: " << (uint32_t)local_sender_0_channel_address << "\n";
+    // DPRINT << "local_sender_channel_0_connection_info_addr: " <<
+    // (uint32_t)local_sender_channel_0_connection_info_addr
+    //        << "\n";
+    // DPRINT << "local_sender_1_channel_address: " << (uint32_t)local_sender_1_channel_address << "\n";
+    // DPRINT << "local_sender_channel_1_connection_info_addr: " <<
+    // (uint32_t)local_sender_channel_1_connection_info_addr
+    //        << "\n";
+    // DPRINT << "local_sender_2_channel_address: " << (uint32_t)local_sender_2_channel_address << "\n";
+    // DPRINT << "local_sender_channel_2_connection_info_addr: " <<
+    // (uint32_t)local_sender_channel_2_connection_info_addr
+    //        << "\n";
     if constexpr (is_2d_fabric) {
-        DPRINT << "local_sender_3_channel_address: " << (uint32_t)local_sender_3_channel_address << "\n";
-        DPRINT << "local_sender_channel_3_connection_info_addr: "
-               << (uint32_t)local_sender_channel_3_connection_info_addr << "\n";
-        DPRINT << "local_sender_4_channel_address: " << (uint32_t)local_sender_4_channel_address << "\n";
-        DPRINT << "local_sender_channel_4_connection_info_addr: "
-               << (uint32_t)local_sender_channel_4_connection_info_addr << "\n";
+        // DPRINT << "local_sender_3_channel_address: " << (uint32_t)local_sender_3_channel_address << "\n";
+        // DPRINT << "local_sender_channel_3_connection_info_addr: "
+        //        << (uint32_t)local_sender_channel_3_connection_info_addr << "\n";
+        // DPRINT << "local_sender_4_channel_address: " << (uint32_t)local_sender_4_channel_address << "\n";
+        // DPRINT << "local_sender_channel_4_connection_info_addr: "
+        //        << (uint32_t)local_sender_channel_4_connection_info_addr << "\n";
     }
-    DPRINT << "local_receiver_0_channel_buffer_address: " << (uint32_t)local_receiver_0_channel_buffer_address << "\n";
-    DPRINT << "remote_receiver_0_channel_buffer_address: " << (uint32_t)remote_receiver_0_channel_buffer_address
-           << "\n";
-    DPRINT << "local_receiver_1_channel_buffer_address: " << (uint32_t)local_receiver_1_channel_buffer_address << "\n";
-    DPRINT << "remote_receiver_1_channel_buffer_address: " << (uint32_t)remote_receiver_1_channel_buffer_address
-           << "\n";
-    DPRINT << "remote_sender_0_channel_address: " << (uint32_t)remote_sender_0_channel_address << "\n";
-    DPRINT << "remote_sender_1_channel_address: " << (uint32_t)remote_sender_1_channel_address << "\n";
-    DPRINT << "remote_sender_2_channel_address: " << (uint32_t)remote_sender_2_channel_address << "\n";
+    // DPRINT << "local_receiver_0_channel_buffer_address: " << (uint32_t)local_receiver_0_channel_buffer_address <<
+    // "\n"; DPRINT << "remote_receiver_0_channel_buffer_address: " <<
+    // (uint32_t)remote_receiver_0_channel_buffer_address
+    //        << "\n";
+    // DPRINT << "local_receiver_1_channel_buffer_address: " << (uint32_t)local_receiver_1_channel_buffer_address <<
+    // "\n"; DPRINT << "remote_receiver_1_channel_buffer_address: " <<
+    // (uint32_t)remote_receiver_1_channel_buffer_address
+    //        << "\n";
+    // DPRINT << "remote_sender_0_channel_address: " << (uint32_t)remote_sender_0_channel_address << "\n";
+    // DPRINT << "remote_sender_1_channel_address: " << (uint32_t)remote_sender_1_channel_address << "\n";
+    // DPRINT << "remote_sender_2_channel_address: " << (uint32_t)remote_sender_2_channel_address << "\n";
     if constexpr (is_2d_fabric) {
         DPRINT << "remote_sender_3_channel_address: " << (uint32_t)remote_sender_3_channel_address << "\n";
         DPRINT << "remote_sender_4_channel_address: " << (uint32_t)remote_sender_4_channel_address << "\n";
@@ -1917,6 +1971,6 @@ void kernel_main() {
 
     *edm_status_ptr = tt::tt_fabric::EDMStatus::TERMINATED;
 
-    DPRINT << "EDM DONE\n";
+    // DPRINT << "EDM DONE\n";
     WAYPOINT("DONE");
 }

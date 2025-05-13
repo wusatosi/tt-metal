@@ -30,6 +30,7 @@ inline void setup_connection_and_headers(
     uint64_t noc_dest_addr,
     uint32_t packet_payload_size_bytes) {
     // connect to edm
+    DPRINT << "Open connection" << ENDL();
     connection.open();
     if constexpr (!is_2d_fabric) {
         if constexpr (mcast_mode) {
@@ -80,46 +81,37 @@ void kernel_main() {
     uint32_t fwd_dev_id = get_arg_val<uint32_t>(rt_args_idx++);
 
     uint64_t noc_dest_addr = get_noc_addr_helper(rx_noc_encoding, target_address);
-    DPRINT << "Dest ADDR" << (uint32_t)(noc_dest_addr) << ENDL();
-    DPRINT << "Dest ADDR" << (uint32_t)(noc_dest_addr >> 32) << ENDL();
+    // DPRINT << "Dest ADDR" << (uint32_t)(noc_dest_addr) << ENDL();
+    // DPRINT << "Dest ADDR" << (uint32_t)(noc_dest_addr >> 32) << ENDL();
     tt::tt_fabric::WorkerToFabricEdmSender fwd_fabric_connection;
-    tt::tt_fabric::WorkerToFabricEdmSender bwd_fabric_connection;
+    // tt::tt_fabric::WorkerToFabricEdmSender bwd_fabric_connection;
 
     volatile tt_l1_ptr PACKET_HEADER_TYPE* fwd_packet_header;
     volatile tt_l1_ptr PACKET_HEADER_TYPE* bwd_packet_header;
 
     if constexpr (mcast_mode) {
-        uint32_t mcast_fwd_hops = get_arg_val<uint32_t>(rt_args_idx++);
-
+        DPRINT << "Using Mcast" << ENDL();
+        uint32_t mcast_fwd_hops = 3;  // get_arg_val<uint32_t>(rt_args_idx++);
+        rt_args_idx++;
         fwd_fabric_connection =
             tt::tt_fabric::WorkerToFabricEdmSender::build_from_args<ProgrammableCoreType::TENSIX>(rt_args_idx);
 
-        uint32_t bwd_dev_id = get_arg_val<uint32_t>(rt_args_idx++);
-        uint32_t mcast_bwd_hops = get_arg_val<uint32_t>(rt_args_idx++);
-        bwd_fabric_connection =
-            tt::tt_fabric::WorkerToFabricEdmSender::build_from_args<ProgrammableCoreType::TENSIX>(rt_args_idx);
-
         fwd_packet_header = reinterpret_cast<volatile tt_l1_ptr PACKET_HEADER_TYPE*>(packet_header_buffer_address);
-        bwd_packet_header = reinterpret_cast<volatile tt_l1_ptr PACKET_HEADER_TYPE*>(
-            packet_header_buffer_address + sizeof(PACKET_HEADER_TYPE));
-        zero_l1_buf((uint32_t*)packet_header_buffer_address, sizeof(PACKET_HEADER_TYPE) * 2);
+
+        zero_l1_buf((uint32_t*)packet_header_buffer_address, sizeof(PACKET_HEADER_TYPE));
 
         if constexpr (is_2d_fabric) {
+            DPRINT << "Set mcast route" << ENDL();
             fabric_set_mcast_route(
-                (LowLatencyMeshPacketHeader*)fwd_packet_header,
-                (eth_chan_directions)fwd_fabric_connection.direction,
-                mcast_fwd_hops);
-            fabric_set_mcast_route(
-                (LowLatencyMeshPacketHeader*)bwd_packet_header,
-                (eth_chan_directions)bwd_fabric_connection.direction,
-                mcast_bwd_hops);
+                (MeshPacketHeader*)packet_header_buffer_address,
+                fwd_dev_id,
+                mcast_fwd_hops,
+                eth_chan_directions::EAST  // mcast in north direction
+            );
         }
 
         setup_connection_and_headers(
             fwd_fabric_connection, fwd_packet_header, mcast_fwd_hops, noc_dest_addr, packet_payload_size_bytes);
-
-        setup_connection_and_headers(
-            bwd_fabric_connection, bwd_packet_header, mcast_bwd_hops, noc_dest_addr, packet_payload_size_bytes);
 
     } else {
         uint32_t unicast_hops = get_arg_val<uint32_t>(rt_args_idx++);
@@ -156,6 +148,7 @@ void kernel_main() {
 #endif
         if constexpr (mcast_mode) {
             // fwd packet
+            DPRINT << "Send packet" << ENDL();
             send_packet(
                 fwd_packet_header,
                 noc_dest_addr,
@@ -164,14 +157,14 @@ void kernel_main() {
                 time_seed,
                 fwd_fabric_connection);
 
-            // bwd packet
-            send_packet(
-                bwd_packet_header,
-                noc_dest_addr,
-                source_l1_buffer_address,
-                packet_payload_size_bytes,
-                time_seed,
-                bwd_fabric_connection);
+            // // bwd packet
+            // send_packet(
+            //     bwd_packet_header,
+            //     noc_dest_addr,
+            //     source_l1_buffer_address,
+            //     packet_payload_size_bytes,
+            //     time_seed,
+            //     bwd_fabric_connection);
         } else {
             send_packet(
                 fwd_packet_header,
@@ -190,7 +183,7 @@ void kernel_main() {
 
     if constexpr (mcast_mode) {
         teardown_connection(fwd_fabric_connection);
-        teardown_connection(bwd_fabric_connection);
+        // teardown_connection(bwd_fabric_connection);
     } else {
         teardown_connection(fwd_fabric_connection);
     }
