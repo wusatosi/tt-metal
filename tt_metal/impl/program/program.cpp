@@ -1307,7 +1307,9 @@ void detail::ProgramImpl::compile(IDevice* device, bool force_slow_dispatch) {
         return;
     }
 
-    InitSiliconDebuggerInterfaceFile();
+    if (tt_metal::MetalContext::instance().rtoptions().get_debugger_interface_enabled()) {
+        InitSiliconDebuggerInterfaceFile();
+    }
 
     // Clear the determined sub_device_ids when we compile the program for the first time
     // This way, determine_sub_device_ids is forced to recalculate with the finalized information on the used cores
@@ -1405,8 +1407,10 @@ void detail::ProgramImpl::compile(IDevice* device, bool force_slow_dispatch) {
                     while (not detail::HashLookup::inst().is_bin_generated(kernel_hash)) {
                     }
 
-                    // Save kernel information for the silicon debugger
-                    SiliconDebuggerInterfaceLogKernel (kernel, build_options);
+                    if (tt_metal::MetalContext::instance().rtoptions().get_debugger_interface_enabled()) {
+                        // Save kernel information
+                        SiliconDebuggerInterfaceLogKernel(kernel, build_options);
+                    }
                 },
                 events);
         }

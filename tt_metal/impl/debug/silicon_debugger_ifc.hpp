@@ -9,10 +9,10 @@
 
 namespace tt::tt_metal {
 
-// Initilize the file
+// Initialize the file
 void InitSiliconDebuggerInterfaceFile();
 
 // Log kernel build information to the file
 void SiliconDebuggerInterfaceLogKernel(std::shared_ptr<Kernel> kernel, const tt::tt_metal::JitBuildOptions &build_options);
 
-}
+}  // namespace tt::tt_metal

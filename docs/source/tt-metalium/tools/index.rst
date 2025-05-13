@@ -32,3 +32,10 @@ Tracy profiler is for profiling device-side RISCV code and host-side python and 
     device_program_profiler
 
 Device program profiler brings visibility to execution of device side programs by providing duration counts on marked portions of the code.
+
+.. toctree::
+    :maxdepth: 1
+
+    debugger_interface
+
+The debugger interface provides a standardized way for debugging tools to communicate with and control tt-metalium during program execution.

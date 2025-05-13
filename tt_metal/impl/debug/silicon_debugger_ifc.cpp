@@ -2,21 +2,18 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include <cstdio>
 #include <tt-metalium/kernel.hpp>
-#include <tt-metalium/tt_metal.hpp>
-#include "llrt/rtoptions.hpp"
 #include "llrt/llrt.hpp"
 #include "dev_msgs.h"
-#include "hw/inc/wormhole/eth_l1_address_map.h"
-#include "hw/inc/wormhole/dev_mem_map.h"
-#include "impl/context/metal_context.hpp"
 
 namespace tt::tt_metal {
 
-// Create a mutex silicon_debugger_ifc_mutex
+// This mutex is used to synchronize access to the silicon debugger interface file, as multiple threads may
+// be writing to the file concurrently.
 std::mutex silicon_debugger_ifc_mutex;
-string SILICON_DEBUGER_RUNTIME_DATA_FILE("generated/silicon_debugger/runtime_data.yaml");
+
+// The file containing the map from kernel ID to source file
+const std::string SILICON_DEBUGER_RUNTIME_DATA_FILE("generated/silicon_debugger/runtime_data.yaml");
 
 FILE *OpenSiliconDebuggerInterfaceFile() {
     FILE *f;
@@ -43,24 +40,6 @@ void InitSiliconDebuggerInterfaceFile() {
         TT_THROW("Failed to create silicon debugger data file: {}", SILICON_DEBUGER_RUNTIME_DATA_FILE);
     }
 
-    // We log the locations of the mailboxes and the sizes of the launch message fields to be able
-    // to extract the information from the memory on the device.
-    fprintf(f, "addresses:\n");
-    fprintf(f, "  MEM_MAILBOX_BASE: %d\n", MEM_MAILBOX_BASE);
-    fprintf(f, "  ERISC_MEM_MAILBOX_BASE: %d\n", eth_l1_mem::address_map::ERISC_MEM_MAILBOX_BASE);
-    fprintf(f, "  MEM_IERISC_MAILBOX_BASE: %d\n", MEM_IERISC_MAILBOX_BASE);
-
-    fprintf(f, "variables:\n");
-    fprintf(f, "  launch_msg_rd_ptr:\n    offset: %ld\n    size: %ld\n", offsetof(mailboxes_t, launch_msg_rd_ptr), sizeof(mailboxes_t::launch_msg_rd_ptr));
-    for (int i = 0; i < launch_msg_buffer_num_entries; i++) {
-        fprintf(f, "  mailboxes_t.launch[%d].kernel_config.watcher_kernel_ids[0]:\n    offset: %ld\n    size: %ld\n",
-            i, offsetof(mailboxes_t, launch[i].kernel_config.watcher_kernel_ids[0]), sizeof(mailboxes_t::launch[i].kernel_config.watcher_kernel_ids[0]));
-        fprintf(f, "  mailboxes_t.launch[%d].kernel_config.watcher_kernel_ids[1]:\n    offset: %ld\n    size: %ld\n",
-            i, offsetof(mailboxes_t, launch[i].kernel_config.watcher_kernel_ids[1]), sizeof(mailboxes_t::launch[i].kernel_config.watcher_kernel_ids[1]));
-        fprintf(f, "  mailboxes_t.launch[%d].kernel_config.watcher_kernel_ids[2]:\n    offset: %ld\n    size: %ld\n",
-            i, offsetof(mailboxes_t, launch[i].kernel_config.watcher_kernel_ids[2]), sizeof(mailboxes_t::launch[i].kernel_config.watcher_kernel_ids[2]));
-    }
-
     fprintf(f, "kernels:\n");
     fclose(f);
 }
@@ -74,5 +53,4 @@ void SiliconDebuggerInterfaceLogKernel(std::shared_ptr<Kernel> kernel, const tt:
     fclose(gdb_ifc_file);
 }
 
-
-}
+}  // namespace tt::tt_metal

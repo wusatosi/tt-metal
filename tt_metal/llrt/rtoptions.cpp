@@ -140,8 +140,12 @@ RunTimeOptions::RunTimeOptions() {
         }
     }
 
+    const char* debugger_interface_enabled_str = std::getenv("TT_METAL_DEBUGGER_INTERFACE");
+    debugger_interface_enabled = debugger_interface_enabled_str != nullptr;
+
     const char* riscv_debug_info_enabled_str = std::getenv("TT_METAL_RISCV_DEBUG_INFO");
-    set_riscv_debug_info_enabled(riscv_debug_info_enabled_str != nullptr);
+    set_riscv_debug_info_enabled(
+        riscv_debug_info_enabled_str != nullptr || debugger_interface_enabled);  // Debugger needs RISC-V debug info
 
     const char* validate_kernel_binaries = std::getenv("TT_METAL_VALIDATE_PROGRAM_BINARIES");
     set_validate_kernel_binaries(validate_kernel_binaries != nullptr && validate_kernel_binaries[0] == '1');

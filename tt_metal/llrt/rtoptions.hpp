@@ -156,6 +156,9 @@ class RunTimeOptions {
     // Buffer in DRAM to store various ARC processor samples. Feature not ready yet
     uint32_t arc_debug_buffer_size = 0;
 
+    // Debugger interface
+    bool debugger_interface_enabled = false;
+
 public:
     RunTimeOptions();
     RunTimeOptions(const RunTimeOptions&) = delete;
@@ -357,6 +360,8 @@ public:
 
     inline uint32_t get_arc_debug_buffer_size() { return arc_debug_buffer_size; }
     inline void set_arc_debug_buffer_size(uint32_t size) { arc_debug_buffer_size = size; }
+
+    inline bool get_debugger_interface_enabled() const { return debugger_interface_enabled; }
 
 private:
     // Helper functions to parse feature-specific environment vaiables.
