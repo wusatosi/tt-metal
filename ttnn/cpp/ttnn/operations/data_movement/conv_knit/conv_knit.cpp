@@ -19,7 +19,9 @@ ttnn::Tensor ConvKnitOperation::invoke(
     int kernel_height,
     int num_output_channels,
     int input_width,
-    int num_input_channels) {
+    int num_input_channels,
+    int num_blocks_per_core,
+    int num_cores_with_extra_block) {
     log_info(
         tt::LogOp,
         "in ConvKnitOperationInvoke queue_id: {}, kernel_height: {}, num_output_channels: {} input_width: {}",
@@ -27,13 +29,15 @@ ttnn::Tensor ConvKnitOperation::invoke(
         kernel_height,
         num_output_channels,
         input_width,
-        num_input_channels);
+        num_input_channels,
+        num_blocks_per_core,
+        num_cores_with_extra_block);
     return operation::run(
                ConvKnitDeviceOperation{
                    .kernel_height = kernel_height,
                    .num_output_channels = num_output_channels,
-                   input_width = input_width,
-                   num_input_channels = num_input_channels},
+                   .input_width = input_width,
+                   .num_input_channels = num_input_channels},
                {input_tensor})
         .at(0);
 }

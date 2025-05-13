@@ -99,7 +99,9 @@ operation::ProgramWithCallbacks ConvKnitDeviceOperation::create_program(
         this->kernel_height,
         this->num_output_channels,
         this->input_width,
-        this->num_input_channels);
+        this->num_input_channels,
+        this->num_blocks_per_core,
+        this->num_cores_with_extra_block);
 }
 
 }  // namespace ttnn::operations::data_movement

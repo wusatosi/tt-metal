@@ -13,6 +13,7 @@
 #include "tt-metalium/tt_backend_api_types.hpp"
 #include "ttnn/operations/data_movement/common/common.hpp"
 #include "ttnn/operations/math.hpp"
+#include "ttnn/tensor/types.hpp"
 #include "ttnn/types.hpp"
 #include <cstdint>
 #include <tt-metalium/work_split.hpp>
@@ -32,13 +33,13 @@ namespace ttnn::operations::data_movement::detail {
 operation::ProgramWithCallbacks conv_distribute_multi_core(
     const Tensor& input_tensor,
     const Tensor& output_tensor,
-    const ttnn::CoreRangeSet& cores,
-    int divisor,
-    uint32_t num_blocks_per_core,
-    uint32_t num_cores_with_extra_block) {
+    const MemoryConfig& distributed_mem_config,
+    int block_size,
+    int num_blocks_per_core,
+    int num_cores_with_extra_block) {
     tt::tt_metal::Program program{};
     auto device = input_tensor.device();
-    auto core_grid = cores.bounding_box().grid_size();
+    auto core_grid = distributed_mem_config.shard_spec.value().grid;
 
     // process input and output tensor formats
     auto input_shard_spec = input_tensor.shard_spec().value();
@@ -49,8 +50,8 @@ operation::ProgramWithCallbacks conv_distribute_multi_core(
     uint32_t output_sticks_per_core_max = output_shard_spec.shape[0];
     uint32_t output_stick_size = output_shard_spec.shape[1];
 
-    auto all_core_mappings =
-        calculate_core_mapping(cores, divisor, input_sticks_per_core, num_blocks_per_core, num_cores_with_extra_block);
+    auto all_core_mappings = calculate_core_mapping(
+        core_grid, block_size, input_sticks_per_core, num_blocks_per_core, num_cores_with_extra_block);
 
     // set up circular buffers
     tt::DataFormat output_cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(output_tensor.get_dtype());
@@ -62,15 +63,15 @@ operation::ProgramWithCallbacks conv_distribute_multi_core(
             output_tensor.volume() * output_tensor.element_size(), {{out_cb_index, output_cb_data_format}})
             .set_page_size(out_cb_index, output_stick_size * output_tensor.element_size())
             .set_globally_allocated_address(*output_tensor.buffer());
-    auto cb_output = tt::tt_metal::CreateCircularBuffer(program, cores, out_cb_config);
+    auto cb_output = tt::tt_metal::CreateCircularBuffer(program, core_grid, out_cb_config);
 
     // create kernels
     const std::string kernel_name =
         "ttnn/cpp/ttnn/operations/data_movement/conv_distribute/device/kernels/conv_distribute_reader.cpp";
-    tt::tt_metal::KernelHandle kernel_id_0 =
-        tt::tt_metal::CreateKernel(program, kernel_name, cores, tt::tt_metal::ReaderDataMovementConfig({out_cb_index}));
-    tt::tt_metal::KernelHandle kernel_id_1 =
-        tt::tt_metal::CreateKernel(program, kernel_name, cores, tt::tt_metal::WriterDataMovementConfig({out_cb_index}));
+    tt::tt_metal::KernelHandle kernel_id_0 = tt::tt_metal::CreateKernel(
+        program, kernel_name, core_grid, tt::tt_metal::ReaderDataMovementConfig({out_cb_index}));
+    tt::tt_metal::KernelHandle kernel_id_1 = tt::tt_metal::CreateKernel(
+        program, kernel_name, core_grid, tt::tt_metal::WriterDataMovementConfig({out_cb_index}));
 
     uint32_t src_address = input_tensor.buffer()->address();
     // Process CoreMapping to assign runtime arguments to cores
@@ -127,7 +128,7 @@ operation::ProgramWithCallbacks conv_distribute_multi_core(
         SetRuntimeArgs(program, kernel_id_1, core, runtime_args_kernel_1);
     }
 
-    auto override_runtime_arguments_callback = [kernel_id_0, kernel_id_1, cb_output, cores](
+    auto override_runtime_arguments_callback = [kernel_id_0, kernel_id_1, cb_output, core_grid](
                                                    const void* operation,
                                                    tt::tt_metal::Program& program,
                                                    const std::vector<Tensor>& input_tensors,
@@ -141,7 +142,7 @@ operation::ProgramWithCallbacks conv_distribute_multi_core(
         auto& runtime_args_0_by_core = GetRuntimeArgs(program, kernel_id_0);
         auto& runtime_args_1_by_core = GetRuntimeArgs(program, kernel_id_1);
 
-        for (auto core : cores.bounding_box()) {
+        for (auto core : core_grid.bounding_box()) {
             auto& runtime_args_0 = runtime_args_0_by_core[core.x][core.y];
             auto& runtime_args_1 = runtime_args_1_by_core[core.x][core.y];
             runtime_args_0[0] = input_address;

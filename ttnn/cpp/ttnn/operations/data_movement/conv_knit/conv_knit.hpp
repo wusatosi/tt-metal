@@ -17,7 +17,9 @@ struct ConvKnitOperation {
         int kernel_height,
         int num_output_channels,
         int input_width,
-        int num_input_channels);
+        int num_input_channels,
+        int num_blocks_per_core,
+        int num_cores_with_extra_block);
 };
 
 }  // namespace operations::data_movement

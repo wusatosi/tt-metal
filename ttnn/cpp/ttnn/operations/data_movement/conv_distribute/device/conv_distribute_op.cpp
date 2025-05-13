@@ -47,64 +47,20 @@ void ConvDistributeDeviceOperation::validate(const std::vector<Tensor>& input_te
 
 std::vector<ttnn::TensorSpec> ConvDistributeDeviceOperation::compute_output_specs(
     const std::vector<Tensor>& input_tensors) const {
-    // TODO: compute output specs based on passed CoreRangeSet and shard sizes
     auto input_tensor = input_tensors.at(0);
     auto input_shape = input_tensor.get_logical_shape();
+    uint32_t num_cores = this->distributed_mem_config.shard_spec.value().num_cores();
+    uint32_t num_channels = input_shape[3];
 
-    // Calculate core data distribution
-    uint32_t nhw = input_shape[2];
-    uint32_t c = input_shape[3];
-
-    uint32_t num_cores = this->cores.num_cores();
-
-    // TODO: less confusing nomenclature?
-    uint32_t evenly_divisible_blocks = nhw / num_cores / this->divisor;
-    uint32_t evenly_divisible_extra_rows = nhw / num_cores % this->divisor;
-    uint32_t remainder_blocks = nhw % num_cores / this->divisor;
-    uint32_t remainder_extra_rows = nhw % num_cores % this->divisor;
-
-    uint32_t total_extra_blocks =
-        remainder_blocks + (evenly_divisible_extra_rows * num_cores + remainder_extra_rows) / this->divisor;
-
-    // could not prove this is zero so we calculate it to cover a potential edge case
-    uint32_t evenly_divisible_extra_blocks = total_extra_blocks / num_cores;
-    uint32_t remainder_extra_blocks = total_extra_blocks % num_cores;
-
-    this->num_blocks_per_core = evenly_divisible_blocks + evenly_divisible_extra_blocks;
-    this->num_cores_with_extra_block = remainder_extra_blocks;
-
-    log_info(
-        tt::LogOp,
-        "Num cores: {} num_blocks_per_core: {} num_cores_with_extra_block: {}",
-        num_cores,
-        this->num_blocks_per_core,
-        this->num_cores_with_extra_block);
-
-    // output tensor shards are equal size to the largest number of rows on a core
-    auto output_logical_shape =
-        ttnn::Shape({1, 1, divisor * (num_cores * this->num_blocks_per_core + this->num_cores_with_extra_block), c});
-
-    std::optional<std::array<uint32_t, 2>> output_shard_shape = std::nullopt;
-    if (this->num_blocks_per_core == 0) {
-        output_shard_shape = {this->num_cores_with_extra_block, c};
-    } else {
-        output_shard_shape = {this->num_blocks_per_core + 1, c};
-    }
-
-    auto output_mem_config = create_sharded_memory_config(
-        output_logical_shape,
-        input_tensor.memory_config().shard_spec.value().grid,
-        ShardStrategy::HEIGHT,
-        input_tensor.memory_config().shard_spec.value().orientation,
-        output_shard_shape,
-        input_tensor.get_layout());
-
-    log_info(tt::LogOp, "in cpp: output shard spec shape: {}", output_mem_config.shard_spec.value());
-    log_info(tt::LogOp, "output_mem_config: {}", output_mem_config);
+    auto output_logical_shape = ttnn::Shape(
+        {1,
+         1,
+         this->block_size * (num_cores * this->num_blocks_per_core + this->num_cores_with_extra_block),
+         num_channels});
 
     return {TensorSpec(
         output_logical_shape,
-        TensorLayout(input_tensor.dtype(), PageConfig(input_tensor.get_layout()), output_mem_config))};
+        TensorLayout(input_tensor.dtype(), PageConfig(input_tensor.get_layout()), this->distributed_mem_config))};
 }
 
 operation::ProgramWithCallbacks ConvDistributeDeviceOperation::create_program(
@@ -114,8 +70,8 @@ operation::ProgramWithCallbacks ConvDistributeDeviceOperation::create_program(
     return detail::conv_distribute_multi_core(
         input_tensor,
         output_tensor,
-        this->cores,
-        this->divisor,
+        this->distributed_mem_config,
+        this->block_size,
         this->num_blocks_per_core,
         this->num_cores_with_extra_block);
 }
