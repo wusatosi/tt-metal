@@ -417,14 +417,8 @@ void fabric_set_unicast_route(
     uint16_t my_dev_id,
     uint16_t dst_dev_id,
     uint16_t ew_dim) {
-    volatile tt_l1_ptr fabric_router_l1_config_t* routing_table =
-        reinterpret_cast<tt_l1_ptr fabric_router_l1_config_t*>(eth_l1_mem::address_map::FABRIC_ROUTER_CONFIG_BASE);
-    DPRINT << "DST ID: " << dst_dev_id << ENDL();
-    DPRINT << "CURR ID: " << my_dev_id << ENDL();
-
     packet_header->dst_chip_id = dst_dev_id;
-    packet_header->dst_mesh_id = 0;  // routing_table->my_mesh_id;
-    DPRINT << "Mesh ID: " << packet_header->dst_mesh_id << ENDL();
+    packet_header->dst_mesh_id = 0;
 }
 
 void fabric_set_unicast_route(

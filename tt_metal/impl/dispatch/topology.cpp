@@ -1138,7 +1138,7 @@ std::unique_ptr<Program> create_and_compile_tt_fabric_program(IDevice* device, F
     bool wrap_around_mesh = corner_chip_connections == 2;
 
     for (const auto& [direction, remote_chip_id] : chip_neighbors) {
-        std::cout << "Direction: " << static_cast<uint32_t>(direction) << " " << remote_chip_id << std::endl;
+        // std::cout << "Direction: " << static_cast<uint32_t>(direction) << " " << remote_chip_id << std::endl;
         bool is_dateline = check_dateline(
             *control_plane,
             topology,
