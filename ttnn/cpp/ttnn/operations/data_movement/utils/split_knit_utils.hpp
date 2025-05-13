@@ -22,8 +22,4 @@ std::vector<CoreMapping> calculate_core_mapping(
     uint32_t num_cores_with_extra_block);
 
 std::vector<uint32_t> calculate_shard_sizes(
-    const ttnn::CoreRangeSet& cores,
-    int block_size,
-    uint32_t input_sticks_per_core,
-    uint32_t output_blocks_per_core,
-    uint32_t num_cores_with_extra_block);
+    const ttnn::CoreRangeSet& cores, int block_size, uint32_t num_blocks_per_core, uint32_t num_cores_with_extra_block);

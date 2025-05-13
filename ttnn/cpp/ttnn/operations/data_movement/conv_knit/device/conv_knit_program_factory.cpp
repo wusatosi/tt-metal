@@ -12,6 +12,7 @@
 #include "tt-metalium/tt_backend_api_types.hpp"
 #include "ttnn/operations/data_movement/common/common.hpp"
 #include "ttnn/operations/math.hpp"
+#include "ttnn/operations/data_movement/utils/split_knit_utils.hpp"
 #include <cstdint>
 #include <tt-metalium/work_split.hpp>
 #include <tt-metalium/host_api.hpp>
@@ -124,11 +125,18 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
         output_unit_size,
         num_outputs_per_core_unpadded);
 
+    // Calculate uneven shard sizes for each core
+    std::vector<uint32_t> per_core_input_sticks =
+        calculate_shard_sizes(all_cores, input_width, num_blocks_per_core, num_cores_with_extra_block);
+
     uint32_t src_cb_index = tt::CBIndex::c_0;
     uint32_t out_cb_index = tt::CBIndex::c_1;
+    // Use the maximum shard size for buffer allocation
+    uint32_t max_inputs_per_core = *std::max_element(per_core_input_sticks.begin(), per_core_input_sticks.end());
+    uint32_t max_outputs_per_core = num_outputs_per_core_unpadded;  // can be updated similarly if needed
     tt::tt_metal::CircularBufferConfig src_cb_config =
         tt::tt_metal::CircularBufferConfig(
-            num_inputs_per_core_unpadded * input_unit_size, {{src_cb_index, input_cb_data_format}})
+            max_inputs_per_core * input_unit_size, {{src_cb_index, input_cb_data_format}})
             .set_page_size(src_cb_index, input_unit_size)
             .set_globally_allocated_address(*input_tensor.buffer());
     auto cb_src = tt::tt_metal::CreateCircularBuffer(program, all_cores, src_cb_config);
@@ -136,10 +144,9 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
 
     tt::tt_metal::CircularBufferConfig out_cb_config =
         tt::tt_metal::CircularBufferConfig(
-            num_outputs_per_core_unpadded * output_unit_size, {{out_cb_index, output_cb_data_format}})
+            max_outputs_per_core * output_unit_size, {{out_cb_index, output_cb_data_format}})
             .set_page_size(out_cb_index, output_unit_size)
             .set_globally_allocated_address(*output_tensor.buffer());
-
     auto cb_output = tt::tt_metal::CreateCircularBuffer(program, all_cores, out_cb_config);
     log_info(tt::LogOp, "Cb1 total size {}: CB2 total size {}", src_cb_config.total_size(), out_cb_config.total_size());
 
@@ -148,22 +155,17 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
     bool output_channels_aligned = num_output_channels % 16 == 0;
     bool channels_aligned = input_channels_aligned && output_channels_aligned && half_of_input_channels_aligned;
 
-    if (!channels_aligned) {
-        log_info(tt::LogOp, "Channels are not 16B aligned, using 5 RiscV parallelisation kernel");
-        std::vector<uint32_t> num_sticks_per_riscv_5 = split_work(num_inputs_per_core_unpadded, 5);
-        log_info(
-            tt::LogOp,
-            "Num sticks per riscv: NC:{} BR:{} TR0:{} TR1:{} TR2:{}",
-            num_sticks_per_riscv_5[0],
-            num_sticks_per_riscv_5[1],
-            num_sticks_per_riscv_5[2],
-            num_sticks_per_riscv_5[3],
-            num_sticks_per_riscv_5[4]);
-
+    // For each core, set up kernels with the correct per-core shard size
+    for (uint32_t core_idx = 0; core_idx < num_cores; ++core_idx) {
+        uint32_t core_input_sticks = per_core_input_sticks[core_idx];
         uint32_t current_riscv_stick_starting_index = 0;
-
-        std::map<std::string, std::string> defines;
-        defines["FIRST_DM_KERNEL"] = "1";
+        std::vector<uint32_t> num_sticks_per_riscv;
+        if (!channels_aligned) {
+            num_sticks_per_riscv = split_work(core_input_sticks, 5);
+        } else {
+            num_sticks_per_riscv = split_work(core_input_sticks, 2);
+        }
+        // Prepare kernel args for this core
         std::vector<uint32_t> kernel_compile_time_args = {
             (std::uint32_t)src_cb_index,
             (std::uint32_t)out_cb_index,
@@ -172,84 +174,70 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
             num_input_channels,
             input_width,
             num_output_channels,
-            num_inputs_per_core_unpadded,
-            num_sticks_per_riscv_5[0],
+            core_input_sticks,
+            num_sticks_per_riscv[0],
             current_riscv_stick_starting_index};
-        tt::tt_metal::KernelHandle nc_kernel_handle = tt::tt_metal::CreateKernel(
-            program,
-            "ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
-            "reader_writer_conv_knit_move_sticks_height_sharded.cpp",
-            all_cores,
-            tt::tt_metal::ReaderDataMovementConfig(kernel_compile_time_args, defines));
+        if (!channels_aligned) {
+            std::map<std::string, std::string> defines;
+            defines["FIRST_DM_KERNEL"] = "1";
+            tt::tt_metal::KernelHandle nc_kernel_handle = tt::tt_metal::CreateKernel(
+                program,
+                "ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
+                "reader_writer_conv_knit_move_sticks_height_sharded.cpp",
+                {cores[core_idx]},
+                tt::tt_metal::ReaderDataMovementConfig(kernel_compile_time_args, defines));
+            current_riscv_stick_starting_index += num_sticks_per_riscv[0];
+            kernel_compile_time_args[8] = num_sticks_per_riscv[1];
+            kernel_compile_time_args[9] = current_riscv_stick_starting_index;
+            tt::tt_metal::KernelHandle br_kernel_handle = tt::tt_metal::CreateKernel(
+                program,
+                "ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
+                "reader_writer_conv_knit_move_sticks_height_sharded.cpp",
+                {cores[core_idx]},
+                tt::tt_metal::WriterDataMovementConfig(kernel_compile_time_args));
 
-        current_riscv_stick_starting_index += num_sticks_per_riscv_5[0];
-        kernel_compile_time_args[8] = num_sticks_per_riscv_5[1];
-        kernel_compile_time_args[9] = current_riscv_stick_starting_index;
-        tt::tt_metal::KernelHandle br_kernel_handle = tt::tt_metal::CreateKernel(
-            program,
-            "ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
-            "reader_writer_conv_knit_move_sticks_height_sharded.cpp",
-            all_cores,
-            tt::tt_metal::WriterDataMovementConfig(kernel_compile_time_args));
+            // unpack
+            current_riscv_stick_starting_index += num_sticks_per_riscv[1];
+            kernel_compile_time_args[8] = num_sticks_per_riscv[2];
+            kernel_compile_time_args[9] = current_riscv_stick_starting_index;
 
-        current_riscv_stick_starting_index += num_sticks_per_riscv_5[1];
+            // math
+            current_riscv_stick_starting_index += num_sticks_per_riscv[2];
+            kernel_compile_time_args.push_back(0);
+            kernel_compile_time_args.push_back(0);
+            kernel_compile_time_args[10] = num_sticks_per_riscv[3];
+            kernel_compile_time_args[11] = current_riscv_stick_starting_index;
 
-        kernel_compile_time_args[8] = num_sticks_per_riscv_5[2];           // unpack
-        kernel_compile_time_args[9] = current_riscv_stick_starting_index;  // unpack
+            // pack
+            current_riscv_stick_starting_index += num_sticks_per_riscv[3];
+            kernel_compile_time_args.push_back(0);
+            kernel_compile_time_args.push_back(0);
+            kernel_compile_time_args[12] = num_sticks_per_riscv[4];
+            kernel_compile_time_args[13] = current_riscv_stick_starting_index;
 
-        current_riscv_stick_starting_index += num_sticks_per_riscv_5[2];
-        kernel_compile_time_args.push_back(0);
-        kernel_compile_time_args.push_back(0);
-        kernel_compile_time_args[10] = num_sticks_per_riscv_5[3];           // math
-        kernel_compile_time_args[11] = current_riscv_stick_starting_index;  // math
-
-        current_riscv_stick_starting_index += num_sticks_per_riscv_5[3];
-        kernel_compile_time_args.push_back(0);
-        kernel_compile_time_args.push_back(0);
-        kernel_compile_time_args[12] = num_sticks_per_riscv_5[4];           // pack
-        kernel_compile_time_args[13] = current_riscv_stick_starting_index;  // pack
-        current_riscv_stick_starting_index += num_sticks_per_riscv_5[4];
-
-        tt::tt_metal::KernelHandle compute_kernel_handle = tt::tt_metal::CreateKernel(
-            program,
-            "ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
-            "reader_writer_conv_knit_move_sticks_height_sharded.cpp",
-            all_cores,
-            tt::tt_metal::ComputeConfig{.compile_args = kernel_compile_time_args});
-    } else {
-        log_info(tt::LogOp, "Channels are 16B aligned, using noc transfers on 2 riscv kernels");
-        std::vector<uint32_t> num_sticks_per_riscv_2 = split_work(num_inputs_per_core_unpadded, 2);
-        log_info(tt::LogOp, "Num sticks per riscv: NC:{} BR: {}", num_sticks_per_riscv_2[0], num_sticks_per_riscv_2[1]);
-
-        uint32_t current_riscv_stick_starting_index = 0;
-
-        std::vector<uint32_t> kernel_compile_time_args = {
-            (std::uint32_t)src_cb_index,
-            (std::uint32_t)out_cb_index,
-            input_unit_size,
-            output_unit_size,
-            num_input_channels,
-            input_width,
-            num_output_channels,
-            num_inputs_per_core_unpadded,
-            num_sticks_per_riscv_2[0],
-            current_riscv_stick_starting_index};
-        tt::tt_metal::KernelHandle nc_kernel_handle = tt::tt_metal::CreateKernel(
-            program,
-            "ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
-            "reader_writer_conv_knit_move_stick_height_sharded_channels_aligned.cpp",
-            all_cores,
-            tt::tt_metal::ReaderDataMovementConfig(kernel_compile_time_args));
-
-        current_riscv_stick_starting_index += num_sticks_per_riscv_2[0];
-        kernel_compile_time_args[8] = num_sticks_per_riscv_2[1];
-        kernel_compile_time_args[9] = current_riscv_stick_starting_index;
-        tt::tt_metal::KernelHandle br_kernel_handle = tt::tt_metal::CreateKernel(
-            program,
-            "ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
-            "reader_writer_conv_knit_move_stick_height_sharded_channels_aligned.cpp",
-            all_cores,
-            tt::tt_metal::WriterDataMovementConfig(kernel_compile_time_args));
+            tt::tt_metal::KernelHandle compute_kernel_handle = tt::tt_metal::CreateKernel(
+                program,
+                "ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
+                "reader_writer_conv_knit_move_sticks_height_sharded.cpp",
+                {cores[core_idx]},
+                tt::tt_metal::ComputeConfig{.compile_args = kernel_compile_time_args});
+        } else {
+            tt::tt_metal::KernelHandle nc_kernel_handle = tt::tt_metal::CreateKernel(
+                program,
+                "ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
+                "reader_writer_conv_knit_move_stick_height_sharded_channels_aligned.cpp",
+                {cores[core_idx]},
+                tt::tt_metal::ReaderDataMovementConfig(kernel_compile_time_args));
+            current_riscv_stick_starting_index += num_sticks_per_riscv[0];
+            kernel_compile_time_args[8] = num_sticks_per_riscv[1];
+            kernel_compile_time_args[9] = current_riscv_stick_starting_index;
+            tt::tt_metal::KernelHandle br_kernel_handle = tt::tt_metal::CreateKernel(
+                program,
+                "ttnn/cpp/ttnn/operations/data_movement/conv_knit/device/kernels/dataflow/"
+                "reader_writer_conv_knit_move_stick_height_sharded_channels_aligned.cpp",
+                {cores[core_idx]},
+                tt::tt_metal::WriterDataMovementConfig(kernel_compile_time_args));
+        }
     }
 
     auto override_runtime_arguments_callback = [cb_src, cb_output](

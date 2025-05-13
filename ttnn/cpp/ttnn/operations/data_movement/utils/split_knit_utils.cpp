@@ -68,29 +68,16 @@ std::vector<CoreMapping> calculate_core_mapping(
 std::vector<uint32_t> calculate_shard_sizes(
     const ttnn::CoreRangeSet& cores,
     int block_size,
-    uint32_t input_sticks_per_core,
-    uint32_t output_blocks_per_core,
+    uint32_t num_blocks_per_core,
     uint32_t num_cores_with_extra_block) {
-    // Get core mappings using calculate_core_mapping
-    auto core_mappings = calculate_core_mapping(
-        cores, block_size, input_sticks_per_core, output_blocks_per_core, num_cores_with_extra_block);
-
-    // Initialize shard sizes for each core
-    std::vector<uint32_t> shard_sizes(cores.bounding_box().size(), 0);
-
-    // Iterate over core mappings and calculate shard sizes
-    for (const auto& core_mapping : core_mappings) {
-        const auto& core = core_mapping.first;
-        const auto& data_chunks = core_mapping.second;
-
-        uint32_t core_index = core.y * cores.bounding_box().grid_size().x + core.x;
-
-        for (const auto& chunk : data_chunks) {
-            uint32_t start_index = std::get<1>(chunk);
-            uint32_t end_index = std::get<2>(chunk);
-            shard_sizes[core_index] += (end_index - start_index);
-        }
+    // For a tensor already distributed by conv_distribute, each core gets either num_blocks_per_core or
+    // num_blocks_per_core+1 blocks. Each block is block_size rows
+    auto bounding_box = cores.bounding_box();
+    auto size = bounding_box.size();
+    std::vector<uint32_t> shard_sizes(size, 0);
+    for (uint32_t i = 0; i < size; ++i) {
+        uint32_t blocks = (i < num_cores_with_extra_block) ? (num_blocks_per_core + 1) : num_blocks_per_core;
+        shard_sizes[i] = blocks * block_size;
     }
-
     return shard_sizes;
 }
