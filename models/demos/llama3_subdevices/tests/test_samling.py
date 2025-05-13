@@ -74,6 +74,14 @@ def reference_sampling(input_tensor, sampling_params, num_devices, padded_vocab_
     (ttnn.bfloat8_b,),
 )
 @pytest.mark.parametrize(
+    "sampling_params",
+    (
+        {"top_k": 32, "top_p": 0.08, "seed": 42},
+        # {"top_k": 64, "top_p": 0.08, "seed": 42},
+        # {"top_k": 32, "top_p": 0.10, "seed": 42},
+    ),
+)
+@pytest.mark.parametrize(
     "mesh_device",
     [
         {"N150": (1, 1), "N300": (1, 2), "T3K": (1, 8), "TG": (8, 4)}.get(
@@ -87,8 +95,7 @@ def reference_sampling(input_tensor, sampling_params, num_devices, padded_vocab_
     [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL, "fabric_config": ttnn.FabricConfig.FABRIC_1D}],
     indirect=True,
 )
-def test_llama_sampling_inference(dtype, batch_size, mesh_device, use_program_cache, reset_seeds):
-    sampling_params = {"top_k": 32, "top_p": 0.08, "seed": 42}
+def test_llama_sampling_inference(dtype, sampling_params, batch_size, mesh_device, use_program_cache, reset_seeds):
     model_args = TtModelArgs(mesh_device, max_batch_size=batch_size, max_seq_len=32, dummy_weights=True)
     torch_input = torch.randn(1, 1, 32, model_args.padded_vocab_size)
 
