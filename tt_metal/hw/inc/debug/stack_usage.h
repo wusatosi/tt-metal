@@ -86,42 +86,35 @@ uint32_t get_dispatch_class() {
 }
 
 void dirty_stack_memory() {
-    constexpr uint32_t stack_dirty_fraction_numerator = 3;
-    constexpr uint32_t stack_dirty_fraction_denominator = 4;
     uint32_t stack_words = get_stack_size() / sizeof(uint32_t);
-    uint32_t stack_dirty_words = stack_words * stack_dirty_fraction_numerator / stack_dirty_fraction_denominator;
-    uint32_t tt_l1_ptr* stack_ptr = (uint32_t tt_l1_ptr*)get_stack_top() - stack_words;
+    uint32_t *base = (uint32_t tt_l1_ptr *)get_stack_top() - stack_words;
 
-    // Dirty the back 3/4 of the stack (does rely on the fact that we
-    // haven't hit this part of the stack yet).
-    for (uint32_t stack_offset = 0; stack_offset < stack_dirty_words; stack_offset++) {
-        stack_ptr[stack_offset] = STACK_DIRTY_PATTERN;
-    }
-    return;
+    uint32_t tt_l1_ptr *ptr;
+    asm ("mov %,sp" : "=r"(ptr));
+
+    while (ptr != base)
+        *--ptr = STACK_DIRTY_PATTERN;
 }
 
 void record_stack_usage() {
-
     uint32_t stack_words = get_stack_size() / sizeof(uint32_t);
+    uint32_t *base = (uint32_t tt_l1_ptr *)get_stack_top() - stack_words;
 
-    uint32_t tt_l1_ptr* stack_ptr = (uint32_t tt_l1_ptr*)get_stack_top() - stack_words;
-    for (uint32_t stack_offset = 0; stack_offset < stack_words; stack_offset++) {
-        // If we don't find the dirty pattern, this is the highest the stack has gotten, just store that and return.
-        if (stack_ptr[stack_offset] != STACK_DIRTY_PATTERN) {
-            // Only update if the stack size used in this kernel is larger than what we've seen before.
-            uint16_t stack_usage = (stack_words - stack_offset) * sizeof(uint32_t);
-            unsigned idx = debug_get_which_riscv();
-            debug_stack_usage_t tt_l1_ptr* stack_usage_msg = GET_MAILBOX_ADDRESS_DEV(watcher.stack_usage);
-            if (stack_usage_msg->watcher_kernel_id[idx] == 0 ||  // No entry recorded
-                stack_usage_msg->max_usage[idx] < stack_usage) {
-                stack_usage_msg->max_usage[idx] = stack_usage;
-                unsigned launch_idx = *GET_MAILBOX_ADDRESS_DEV(launch_msg_rd_ptr);
-                launch_msg_t tt_l1_ptr* launch_msg = GET_MAILBOX_ADDRESS_DEV(launch[launch_idx]);
-                stack_usage_msg->watcher_kernel_id[idx] =
-                    launch_msg->kernel_config.watcher_kernel_ids[get_dispatch_class()];
-            }
-            return;
-        }
+    uint32_t tt_l1_ptr* stack_ptr = base;
+    // We don't need to check size here, as we know we'll hit a
+    // non-dirty value at some point (a set of return addresses).
+    while (*stack_ptr == STACK_DIRTY_PATTERN)
+        stack_ptr++;
+    uint32_t stack_usage = (stack_words - (stack_ptr - base)) * sizeof (uint32_t);
+    unsigned idx = debug_get_which_riscv();
+    debug_stack_usage_t tt_l1_ptr* stack_usage_msg = GET_MAILBOX_ADDRESS_DEV(watcher.stack_usage);
+    if (stack_usage_msg->watcher_kernel_id[idx] == 0 ||  // No entry recorded
+        stack_usage_msg->max_usage[idx] < stack_usage) {
+        stack_usage_msg->max_usage[idx] = stack_usage;
+        unsigned launch_idx = *GET_MAILBOX_ADDRESS_DEV(launch_msg_rd_ptr);
+        launch_msg_t tt_l1_ptr* launch_msg = GET_MAILBOX_ADDRESS_DEV(launch[launch_idx]);
+        stack_usage_msg->watcher_kernel_id[idx] =
+            launch_msg->kernel_config.watcher_kernel_ids[get_dispatch_class()];
     }
 }
 
