@@ -38,7 +38,7 @@ void copy_sticks_async_to_temp_or_final(
     const uint32_t temp_base_l1_addr,
     const uint32_t out_base_l1_addr) {
     int i = 0;
-    int length = config_data[i + 2];
+    int length = config_data[2];
 
     const uint64_t base_addr_temp = get_noc_addr(my_noc_x, my_noc_y, temp_base_l1_addr);
     uint64_t dst_addr_temp = base_addr_temp;
@@ -108,7 +108,7 @@ void copy_sticks_async_from_temp(
     const uint32_t temp_base_l1_addr,
     const uint32_t out_base_l1_addr) {
     int i = 0;
-    int length = config_data[i + 2];
+    int length = config_data[2];
 
     uint64_t src_addr = temp_base_l1_addr;
 
@@ -121,12 +121,12 @@ void copy_sticks_async_from_temp(
         //        << ", length: " << length << ENDL();
         const uint64_t base_addr = get_noc_addr(noc_x, noc_y, out_base_l1_addr);
         for (uint16_t j = 0; j < length; j += 4) {
-            uint16_t dst_local_idx = config_data[i + j + 1];
-            uint16_t nsticks = config_data[i + j + 2];
             uint16_t no_wait = config_data[i + j + 3];
             if (no_wait) {  // no wait sticks were already copied to their final destinations
                 continue;
             }
+            uint16_t dst_local_idx = config_data[i + j + 1];
+            uint16_t nsticks = config_data[i + j + 2];
             // DPRINT << "    dst_local_idx: " << dst_local_idx << ", nsticks: " << nsticks << ", no_wait: " << no_wait
             //        << ENDL();
             uint32_t size = nsticks * stick_nbytes;
@@ -161,7 +161,7 @@ void copy_sticks_async_local(
     const uint32_t out_base_l1_addr,
     const uint32_t in_out_buffer_start_delta) {
     int i = 0;
-    int length = config_data[i + 2];
+    int length = config_data[2];
 
     while (length) {
         length = config_data[i + 2];
@@ -200,8 +200,7 @@ void copy_sticks_async_local(
                     noc_async_write(temp_base_l1_addr_read, dst_addr, size);
                     // DPRINT << "LOCAL copy, size: " << size << " x 2" << ENDL();
                 } else {
-                    bool is_forward_copy = dst_local_idx > src_local_idx + in_out_buffer_start_delta &&
-                                           dst_local_idx <= src_local_idx + in_out_buffer_start_delta + nsticks;
+                    bool is_forward_copy = dst_local_idx > dst_relative_src;
                     if (is_forward_copy) {  // dst data is being moved "in front" of the source data, reverse
                                             // ordering of stick by stick copy is necessary
                         for (int16_t k = nsticks - 1; k >= 0; k--) {
