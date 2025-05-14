@@ -12,6 +12,7 @@ from models.demos.llama3_subdevices.tt.llama_common import (
 )
 from models.demos.llama3_subdevices.tt.model_config import TtModelArgs, LlamaOptimizations
 from models.demos.llama3_subdevices.tt.llama_model import TtTransformer
+from models.demos.llama3_subdevices.tt.sampling import TTSampling
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.model import Transformer
 from models.demos.t3000.llama2_70b.reference.llama.llama31_8b.tokenizer import Tokenizer
 from models.utility_functions import (
@@ -32,6 +33,10 @@ from models.utility_functions import skip_for_grayskull
         ("instruct", 80, 5),
     ],
     ids=["quick", "full"],
+)
+@pytest.mark.parametrize(
+    "sampling_params",
+    [{"top_k": 32, "top_p": 0.08, "seed": 42}],
 )
 @pytest.mark.parametrize(
     "paged_attention",
@@ -85,6 +90,7 @@ def test_llama_model_inference(
     weights,
     layers,
     iterations,
+    sampling_params,
     max_seq_len,
     batch_size,
     paged_attention,
@@ -211,6 +217,12 @@ def test_llama_model_inference(
         weight_cache_path=model_args.weight_cache_path(dtype),
         paged_attention_config=paged_attention_config,
     )
+    tt_sampling = TTSampling(
+        args=model_args,
+        mesh_device=mesh_device,
+        sampling_params=sampling_params,
+        tt_ccl=tt_model.tt_ccl,
+    )
     logger.info("Model and caches loaded.")
 
     if run_ref_pt:
@@ -308,27 +320,29 @@ def test_llama_model_inference(
                 if run_ref_pt:
                     pt_decode_input = embd(encoded_prompts_tensor[:, i]).view(batch, seqlen, -1)
             else:
-                # Greedy decode (temperature = 0) the generated token and save it to print out later
-                # tt_out_tok_host = sample_host(tt_output_torch, None, temperature=0, top_p=0.8)
-                sub_core_grids = ttnn.CoreRangeSet(
-                    [
-                        ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(3, 9)),
-                        ttnn.CoreRange(ttnn.CoreCoord(5, 0), ttnn.CoreCoord(6, 9)),
-                    ]
-                )
-                tt_out_gathered = tt_model.tt_ccl.line_all_gather(
-                    tt_out[0],
-                    dim=3,
-                    num_links=2,
-                    cluster_axis=0,
-                    memory_config=ttnn.DRAM_MEMORY_CONFIG,
-                    buffer_key="SAMPLING",
-                )
-                tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True, sub_core_grids=sub_core_grids)
-                tt_out_tok = ttnn.argmax(  # FIXME When ttnn.argmax supports multicore, avoid falling back to host
-                    tt_out_rm, dim=3, keepdim=True, use_multicore=True, sub_core_grids=sub_core_grids
-                )
-                logger.info(f"TT input token shape: {tt_out_rm.shape}")
+                tt_out_tok = tt_sampling(tt_out[0])
+
+                # # Greedy decode (temperature = 0) the generated token and save it to print out later
+                # # tt_out_tok_host = sample_host(tt_output_torch, None, temperature=0, top_p=0.8)
+                # sub_core_grids = ttnn.CoreRangeSet(
+                #     [
+                #         ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(3, 9)),
+                #         ttnn.CoreRange(ttnn.CoreCoord(5, 0), ttnn.CoreCoord(6, 9)),
+                #     ]
+                # )
+                # tt_out_gathered = tt_model.tt_ccl.line_all_gather(
+                #     tt_out[0],
+                #     dim=3,
+                #     num_links=2,
+                #     cluster_axis=0,
+                #     memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                #     buffer_key="SAMPLING",
+                # )
+                # tt_out_rm = ttnn.untilize(tt_out_gathered, use_multicore=True, sub_core_grids=sub_core_grids)
+                # tt_out_tok = ttnn.argmax(  # FIXME When ttnn.argmax supports multicore, avoid falling back to host
+                #     tt_out_rm, dim=3, keepdim=True, use_multicore=True, sub_core_grids=sub_core_grids
+                # )
+                # logger.info(f"TT input token shape: {tt_out_rm.shape}")
                 logger.info(f"TT output token shape: {tt_out_tok.shape}")
                 tt_out_tok = ttnn.to_torch(
                     tt_out_tok,
