@@ -15,12 +15,39 @@
 
 FORCE_INLINE void eth_setup_handshake(std::uint32_t handshake_register_address, bool is_sender) {
     if (is_sender) {
-        eth_send_bytes(handshake_register_address, handshake_register_address, 16);
-        eth_wait_for_receiver_done();
+        // eth_send_bytes(handshake_register_address, handshake_register_address, 16);
+        // eth_wait_for_receiver_done();
+
+        erisc_info->channels[0].bytes_sent = 16;
+        internal_::eth_send_packet(
+            0,
+
+            ((uint32_t)(&(erisc_info->channels[0].bytes_sent))) >> 4,
+            ((uint32_t)(&(erisc_info->channels[0].bytes_sent))) >> 4,
+            1);
+        uint32_t count = 0;
+        while (erisc_info->channels[0].bytes_sent != 0) {
+            invalidate_l1_cache();
+        }
     } else {
-        eth_wait_for_bytes(16);
-        eth_receiver_channel_done(0);
+        // eth_wait_for_bytes(16);
+        // eth_receiver_channel_done(0);
+        uint32_t count = 0;
+        uint32_t a = 0;
+        while (erisc_info->channels[0].bytes_sent != 16) {
+            invalidate_l1_cache();
+        }
+
+        erisc_info->channels[0].bytes_sent = 0;
+        erisc_info->channels[0].receiver_ack = 0;
+        internal_::eth_send_packet(
+            0,
+            ((uint32_t)(&(erisc_info->channels[0].bytes_sent))) >> 4,
+            ((uint32_t)(&(erisc_info->channels[0].bytes_sent))) >> 4,
+            1);
     }
+    ASSERT(erisc_info->channels[0].bytes_sent == 0);
+    erisc_info->channels[0].bytes_sent = 0;
 }
 
 FORCE_INLINE void switch_context_if_debug() {

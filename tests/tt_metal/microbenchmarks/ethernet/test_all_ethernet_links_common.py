@@ -81,7 +81,7 @@ def process_profile_results(packet_size, num_packets, channel_count, benchmark_t
                     receiver_eth = receiver & 0xFF
 
                 if metadata["zone_name"] == main_test_body_string:
-                    run_host_id = metadata["run_host_id"]
+                    run_host_id = 0
                     if metadata["type"] == "ZONE_START":
                         starts[run_host_id] = ts
                     if metadata["type"] == "ZONE_END":

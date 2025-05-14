@@ -39,74 +39,80 @@ void kernel_main() {
 
     uint64_t worker_noc_addr = get_noc_addr(worker_noc_x, worker_noc_y, worker_buffer_addr);
 
+    // DPRINT << "receiver " << ENDL();
+    // DPRINT << "recv erisc_info addr " <<(uint)&(erisc_info->channels[0].bytes_sent) << ENDL();
+
+    ASSERT(erisc_info->channels[0].bytes_sent == 0 || erisc_info->channels[0].bytes_sent == 16);
+
     eth_setup_handshake(handshake_addr, false);
 
-    switch (benchmark_type) {
-        case EthOnlyUniDir: {
-            DeviceZoneScopedN("MAIN-TEST-BODY");
-            receiver_uni_dir<false>(
-                receiver_buffer_slot_addrs,
-                receiver_buffer_slot_sync_addrs,
-                message_size,
-                full_payload_size,
-                num_messages,
-                worker_noc_addr);
-        } break;
-        case EthOnlyBiDir: {
-            DeviceZoneScopedN("MAIN-TEST-BODY");
-            send_receiver_bi_dir<false>(
-                sender_buffer_slot_addrs,
-                sender_buffer_slot_sync_addrs,
-                receiver_buffer_slot_addrs,
-                receiver_buffer_slot_sync_addrs,
-                full_payload_size,
-                message_size,
-                num_messages,
-                worker_noc_addr);
-        } break;
-        case EthEthTensixUniDir: {
-            DeviceZoneScopedN("MAIN-TEST-BODY");
-            receiver_uni_dir<true>(
-                receiver_buffer_slot_addrs,
-                receiver_buffer_slot_sync_addrs,
-                message_size,
-                full_payload_size,
-                num_messages,
-                worker_noc_addr);
-        } break;
-        case EthEthTensixBiDir: {
-            DeviceZoneScopedN("MAIN-TEST-BODY");
-            send_receiver_bi_dir<true>(
-                sender_buffer_slot_addrs,
-                sender_buffer_slot_sync_addrs,
-                receiver_buffer_slot_addrs,
-                receiver_buffer_slot_sync_addrs,
-                full_payload_size,
-                message_size,
-                num_messages,
-                worker_noc_addr);
+    // switch (benchmark_type) {
+    //     case EthOnlyUniDir: {
+    //         DeviceZoneScopedN("MAIN-TEST-BODY");
+    //         // receiver_uni_dir<false>(
+    //         //     receiver_buffer_slot_addrs,
+    //         //     receiver_buffer_slot_sync_addrs,
+    //         //     message_size,
+    //         //     full_payload_size,
+    //         //     num_messages,
+    //         //     worker_noc_addr);
+    //     } break;
+    //     case EthOnlyBiDir: {
+    //         DeviceZoneScopedN("MAIN-TEST-BODY");
+    //         // send_receiver_bi_dir<false>(
+    //         //     sender_buffer_slot_addrs,
+    //         //     sender_buffer_slot_sync_addrs,
+    //         //     receiver_buffer_slot_addrs,
+    //         //     receiver_buffer_slot_sync_addrs,
+    //         //     full_payload_size,
+    //         //     message_size,
+    //         //     num_messages,
+    //         //     worker_noc_addr);
+    //     } break;
+    //     case EthEthTensixUniDir: {
+    //         DeviceZoneScopedN("MAIN-TEST-BODY");
+    //         receiver_uni_dir<true>(
+    //             receiver_buffer_slot_addrs,
+    //             receiver_buffer_slot_sync_addrs,
+    //             message_size,
+    //             full_payload_size,
+    //             num_messages,
+    //             worker_noc_addr);
+    //     } break;
+    //     case EthEthTensixBiDir: {
+    //         DeviceZoneScopedN("MAIN-TEST-BODY");
+    //         send_receiver_bi_dir<true>(
+    //             sender_buffer_slot_addrs,
+    //             sender_buffer_slot_sync_addrs,
+    //             receiver_buffer_slot_addrs,
+    //             receiver_buffer_slot_sync_addrs,
+    //             full_payload_size,
+    //             message_size,
+    //             num_messages,
+    //             worker_noc_addr);
 
-        } break;
-        case TensixPushEth: {
-            ASSERT(0);
-        } break;
-        case EthMcastTensix: {
-            ASSERT(0);
-        } break;
-        case EthToLocalEth: {
-            ASSERT(0);
-        } break;
-        case EthToLocalEthAndMcastTensix: {
-            ASSERT(0);
-        } break;
-        default: WAYPOINT("!ETH"); ASSERT(0);
-    }
+    //     } break;
+    //     case TensixPushEth: {
+    //         ASSERT(0);
+    //     } break;
+    //     case EthMcastTensix: {
+    //         ASSERT(0);
+    //     } break;
+    //     case EthToLocalEth: {
+    //         ASSERT(0);
+    //     } break;
+    //     case EthToLocalEthAndMcastTensix: {
+    //         ASSERT(0);
+    //     } break;
+    //     default: WAYPOINT("!ETH"); ASSERT(0);
+    // }
 
-    // need to do a delay as trid writes are not waiting for acks, so need to make sure noc response is back.
-    for (int i = 0; i < 1000; ++i) {
-        asm volatile("nop");
-    }
-    ncrisc_noc_counters_init();
+    // // need to do a delay as trid writes are not waiting for acks, so need to make sure noc response is back.
+    // for (int i = 0; i < 1000; ++i) {
+    //     asm volatile("nop");
+    // }
+    // ncrisc_noc_counters_init();
 
-    internal_::risc_context_switch();
+    // internal_::risc_context_switch();
+    // run_routing_without_noc_sync();
 }

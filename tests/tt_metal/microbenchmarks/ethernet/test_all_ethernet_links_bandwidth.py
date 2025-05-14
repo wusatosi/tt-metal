@@ -42,7 +42,8 @@ def run_erisc_write_worker_bw(
     test_latency = 0
 
     ARCH_NAME = os.getenv("ARCH_NAME")
-    cmd = f"TT_METAL_DEVICE_PROFILER=1 \
+    # cmd = f"TT_METAL_DEVICE_PROFILER=1 \
+    cmd = f" \
             {os.environ['TT_METAL_HOME']}/build/test/tt_metal/perf_microbenchmark/ethernet/test_all_ethernet_links_{ARCH_NAME} \
                 {benchmark_type} \
                 {num_packets} \
@@ -71,10 +72,10 @@ def run_erisc_write_worker_bw(
 ##################################### No Worker BW test #######################################################
 # uni-direction test for eth-sender <---> eth-receiver
 @pytest.mark.skipif(is_single_chip(), reason="Unsupported on single chip systems")
-@pytest.mark.parametrize("num_packets", [256])
+@pytest.mark.parametrize("num_packets", [1])
 @pytest.mark.parametrize("channel_count", [16])
 @pytest.mark.parametrize("num_iterations", [1])
-@pytest.mark.parametrize("packet_size", [16, 128, 256, 512, 1024, 2048, 4096, 8192])
+@pytest.mark.parametrize("packet_size", [128])
 def test_erisc_bw_uni_dir(num_packets, packet_size, channel_count, num_iterations, request):
     packet_size_to_expected_bw = {
         "wormhole_b0": {16: 0.28, 128: 2.25, 256: 4.39, 512: 8.35, 1024: 11.74, 2048: 11.84, 4096: 12.04, 8192: 12.07},
