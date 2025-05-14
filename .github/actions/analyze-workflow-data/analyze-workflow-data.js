@@ -344,7 +344,7 @@ async function run() {
     // Load cached data
     const grouped = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
 
-    // Track failed workflows
+    // Track failed workflows with detailed information
     const failedWorkflows = [];
 
     // Filter and process each workflow configuration
@@ -365,8 +365,24 @@ async function run() {
             const mainBranchRuns = filteredRuns
               .filter(r => r.head_branch === 'main')
               .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
             if (mainBranchRuns[0]?.conclusion !== 'success') {
-              failedWorkflows.push(name);
+              // Get detailed information about the failing workflow
+              const lastRun = mainBranchRuns[0];
+              const lastGoodRun = mainBranchRuns.find(r => r.conclusion === 'success');
+              const earliestBadRun = mainBranchRuns.find(r => r.conclusion !== 'success');
+
+              failedWorkflows.push({
+                name,
+                workflowFile: runs[0]?.path,
+                currentSha: lastRun.head_sha.substring(0, SHA_SHORT_LENGTH),
+                lastGoodSha: lastGoodRun?.head_sha.substring(0, SHA_SHORT_LENGTH) || null,
+                earliestBadSha: earliestBadRun?.head_sha.substring(0, SHA_SHORT_LENGTH) || null,
+                runUrl: lastRun.html_url,
+                runAttempt: lastRun.run_attempt,
+                conclusion: lastRun.conclusion,
+                createdAt: lastRun.created_at
+              });
             }
           }
         }
