@@ -205,49 +205,18 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
 
     // Forward
     // Reader
-    auto fwd_local_semaphore = tt::tt_metal::CreateSemaphore(program, fwd_core, 0);
-    createReader(
-        program,
-        device,
-        fwd_drain_sync_core,
-        input_tensor,
-        output_tensor,
-        semaphores,
-        true,
-        fwd_core,
-        device_order,
-        fwd_local_semaphore);
-
-    // Writer
-    createWriter(
-        program,
-        device,
-        fwd_device,
-        bwd_device,
-        fwd_drain_sync_core,
-        input_tensor,
-        output_tensor,
-        semaphores,
-        true,
-        fwd_core,
-        0,
-        device_order,
-        fwd_local_semaphore);
-
-    // Backward
-    // Reader
-    // auto bwd_local_semaphore = tt::tt_metal::CreateSemaphore(program, bwd_core, 0);
+    // auto fwd_local_semaphore = tt::tt_metal::CreateSemaphore(program, fwd_core, 0);
     // createReader(
     //     program,
     //     device,
-    //     bwd_drain_sync_core,
+    //     fwd_drain_sync_core,
     //     input_tensor,
     //     output_tensor,
-    //     semaphore,
-    //     false,
-    //     bwd_core,
+    //     semaphores,
+    //     true,
+    //     fwd_core,
     //     device_order,
-    //     bwd_local_semaphore);
+    //     fwd_local_semaphore);
 
     // // Writer
     // createWriter(
@@ -255,15 +224,46 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     //     device,
     //     fwd_device,
     //     bwd_device,
-    //     bwd_drain_sync_core,
+    //     fwd_drain_sync_core,
     //     input_tensor,
     //     output_tensor,
-    //     semaphore,
-    //     false,
-    //     bwd_core,
+    //     semaphores,
+    //     true,
+    //     fwd_core,
     //     0,
     //     device_order,
-    //     bwd_local_semaphore);
+    //     fwd_local_semaphore);
+
+    // Backward
+    // Reader
+    auto bwd_local_semaphore = tt::tt_metal::CreateSemaphore(program, bwd_core, 0);
+    createReader(
+        program,
+        device,
+        bwd_drain_sync_core,
+        input_tensor,
+        output_tensor,
+        semaphore,
+        false,
+        bwd_core,
+        device_order,
+        bwd_local_semaphore);
+
+    // Writer
+    createWriter(
+        program,
+        device,
+        fwd_device,
+        bwd_device,
+        bwd_drain_sync_core,
+        input_tensor,
+        output_tensor,
+        semaphore,
+        false,
+        bwd_core,
+        0,
+        device_order,
+        bwd_local_semaphore);
 
     return {.program = std::move(program), .override_runtime_arguments_callback = override_runtime_arguments_callback};
 }

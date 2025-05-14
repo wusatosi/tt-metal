@@ -58,9 +58,11 @@ void kernel_main() {
         cb_push_back(in_cb_index, 1);
     }
 
+    int device_direction = is_forward ? -1 : 1;
+
     // For each device, read the output tensor from previous device into cb for forwarding
     for (int device_iter = 0; device_iter < 7; device_iter++) {
-        uint32_t device_to_process = (((device_order - device_iter) % 8) + 8) % 8;
+        uint32_t device_to_process = (((device_order + device_iter * device_direction) % 8) + 8) % 8;
         for (tile_id = start_tile; tile_id < end_tile; tile_id++) {
             cb_reserve_back(in_cb_index, 1);
             uint64_t tile_addr = output_tensor_addrgen.get_noc_addr(device_to_process * input_num_tiles + tile_id);
@@ -68,7 +70,8 @@ void kernel_main() {
             noc_async_read_barrier();
             cb_push_back(in_cb_index, 1);
         }
-        DPRINT << "READER: Waiting for semaphore value: " << device_iter + 1 << "\n";
+        DPRINT << "READER: Waiting for semaphore value: " << device_iter + 1 << " and got "
+               << *reinterpret_cast<volatile tt_l1_ptr uint32_t*>(signal_semaphore_addr_ptr) << "\n";
         noc_semaphore_wait(signal_semaphore_addr_ptr, device_iter + 1);
     }
 

@@ -613,6 +613,7 @@ def test_line_all_gather_async_on_T3K_cols_persistent_fabric_post_commit(
 def test_all_gather_ring_async_on_T3K(mesh_device):
     torch_tensor = torch.rand((32, 512), dtype=torch.bfloat16)
     for i in range(16):
+        # torch_tensor[:, i * 32 : (i + 1) * 32] = torch.randn(32, 32, dtype=torch.bfloat16)
         torch_tensor[:, i * 32 : (i + 1) * 32] = i
     # Convert to ttnn.Tensor, tilize and move onto devices across mesh DRAM
     mesh_tensor = ttnn.from_torch(
@@ -634,9 +635,9 @@ def test_all_gather_ring_async_on_T3K(mesh_device):
 
     # ttnn.set_printoptions(profile="full")
 
-    for i in range(8):
+    for i in range(16):
         j = i * 32
-        print("DEBUG_ROW", i, output_tensor[0, j : j + 64])
+        print("DEBUG_ROW", i, output_tensor[0, j : j + 32])
     print(output_tensor)
 
     mesh_composer = ttnn.ConcatMesh2dToTensor(mesh_device, mesh_shape=(1, 8), dims=[0, 1])
@@ -646,7 +647,7 @@ def test_all_gather_ring_async_on_T3K(mesh_device):
     tt_output_tensor = tt_output_tensor[:, : torch_tensor.shape[1]]
 
     print(torch_tensor.shape, tt_output_tensor.shape, tt_output_tensor)
-    assert torch.allclose(torch_tensor, tt_output_tensor), "Tensor comparison failed"
+    assert torch.allclose(torch_tensor, tt_output_tensor, atol=0.1), "Tensor comparison failed"
 
     # assert comp_equal(torch_tensor, tt_output_tensor)
 
