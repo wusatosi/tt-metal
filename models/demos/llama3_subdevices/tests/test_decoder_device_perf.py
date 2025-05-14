@@ -518,6 +518,8 @@ def test_llama_TG_perf_device(
     # Excluding model embeddings and lmhead+sampling ops
     df_layers_compilation = df_model_compilation[DECODE_OP_START_INDEX:DECODE_OP_END_INDEX]
     df_layers_trace = df_model_trace[DECODE_OP_START_INDEX:DECODE_OP_END_INDEX]
+    df_model_tail_compilation = df_model_compilation[DECODE_OP_END_INDEX:]
+    df_model_tail_trace = df_model_trace[DECODE_OP_END_INDEX:]
     # Use layers 2-9 for verifying against targets for more stability
     df_first_layer_compilation = df_layers_compilation[: int(len(df_layers_compilation) / num_layers)]
     df_first_layer_trace = df_layers_trace[: int(len(df_layers_trace) / num_layers)]
@@ -537,15 +539,22 @@ def test_llama_TG_perf_device(
     first_layer_raw_dict_trace = df_first_layer_trace[
         ["OP CODE", "DEVICE KERNEL DURATION [ns]", "OP TO OP LATENCY [ns]"]
     ].to_dict(orient="records")
+    tail_raw_dict_compilation = df_model_tail_compilation[
+        ["OP CODE", "DEVICE KERNEL DURATION [ns]", "OP TO OP LATENCY [ns]"]
+    ].to_dict(orient="records")
+    tail_raw_dict_trace = df_model_tail_trace[
+        ["OP CODE", "DEVICE KERNEL DURATION [ns]", "OP TO OP LATENCY [ns]"]
+    ].to_dict(orient="records")
 
     # Build dicts of op_code to list of durations
+    ## mid layers
     kernel_duration_dict_compilation = build_duration_dict(
         mid_layers_raw_dict_compilation, "DEVICE KERNEL DURATION [ns]"
     )
     kernel_duration_dict_trace = build_duration_dict(mid_layers_raw_dict_trace, "DEVICE KERNEL DURATION [ns]")
     dispatch_duration_dict = build_duration_dict(mid_layers_raw_dict_trace, "OP TO OP LATENCY [ns]")
 
-    # first layer
+    ## first layer
     kernel_duration_dict_compilation_first_layer = build_duration_dict(
         first_layer_raw_dict_compilation, "DEVICE KERNEL DURATION [ns]"
     )
@@ -554,7 +563,18 @@ def test_llama_TG_perf_device(
     )
     dispatch_duration_dict_first_layer = build_duration_dict(first_layer_raw_dict_trace, "OP TO OP LATENCY [ns]")
 
+    ## model tail
+    kernel_duration_dict_compilation_model_tail = build_duration_dict(
+        tail_raw_dict_compilation, "DEVICE KERNEL DURATION [ns]"
+    )
+    kernel_duration_dict_trace_model_tail = build_duration_dict(
+        tail_raw_dict_trace, "DEVICE KERNEL DURATION [ns]"
+    )
+    dispatch_duration_dict_model_tail = build_duration_dict(tail_raw_dict_trace, "OP TO OP LATENCY [ns]")
+
+
     # Build dicts of op_code_with_id to list of durations - one list per op instance
+    ## mid layers
     kernel_duration_per_instance_dict_compilation = build_duration_per_instance_dict(
         kernel_duration_dict_compilation, num_layers - 1
     )
@@ -563,7 +583,7 @@ def test_llama_TG_perf_device(
     )
     dispatch_duration_per_instance_dict = build_duration_per_instance_dict(dispatch_duration_dict, num_layers - 1)
 
-    # first layer
+    ## first layer
     kernel_duration_per_instance_dict_compilation_first_layer = build_duration_per_instance_dict(
         kernel_duration_dict_compilation_first_layer, 1
     )
@@ -574,7 +594,18 @@ def test_llama_TG_perf_device(
         dispatch_duration_dict_first_layer, 1
     )
 
-    # Average over all iterations of each op instance
+    ## model tail
+    kernel_duration_per_instance_dict_compilation_model_tail = build_duration_per_instance_dict(
+        kernel_duration_dict_compilation_model_tail, 1
+    )
+    kernel_duration_per_instance_dict_trace_model_tail = build_duration_per_instance_dict(
+        kernel_duration_dict_trace_model_tail, 1
+    )
+    dispatch_duration_per_instance_dict_model_tail = build_duration_per_instance_dict(
+        dispatch_duration_dict_model_tail, 1
+    )
+
+    # Average over all iterations of each op instance (mid layers)
     kernel_duration_per_instance_averaged_dict_compilation = average_per_instance_dict(
         kernel_duration_per_instance_dict_compilation
     )
@@ -583,40 +614,48 @@ def test_llama_TG_perf_device(
     )
     dispatch_duration_per_instance_averaged_dict = average_per_instance_dict(dispatch_duration_per_instance_dict)
 
-    # Min over all iterations of each op instance
+    # Min over all iterations of each op instance (mid layers)
     kernel_duration_per_instance_min_dict_compilation = min_per_instance_dict(
         kernel_duration_per_instance_dict_compilation
     )
     kernel_duration_per_instance_min_dict_trace = min_per_instance_dict(kernel_duration_per_instance_dict_trace)
     dispatch_duration_per_instance_min_dict = min_per_instance_dict(dispatch_duration_per_instance_dict)
 
-    # Max over all iterations of each op instance
+    # Max over all iterations of each op instance (mid layers)
     kernel_duration_per_instance_max_dict_compilation = max_per_instance_dict(
         kernel_duration_per_instance_dict_compilation
     )
     kernel_duration_per_instance_max_dict_trace = max_per_instance_dict(kernel_duration_per_instance_dict_trace)
     dispatch_duration_per_instance_max_dict = max_per_instance_dict(dispatch_duration_per_instance_dict)
 
+    # Prints
     if len(kernel_duration_per_instance_averaged_dict_compilation) != len(perf_targets):
         print(f"perf_targets: {perf_targets}")
 
+    ## decoder mid layer
     print_dict(
         kernel_duration_per_instance_averaged_dict_compilation, "kernel_duration_per_instance_averaged_dict_compilation"
     )
     print_dict(kernel_duration_per_instance_averaged_dict_trace, "kernel_duration_per_instance_averaged_dict_trace")
     print_dict(dispatch_duration_per_instance_averaged_dict, "dispatch_duration_per_instance_averaged_dict")
 
+    ## model tail ops
+    print_dict(kernel_duration_per_instance_dict_compilation_model_tail, "kernel_duration_per_instance_dict_compilation_model_tail")
+    print_dict(kernel_duration_per_instance_dict_trace_model_tail, "kernel_duration_per_instance_dict_trace_model_tail")
+    print_dict(dispatch_duration_per_instance_dict_model_tail, "dispatch_duration_per_instance_dict_model_tail")
+
     assert len(kernel_duration_per_instance_averaged_dict_compilation) == len(
         perf_targets
     ), f"Expected {len(perf_targets)} operations, got {len(kernel_duration_per_instance_averaged_dict_compilation)}. If the number or type of operations changed, expected times must be updated."
 
     passing = True
+    # Verify decoder layer (mid layers)
     for op_code_with_id in kernel_duration_per_instance_averaged_dict_compilation.keys():
         if op_code_with_id in perf_targets:
             op_name = perf_targets[op_code_with_id]["op_name"]
 
-            # Dependent on the op_name we need to look at compile time or trace time for kernel duration
-            if "AllGather" in op_code_with_id or "ReduceScatter" in op_code_with_id or "AllReduce" in op_code_with_id:
+            # Dependent on collective/non-collectivewe need to look at compile time or trace time for kernel duration
+            if  is_collective_op(op_code_with_id):
                 avg_kernel_duration = kernel_duration_per_instance_averaged_dict_trace[op_code_with_id]
                 min_kernel_duration = kernel_duration_per_instance_min_dict_trace[op_code_with_id]
                 max_kernel_duration = kernel_duration_per_instance_max_dict_trace[op_code_with_id]
@@ -731,6 +770,91 @@ def test_llama_TG_perf_device(
             passing = False
             logger.info(f"Warning: {op_code_with_id} not found in perf_targets")
 
+    # Verify model tail ops
+    for op_code_with_id in kernel_duration_per_instance_dict_compilation_model_tail.keys():
+        if op_code_with_id in perf_targets:
+            op_name = perf_targets[op_code_with_id]["op_name"]
+
+            # Dependent on collective/non-collectivewe need to look at compile time or trace time for kernel duration
+            if  is_collective_op(op_code_with_id):
+                kernel_duration = kernel_duration_per_instance_dict_trace_model_tail[op_code_with_id]
+            else:
+                kernel_duration = kernel_duration_per_instance_dict_compilation_model_tail[op_code_with_id]
+
+            dispatch_duration = dispatch_duration_per_instance_dict_model_tail[op_code_with_id]
+            
+            benchmark_data.add_measurement(profiler, 0, step_name, op_name + "-model-kernel", kernel_duration)
+            benchmark_data.add_measurement(
+                profiler, 0, step_name, op_name + "-model-op_to_op", dispatch_duration
+            )
+
+            # Verify kernel duration is within tolerance
+            upper_limit = (
+                perf_targets[op_code_with_id]["kernel_duration"]
+                + perf_targets[op_code_with_id]["kernel_duration_relative_margin"]
+                * perf_targets[op_code_with_id]["kernel_duration"]
+            )
+            lower_limit = (
+                perf_targets[op_code_with_id]["kernel_duration"]
+                - perf_targets[op_code_with_id]["kernel_duration_relative_margin"]
+                * perf_targets[op_code_with_id]["kernel_duration"]
+            )
+            if kernel_duration > upper_limit:
+                passing = False
+                logger.info(
+                    f"{op_code_with_id} kernel: {kernel_duration} ns is larger than target "
+                    f"({perf_targets[op_code_with_id]['kernel_duration']}) ns, difference: "
+                    f"{abs(kernel_duration - upper_limit)} ns, margin: "
+                    f"{perf_targets[op_code_with_id]['kernel_duration_relative_margin']}, "
+                    f"relative margin to pass would be: "
+                    f"{abs(perf_targets[op_code_with_id]['kernel_duration'] - kernel_duration) / perf_targets[op_code_with_id]['kernel_duration']}"
+                )
+            elif kernel_duration < lower_limit:
+                passing = False
+                logger.info(
+                    f"{op_code_with_id} kernel: {kernel_duration} ns is smaller than target "
+                    f"({perf_targets[op_code_with_id]['kernel_duration']}) ns, difference: "
+                    f"{abs(lower_limit - kernel_duration)} ns, margin: "
+                    f"{perf_targets[op_code_with_id]['kernel_duration_relative_margin']}, "
+                    f"relative margin to pass would be: "
+                    f"{abs(perf_targets[op_code_with_id]['kernel_duration'] - kernel_duration) / perf_targets[op_code_with_id]['kernel_duration']}"
+                )
+            # Verify op_to_op latency is within tolerance
+            upper_limit = (
+                perf_targets[op_code_with_id]["op_to_op"]
+                + perf_targets[op_code_with_id]["op_to_op_duration_relative_margin"]
+                * perf_targets[op_code_with_id]["op_to_op"]
+            )
+            lower_limit = (
+                perf_targets[op_code_with_id]["op_to_op"]
+                - perf_targets[op_code_with_id]["op_to_op_duration_relative_margin"]
+                * perf_targets[op_code_with_id]["op_to_op"]
+            )
+            if dispatch_duration > upper_limit:
+                passing = False
+                logger.info(
+                    f"{op_code_with_id} op_to_op: {dispatch_duration} ns is larger than target "
+                    f"({perf_targets[op_code_with_id]['op_to_op']}) ns, difference: "
+                    f"{abs(dispatch_duration - upper_limit)} ns, margin: "
+                    f"{perf_targets[op_code_with_id]['op_to_op_duration_relative_margin']}, "
+                    f"relative margin to pass would be: "
+                    f"{abs(perf_targets[op_code_with_id]['op_to_op'] - dispatch_duration) / perf_targets[op_code_with_id]['op_to_op']}"
+                )
+            elif dispatch_duration < lower_limit:
+                passing = False
+                logger.info(
+                    f"{op_code_with_id} op_to_op: {dispatch_duration} ns is smaller than target "
+                    f"({perf_targets[op_code_with_id]['op_to_op']}) ns, difference: "
+                    f"{abs(lower_limit - dispatch_duration)} ns, margin: "
+                    f"{perf_targets[op_code_with_id]['op_to_op_duration_relative_margin']}, "
+                    f"relative margin to pass would be: "
+                    f"{abs(perf_targets[op_code_with_id]['op_to_op'] - dispatch_duration) / perf_targets[op_code_with_id]['op_to_op']}"
+                )
+
+        else:
+            passing = False
+            logger.info(f"Warning: {op_code_with_id} not found in perf_targets")
+
     # Calculate e2e performance
     e2e_estimate_80l = 0
     for op_id in kernel_duration_per_instance_dict_trace_first_layer.keys():  # first layer
@@ -754,10 +878,26 @@ def test_llama_TG_perf_device(
         avg_dispatch_duration = dispatch_duration_per_instance_averaged_dict[op_id]
         e2e_estimate_80l += (avg_kernel_duration + avg_dispatch_duration) * 79  # weighting avg for 79 layers
 
+    model_tail_e2e_estimate = 0
+    for op_id in kernel_duration_per_instance_dict_trace_model_tail.keys():  # model tail
+        op_to_op_latency = dispatch_duration_per_instance_dict_model_tail[op_id][0]
+        if is_collective_op(op_id):
+            kernel_duration = kernel_duration_per_instance_dict_trace_model_tail[op_id][0]
+        else:
+            kernel_duration = kernel_duration_per_instance_dict_compilation_model_tail[op_id][0]
+
+        if op_to_op_latency < 0:
+            op_to_op_latency = 0
+
+        print(f"op_id: {op_id}, kernel_duration: {kernel_duration}, op_to_op_latency: {op_to_op_latency}")
+
+        model_tail_e2e_estimate += kernel_duration + op_to_op_latency
+
     # Estimated T/s/u is 1000000 / (80L-duration + ~2100 lmhead+sampling+embeddings + ~300 python-overhead
-    tsu_estimate = 1000000 / (e2e_estimate_80l / 1000 + 2100 + 300)
+    tsu_estimate = 1000000 / ((e2e_estimate_80l + model_tail_e2e_estimate) / 1000 + 300)
 
     print(f"80L e2e time estimate: {e2e_estimate_80l}")
+    print(f"Model tail e2e time estimate: {model_tail_e2e_estimate}")
     print(f"80L T/s/u estimate: {tsu_estimate}")
 
     benchmark_data.add_measurement(profiler, 0, step_name, "e2e_estimate_80l", e2e_estimate_80l)
