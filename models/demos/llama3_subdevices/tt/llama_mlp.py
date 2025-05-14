@@ -122,10 +122,20 @@ class TtLlamaMLP(LightweightModule):
             num_links=3,
             memory_config=self.model_config["REDUCE_SCATTER_OUT_MEMCFG"],
         )
+        cluster_axis = 1
 
-        w3_out = ttnn.linear(
+        w3_out = ttnn.linear_rs(
             x,
             self.w3,
+            w1_out,
+            self.tt_ccl.reduce_scatter_buffers[cluster_axis][self.tt_ccl.reduce_scatter_buffer_idx[cluster_axis]],
+            3,
+            self.tt_ccl.gather_semaphore_handles[cluster_axis][self.tt_ccl.gather_idx[cluster_axis]],
+            self.tt_ccl.worker_sub_device_id,
+            cluster_axis,
+            self.mesh_device,
+            num_links=3,
+            rs_memory_config=self.model_config["REDUCE_SCATTER_OUT_MEMCFG"],
             compute_kernel_config=self.args.compute_kernel_config_lofi
             if self.four_bit_mlp
             else self.args.compute_kernel_config_hifi2,
