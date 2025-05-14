@@ -1256,6 +1256,12 @@ std::unique_ptr<Program> create_and_compile_tt_fabric_program(IDevice* device) {
         ct_args.push_back(master_router_chan);
         ct_args.push_back(edm_builders.size());
         ct_args.push_back(router_channels_mask);
+    
+        std::cout << "Fabric EDM ct args: " << std::endl;
+        for (const auto& arg : ct_args) {
+            std::cout << arg << "\t";
+        }
+        std::cout << "\n" << std::endl;
 
         auto eth_logical_core = soc_desc.get_eth_core_for_channel(eth_chan, CoordSystem::LOGICAL);
         auto kernel = tt::tt_metal::CreateKernel(
