@@ -144,6 +144,23 @@ struct McastRoutingInfo {
     uint32_t num_mcast_hops;
 };
 
+std::shared_ptr<tt_metal::Program> create_receiver_program(
+    const std::vector<uint32_t>& compile_time_args,
+    const std::vector<uint32_t>& runtime_args,
+    const CoreCoord& logical_core) {
+    auto recv_program = std::make_shared<tt_metal::Program>();
+    auto recv_kernel = tt_metal::CreateKernel(
+        *recv_program,
+        "tests/tt_metal/tt_metal/perf_microbenchmark/routing/kernels/tt_fabric_1d_rx.cpp",
+        {logical_core},
+        tt_metal::DataMovementConfig{
+            .processor = tt_metal::DataMovementProcessor::RISCV_0,
+            .noc = tt_metal::NOC::RISCV_0_default,
+            .compile_args = compile_time_args});
+    tt_metal::SetRuntimeArgs(*recv_program, recv_kernel, logical_core, runtime_args);
+    return recv_program;
+}
+
 void RunTestLineMcast(
     BaseFabricFixture* fixture, RoutingDirection unicast_dir, const std::vector<McastRoutingInfo>& mcast_routing_info) {
     auto* control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
@@ -154,14 +171,20 @@ void RunTestLineMcast(
     std::unordered_map<RoutingDirection, std::vector<std::pair<mesh_id_t, chip_id_t>>>
         mcast_group;  // Mesh IDs for chips involved in mcast
     std::unordered_map<RoutingDirection, std::vector<chip_id_t>>
-        mcast_group_phys_ids;  // Physical IDs for chips involved in mcast
+        mcast_group_phys_ids_per_dir;  // Physical IDs for chips involved in mcast
 
     for (const auto& routing_info : mcast_routing_info) {
         mcast_hops[routing_info.mcast_dir] = routing_info.num_mcast_hops;
     }
 
     find_device_with_neighbor_in_multi_direction(
-        fixture, mcast_start_id, mcast_group, mcast_start_phys_id, mcast_group_phys_ids, mcast_hops, unicast_dir);
+        fixture,
+        mcast_start_id,
+        mcast_group,
+        mcast_start_phys_id,
+        mcast_group_phys_ids_per_dir,
+        mcast_hops,
+        unicast_dir);
     // Compute coordinates of the remote chip that sends an mcast request to the mcast sender
     std::pair<mesh_id_t, chip_id_t> sender_id = {
         mcast_start_id.first,
@@ -170,17 +193,13 @@ void RunTestLineMcast(
     // Compute physical IDs for mcast group chips
     std::vector<chip_id_t> mcast_group_phys_ids = {};
     for (const auto& routing_info : mcast_routing_info) {
-        for (auto phys_id : mcast_group_phys_ids[routing_info.mcast_dir]) {
+        for (auto phys_id : mcast_group_phys_ids_per_dir[routing_info.mcast_dir]) {
             mcast_group_phys_ids.push_back(phys_id);
         }
     }
 
     CoreCoord sender_logical_core = {0, 0};    // This core on the sender (remote chip) will make the mcast request
     CoreCoord receiver_logical_core = {1, 0};  // Data will be forwarded to this core on al chips in the mcast group
-
-    std::cout << "Src: " << sender_id.second << std::endl;
-    std::cout << "Mcast Start: " << mcast_start_id.second << std::endl;
-    std::cout << "Mcast End: " << mcast_group[mcast_dir][num_mcast_hops - 1].second << std::endl;
 
     const auto edm_config = get_tt_fabric_config();
     uint32_t is_2d_fabric = edm_config.topology == Topology::Mesh;
@@ -201,9 +220,9 @@ void RunTestLineMcast(
 
     auto* sender_device = DevicePool::instance().get_active_device(sender_phys_id);
     auto* mcast_start_device = DevicePool::instance().get_active_device(mcast_start_phys_id);
-    std::vector<IDevice*> mcast_group_devices = {};
+    std::vector<tt_metal::IDevice*> mcast_group_devices = {};
     for (auto id : mcast_group_phys_ids) {
-        mcast_group_devices.push_back(DevicePool::instance().get_active_device(mcast_end_phys_id));
+        mcast_group_devices.push_back(DevicePool::instance().get_active_device(id));
     }
 
     CoreCoord sender_virtual_core = sender_device->worker_core_from_logical_core(sender_logical_core);
@@ -231,7 +250,6 @@ void RunTestLineMcast(
         defines["FABRIC_2D"] = "";
     }
 
-    std::cout << "Write sender kernel to: " << sender_device->id() << std::endl;
     auto sender_program = tt_metal::CreateProgram();
     auto sender_kernel = tt_metal::CreateKernel(
         sender_program,
@@ -253,8 +271,10 @@ void RunTestLineMcast(
         mcast_start_id.second};
 
     std::vector<uint32_t> mcast_header_rtas(4, 0);
-    mcast_header_rtas[static_cast<uint32_t>(control_plane->routing_direction_to_eth_direction(mcast_dir))] =
-        num_mcast_hops;
+    for (const auto& routing_info : mcast_routing_info) {
+        mcast_header_rtas[static_cast<uint32_t>(
+            control_plane->routing_direction_to_eth_direction(routing_info.mcast_dir))] = routing_info.num_mcast_hops;
+    }
     sender_runtime_args.insert(sender_runtime_args.end(), mcast_header_rtas.begin(), mcast_header_rtas.end());
     // append the EDM connection rt args
     append_fabric_connection_rt_args(
@@ -262,48 +282,29 @@ void RunTestLineMcast(
 
     tt_metal::SetRuntimeArgs(sender_program, sender_kernel, sender_logical_core, sender_runtime_args);
 
+    // Create the receiver programs for validation on all devices involved in the Mcast
     std::vector<uint32_t> receiver_runtime_args = {packet_payload_size_bytes, num_packets, time_seed};
-    std::cout << "Write recv kernel to: " << mcast_start_device->id() << std::endl;
-    // Create the receiver program for validation on recv 0
-    auto receiver_program_0 = tt_metal::CreateProgram();
-    auto receiver_kernel_0 = tt_metal::CreateKernel(
-        receiver_program_0,
-        "tests/tt_metal/tt_metal/perf_microbenchmark/routing/kernels/tt_fabric_1d_rx.cpp",
-        {receiver_logical_core},
-        tt_metal::DataMovementConfig{
-            .processor = tt_metal::DataMovementProcessor::RISCV_0,
-            .noc = tt_metal::NOC::RISCV_0_default,
-            .compile_args = compile_time_args});
-
-    tt_metal::SetRuntimeArgs(receiver_program_0, receiver_kernel_0, receiver_logical_core, receiver_runtime_args);
-
-    std::cout << "Write recv kernel to: " << mcast_end_device->id() << std::endl;
-    // Create the receiver program for validation on recv 0
-    auto receiver_program_1 = tt_metal::CreateProgram();
-    auto receiver_kernel_1 = tt_metal::CreateKernel(
-        receiver_program_1,
-        "tests/tt_metal/tt_metal/perf_microbenchmark/routing/kernels/tt_fabric_1d_rx.cpp",
-        {receiver_logical_core},
-        tt_metal::DataMovementConfig{
-            .processor = tt_metal::DataMovementProcessor::RISCV_0,
-            .noc = tt_metal::NOC::RISCV_0_default,
-            .compile_args = compile_time_args});
-
-    tt_metal::SetRuntimeArgs(receiver_program_1, receiver_kernel_1, receiver_logical_core, receiver_runtime_args);
+    std::unordered_map<tt_metal::IDevice*, std::shared_ptr<tt_metal::Program>> recv_programs;
+    recv_programs[mcast_start_device] =
+        create_receiver_program(compile_time_args, receiver_runtime_args, receiver_logical_core);
+    for (const auto& dev : mcast_group_devices) {
+        recv_programs[dev] = create_receiver_program(compile_time_args, receiver_runtime_args, receiver_logical_core);
+    }
 
     // Launch sender and receiver programs and wait for them to finish
-    fixture->RunProgramNonblocking(mcast_start_device, receiver_program_0);
-    fixture->RunProgramNonblocking(mcast_end_device, receiver_program_1);
+    for (auto& [dev, recv_program] : recv_programs) {
+        log_info("Run receiver on: {}", dev->id());
+        fixture->RunProgramNonblocking(dev, *recv_program);
+    }
+    log_info("Run Sender on: {}", sender_device->id());
     fixture->RunProgramNonblocking(sender_device, sender_program);
 
+    for (auto& [dev, recv_program] : recv_programs) {
+        fixture->WaitForSingleProgramDone(dev, *recv_program);
+    }
     fixture->WaitForSingleProgramDone(sender_device, sender_program);
-    fixture->WaitForSingleProgramDone(mcast_start_device, receiver_program_0);
-    fixture->WaitForSingleProgramDone(mcast_end_device, receiver_program_1);
 
     std::vector<uint32_t> sender_status;
-    std::vector<uint32_t> receiver_status_0;
-    std::vector<uint32_t> receiver_status_1;
-
     tt_metal::detail::ReadFromDeviceL1(
         sender_device,
         sender_logical_core,
@@ -312,35 +313,26 @@ void RunTestLineMcast(
         sender_status,
         CoreType::WORKER);
 
-    tt_metal::detail::ReadFromDeviceL1(
-        mcast_start_device,
-        receiver_logical_core,
-        test_results_address,
-        test_results_size_bytes,
-        receiver_status_0,
-        CoreType::WORKER);
-
-    tt_metal::detail::ReadFromDeviceL1(
-        mcast_end_device,
-        receiver_logical_core,
-        test_results_address,
-        test_results_size_bytes,
-        receiver_status_1,
-        CoreType::WORKER);
-
     EXPECT_EQ(sender_status[TT_FABRIC_STATUS_INDEX], TT_FABRIC_STATUS_PASS);
-    EXPECT_EQ(receiver_status_0[TT_FABRIC_STATUS_INDEX], TT_FABRIC_STATUS_PASS);
-    EXPECT_EQ(receiver_status_1[TT_FABRIC_STATUS_INDEX], TT_FABRIC_STATUS_PASS);
-
     uint64_t sender_bytes =
         ((uint64_t)sender_status[TT_FABRIC_WORD_CNT_INDEX + 1] << 32) | sender_status[TT_FABRIC_WORD_CNT_INDEX];
-    uint64_t receiver_bytes_0 =
-        ((uint64_t)receiver_status_0[TT_FABRIC_WORD_CNT_INDEX + 1] << 32) | receiver_status_0[TT_FABRIC_WORD_CNT_INDEX];
-    uint64_t receiver_bytes_1 =
-        ((uint64_t)receiver_status_1[TT_FABRIC_WORD_CNT_INDEX + 1] << 32) | receiver_status_1[TT_FABRIC_WORD_CNT_INDEX];
 
-    EXPECT_EQ(sender_bytes, receiver_bytes_0);
-    EXPECT_EQ(sender_bytes, receiver_bytes_1);
+    for (auto& [dev, _] : recv_programs) {
+        std::vector<uint32_t> receiver_status;
+        tt_metal::detail::ReadFromDeviceL1(
+            dev,
+            receiver_logical_core,
+            test_results_address,
+            test_results_size_bytes,
+            receiver_status,
+            CoreType::WORKER);
+
+        EXPECT_EQ(receiver_status[TT_FABRIC_STATUS_INDEX], TT_FABRIC_STATUS_PASS);
+        uint64_t receiver_bytes =
+            ((uint64_t)receiver_status[TT_FABRIC_WORD_CNT_INDEX + 1] << 32) | receiver_status[TT_FABRIC_WORD_CNT_INDEX];
+
+        EXPECT_EQ(sender_bytes, receiver_bytes);
+    }
 }
 
 void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDirection direction) {
@@ -472,7 +464,6 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
     }
 
     // Create the sender program
-    std::cout << "Write sender kernel to: " << sender_device->id() << std::endl;
     auto sender_program = tt_metal::CreateProgram();
     auto sender_kernel = tt_metal::CreateKernel(
         sender_program,
@@ -526,7 +517,6 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
 
     std::vector<uint32_t> receiver_runtime_args = {packet_payload_size_bytes, num_packets, time_seed};
 
-    std::cout << "Write recv kernel to: " << receiver_device->id() << std::endl;
     // Create the receiver program for validation
     auto receiver_program = tt_metal::CreateProgram();
     auto receiver_kernel = tt_metal::CreateKernel(
@@ -898,27 +888,68 @@ TEST_F(Fabric1DFixture, TestUnicastConnAPI) { RunTestUnicastConnAPI(this, 1); }
 TEST_F(Fabric1DFixture, TestMCastConnAPI) { RunTestMCastConnAPI(this); }
 
 // Unidirectional mcast tests (no turns)
-TEST_F(Fabric2DPushFixture, TestLineMcastE1Hop) { RunTestLineMcast(this, RoutingDirection::W, 1, RoutingDirection::E); }
-TEST_F(Fabric2DPushFixture, TestLineMcastE2Hops) {
-    RunTestLineMcast(this, RoutingDirection::W, 2, RoutingDirection::E);
+TEST_F(Fabric2DPushFixture, TestLineMcastE1Hop) {
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 1};
+    RunTestLineMcast(this, RoutingDirection::W, {routing_info});
 }
-TEST_F(Fabric2DPushFixture, TestLineMcastW1Hop) { RunTestLineMcast(this, RoutingDirection::E, 1, RoutingDirection::W); }
+
+TEST_F(Fabric2DPushFixture, TestLineMcastE2Hops) {
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 2};
+    RunTestLineMcast(this, RoutingDirection::W, {routing_info});
+}
+
+TEST_F(Fabric2DPushFixture, TestLineMcastW1Hop) {
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 1};
+    RunTestLineMcast(this, RoutingDirection::E, {routing_info});
+}
+
 TEST_F(Fabric2DPushFixture, TestLineMcastW2Hops) {
-    RunTestLineMcast(this, RoutingDirection::E, 2, RoutingDirection::W);
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 2};
+    RunTestLineMcast(this, RoutingDirection::E, {routing_info});
 }
 
 // Unidirectional mcast tests (with turns)
 TEST_F(Fabric2DPushFixture, TestLineMcastN1HopE3Hops) {
-    RunTestLineMcast(this, RoutingDirection::N, 3, RoutingDirection::E);
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 3};
+    RunTestLineMcast(this, RoutingDirection::N, {routing_info});
 }
+
 TEST_F(Fabric2DPushFixture, TestLineMcastS1HopE3Hops) {
-    RunTestLineMcast(this, RoutingDirection::S, 3, RoutingDirection::E);
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 3};
+    RunTestLineMcast(this, RoutingDirection::S, {routing_info});
 }
 TEST_F(Fabric2DPushFixture, TestLineMcastN1HopW3Hops) {
-    RunTestLineMcast(this, RoutingDirection::N, 3, RoutingDirection::W);
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 3};
+    RunTestLineMcast(this, RoutingDirection::N, {routing_info});
 }
+
 TEST_F(Fabric2DPushFixture, TestLineMcastS1HopW3Hops) {
-    RunTestLineMcast(this, RoutingDirection::S, 3, RoutingDirection::W);
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 3};
+    RunTestLineMcast(this, RoutingDirection::S, {routing_info});
+}
+
+TEST_F(Fabric2DPushFixture, TestBirDirLineMcastS1HopE1HopW1Hop) {
+    auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 1};
+    auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 1};
+    RunTestLineMcast(this, RoutingDirection::S, {e_routing_info, w_routing_info});
+}
+
+TEST_F(Fabric2DPushFixture, TestBirDirLineMcastN1HopE1HopW1Hop) {
+    auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 1};
+    auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 1};
+    RunTestLineMcast(this, RoutingDirection::N, {e_routing_info, w_routing_info});
+}
+
+TEST_F(Fabric2DPushFixture, TestBirDirLineMcastS1HopE2HopsW1Hop) {
+    auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 2};
+    auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 1};
+    RunTestLineMcast(this, RoutingDirection::S, {e_routing_info, w_routing_info});
+}
+
+TEST_F(Fabric2DPushFixture, TestBirDirLineMcastS1HopE1HopW2Hops) {
+    auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 1};
+    auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 2};
+    RunTestLineMcast(this, RoutingDirection::S, {e_routing_info, w_routing_info});
 }
 
 }  // namespace fabric_router_tests
