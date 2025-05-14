@@ -37,7 +37,9 @@ ttnn::Tensor ConvKnitOperation::invoke(
                    .kernel_height = kernel_height,
                    .num_output_channels = num_output_channels,
                    .input_width = input_width,
-                   .num_input_channels = num_input_channels},
+                   .num_input_channels = num_input_channels,
+                   .num_blocks_per_core = num_blocks_per_core,
+                   .num_cores_with_extra_block = num_cores_with_extra_block},
                {input_tensor})
         .at(0);
 }

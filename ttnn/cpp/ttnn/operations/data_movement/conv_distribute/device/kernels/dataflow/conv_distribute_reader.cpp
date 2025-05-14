@@ -19,7 +19,7 @@ void kernel_main() {
         uint32_t l1_read_addr = src_addr + args[args_idx++];
         uint32_t l1_write_addr = get_write_ptr(shard_cb_id) + args[args_idx++];
         uint32_t read_size = args[args_idx++];
-        noc_async_read(get_noc_addr_from_bank_id<false>(bank_id, addr), l1_write_addr, read_size);
+        noc_async_read(get_noc_addr_from_bank_id<false>(bank_id, l1_read_addr), l1_write_addr, read_size);
     }
     noc_async_read_barrier();
 }

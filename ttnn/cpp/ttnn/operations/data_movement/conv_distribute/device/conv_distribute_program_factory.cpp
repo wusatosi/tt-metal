@@ -60,14 +60,18 @@ operation::ProgramWithCallbacks conv_distribute_multi_core(
 
     tt::tt_metal::CircularBufferConfig out_cb_config =
         tt::tt_metal::CircularBufferConfig(
-            output_tensor.volume() * output_tensor.element_size(), {{out_cb_index, output_cb_data_format}})
+            num_cores_with_extra_block
+                ? (num_blocks_per_core + 1) * block_size * output_stick_size * output_tensor.element_size()
+                : num_blocks_per_core * block_size * output_stick_size * output_tensor.element_size(),
+            {{out_cb_index, output_cb_data_format}})
             .set_page_size(out_cb_index, output_stick_size * output_tensor.element_size())
             .set_globally_allocated_address(*output_tensor.buffer());
+
     auto cb_output = tt::tt_metal::CreateCircularBuffer(program, core_grid, out_cb_config);
 
     // create kernels
     const std::string kernel_name =
-        "ttnn/cpp/ttnn/operations/data_movement/conv_distribute/device/kernels/conv_distribute_reader.cpp";
+        "ttnn/cpp/ttnn/operations/data_movement/conv_distribute/device/kernels/dataflow/conv_distribute_reader.cpp";
     tt::tt_metal::KernelHandle kernel_id_0 = tt::tt_metal::CreateKernel(
         program, kernel_name, core_grid, tt::tt_metal::ReaderDataMovementConfig({out_cb_index}));
     tt::tt_metal::KernelHandle kernel_id_1 = tt::tt_metal::CreateKernel(

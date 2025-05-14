@@ -14,6 +14,7 @@
 #include "ttnn/operations/data_movement/bcast/bcast_pybind.hpp"
 #include "ttnn/operations/data_movement/clone/clone_pybind.hpp"
 #include "ttnn/operations/data_movement/concat/concat_pybind.hpp"
+#include "ttnn/operations/data_movement/conv_distribute/conv_distribute_pybind.hpp"
 #include "ttnn/operations/data_movement/copy/copy_pybind.hpp"
 #include "ttnn/operations/data_movement/expand/expand_pybind.hpp"
 #include "ttnn/operations/data_movement/fill_pad/fill_pad_pybind.hpp"
@@ -73,6 +74,7 @@ void py_module(py::module& module) {
     detail::py_bind_copy(module);
     detail::py_bind_move(module);
     py_bind_expand(module);
+    py_bind_conv_distribute(module);
     py_bind_conv_knit(module);
     py_bind_conv_crop(module);
     py_bind_interleaved_to_sharded(module);
