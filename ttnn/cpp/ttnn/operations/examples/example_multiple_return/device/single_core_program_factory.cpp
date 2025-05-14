@@ -14,28 +14,28 @@ ExampleMultipleReturnDeviceOperation::SingleCore::create(
     using namespace tt;
     using namespace tt::tt_metal;
 
-    const auto& input_tensor = tensor_args.input_tensor;
+    const auto& input = tensor_args.input;
+    const auto& other = tensor_args.other;
 
-    auto output_tensor1 = tensor_return_value.at(0);
-    auto output_tensor2 = tensor_return_value.at(1);
+    auto output = tensor_return_value;
 
-    auto src_buffer = input_tensor.buffer();
+    auto src1_buffer = input.buffer();
+    auto src2_buffer = other.buffer();
 
     tt::tt_metal::Program program{};
 
-    tt::DataFormat cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(input_tensor.get_dtype());
+    tt::DataFormat cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(input.get_dtype());
     uint32_t single_tile_size = tt::tt_metal::detail::TileSize(cb_data_format);
 
-    auto output_dtype =
-        output_tensor1.has_value() ? output_tensor1.value().get_dtype() : output_tensor2.value().get_dtype();
+    auto output_dtype = output.get_dtype();
     tt::DataFormat cb_data_format_output = tt::tt_metal::datatype_to_dataformat_converter(output_dtype);
     uint32_t single_tile_size_output = tt::tt_metal::detail::TileSize(cb_data_format_output);
 
-    uint32_t num_tiles = input_tensor.volume() / tt::constants::TILE_HW;
+    uint32_t num_tiles = input.volume() / tt::constants::TILE_HW;
 
-    tt::tt_metal::IDevice* device = input_tensor.device();
+    tt::tt_metal::IDevice* device = input.device();
 
-    CoreCoord compute_with_storage_grid_size = {1, 1};
+    auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
     uint32_t num_cores_x = compute_with_storage_grid_size.x;
     uint32_t num_cores_y = compute_with_storage_grid_size.y;
     auto [num_cores, all_cores, core_group_1, core_group_2, num_tiles_per_core_group_1, num_tiles_per_core_group_2] =
@@ -48,6 +48,12 @@ ExampleMultipleReturnDeviceOperation::SingleCore::create(
             .set_page_size(src0_cb_index, single_tile_size);
     auto cb_src0 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
 
+    uint32_t src1_cb_index = tt::CBIndex::c_1;
+    tt::tt_metal::CircularBufferConfig cb_src1_config =
+        tt::tt_metal::CircularBufferConfig(num_input_tiles * single_tile_size, {{src1_cb_index, cb_data_format}})
+            .set_page_size(src1_cb_index, single_tile_size);
+    auto cb_src1 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_src1_config);
+
     uint32_t output_cb_index = tt::CBIndex::c_2;
     uint32_t num_output_tiles = 2;
     tt::tt_metal::CircularBufferConfig cb_output_config =
@@ -56,60 +62,24 @@ ExampleMultipleReturnDeviceOperation::SingleCore::create(
             .set_page_size(output_cb_index, single_tile_size_output);
     auto cb_output1 = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_output_config);
 
-    bool src_is_dram = src_buffer->buffer_type() == tt::tt_metal::BufferType::DRAM;
-    std::vector<uint32_t> reader_compile_time_args = {(uint32_t)src_is_dram};
-
-    bool dst_is_dram1 = output_tensor1.has_value()
-                            ? (output_tensor1.value().buffer()->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0)
-                            : false;
-    bool dst_is_dram2 = output_tensor2.has_value()
-                            ? (output_tensor2.value().buffer()->buffer_type() == tt::tt_metal::BufferType::DRAM ? 1 : 0)
-                            : false;
-    std::vector<uint32_t> writer_compile_time_args = {
-        (std::uint32_t)output_cb_index, (std::uint32_t)dst_is_dram1, (std::uint32_t)dst_is_dram2};
-
     tt::tt_metal::KernelHandle unary_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
-        "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/dataflow/reader_unary_interleaved_start_id.cpp",
+        "ttnn/cpp/ttnn/operations/examples/example_multiple_return/device/kernels/dataflow/reader_unary.cpp",
         all_cores,
-        tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args));
+        tt::tt_metal::ReaderDataMovementConfig());
 
     tt::tt_metal::KernelHandle unary_writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
-        "ttnn/cpp/ttnn/operations/examples/example_multiple_return/device/kernels/writer_multiple.cpp",
+        "ttnn/cpp/ttnn/operations/examples/example_multiple_return/device/kernels/dataflow/writer_unary.cpp",
         all_cores,
-        tt::tt_metal::WriterDataMovementConfig(writer_compile_time_args));
-
-    std::vector<uint32_t> compute_kernel_args_group_1 = {
-        num_tiles_per_core_group_1,  // per_core_block_cnt
-        1                            // per_core_block_size
-    };
+        tt::tt_metal::WriterDataMovementConfig());
 
     bool math_approx_mode = false;
     auto eltwise_unary_kernel_group_1_id = tt::tt_metal::CreateKernel(
         program,
-        "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/compute/eltwise_sfpu.cpp",
+        "ttnn/cpp/ttnn/operations/examples/example_multiple_return/device/kernels/compute/eltwise_sfpu.cpp",
         core_group_1,
-        tt::tt_metal::ComputeConfig{
-            .math_fidelity = MathFidelity::HiFi4,
-            .math_approx_mode = math_approx_mode,
-            .compile_args = compute_kernel_args_group_1});
-
-    if (!core_group_2.ranges().empty()) {
-        std::vector<uint32_t> compute_kernel_args_group_2 = {
-            num_tiles_per_core_group_2,  // per_core_block_cnt
-            1                            // per_core_block_size
-        };
-
-        auto eltwise_unary_kernel_group_2_id = tt::tt_metal::CreateKernel(
-            program,
-            "ttnn/cpp/ttnn/operations/eltwise/unary/device/kernels/compute/eltwise_sfpu.cpp",
-            core_group_2,
-            tt::tt_metal::ComputeConfig{
-                .math_fidelity = MathFidelity::HiFi4,
-                .math_approx_mode = math_approx_mode,
-                .compile_args = compute_kernel_args_group_2});
-    }
+        tt::tt_metal::ComputeConfig{.math_fidelity = MathFidelity::HiFi4, .math_approx_mode = math_approx_mode});
 
     for (uint32_t i = 0, num_tiles_written = 0; i < num_cores; i++) {
         CoreCoord core = {i / num_cores_y, i % num_cores_y};
@@ -123,16 +93,10 @@ ExampleMultipleReturnDeviceOperation::SingleCore::create(
         }
 
         tt::tt_metal::SetRuntimeArgs(
-            program, unary_reader_kernel_id, core, {src_buffer->address(), num_tiles_per_core, num_tiles_written});
+            program, unary_reader_kernel_id, core, {src1_buffer->address(), src2_buffer->address(), 1});
 
-        auto dst_buffer1_address = output_tensor1.has_value() ? output_tensor1.value().buffer()->address() : 0;
-        auto dst_buffer2_address = output_tensor2.has_value() ? output_tensor2.value().buffer()->address() : 0;
-        tt::tt_metal::SetRuntimeArgs(
-            program,
-            unary_writer_kernel_id,
-            core,
-            {dst_buffer1_address, dst_buffer2_address, num_tiles_per_core, num_tiles_written});
-        num_tiles_written += num_tiles_per_core;
+        auto dst_buffer_address = output.buffer()->address();
+        tt::tt_metal::SetRuntimeArgs(program, unary_writer_kernel_id, core, {dst_buffer_address, i});
     }
 
     return {
@@ -149,27 +113,23 @@ void ExampleMultipleReturnDeviceOperation::SingleCore::override_runtime_argument
     auto& unary_reader_kernel_id = cached_program.shared_variables.unary_reader_kernel_id;
     auto& unary_writer_kernel_id = cached_program.shared_variables.unary_writer_kernel_id;
 
-    const auto& input_tensor = tensor_args.input_tensor;
-    auto output_tensor1 = tensor_return_value.at(0);
-    auto output_tensor2 = tensor_return_value.at(1);
+    const auto& input = tensor_args.input;
+    const auto& other = tensor_args.other;
+    auto output = tensor_return_value;
 
-    auto src_buffer = input_tensor.buffer();
-    auto dst_buffer1 = output_tensor1.has_value() ? output_tensor1.value().buffer() : 0;
-    auto dst_buffer2 = output_tensor2.has_value() ? output_tensor2.value().buffer() : 0;
+    auto src_buffer1 = input.buffer();
+    auto src_buffer2 = other.buffer();
+    auto dst_buffer = output.buffer();
 
     {
         auto& runtime_args = tt::tt_metal::GetRuntimeArgs(program, unary_reader_kernel_id, CoreCoord{0, 0});
-        runtime_args[0] = src_buffer->address();
+        runtime_args[0] = src_buffer1->address();
+        runtime_args[1] = src_buffer2->address();
     }
 
     {
         auto& runtime_args = tt::tt_metal::GetRuntimeArgs(program, unary_writer_kernel_id, CoreCoord{0, 0});
-        if (output_tensor1.has_value()) {
-            runtime_args[0] = dst_buffer1->address();
-        }
-        if (output_tensor2.has_value()) {
-            runtime_args[1] = dst_buffer2->address();
-        }
+        runtime_args[0] = dst_buffer->address();
     }
 }
 

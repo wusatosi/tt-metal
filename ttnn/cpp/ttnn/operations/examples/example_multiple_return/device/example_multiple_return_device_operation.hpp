@@ -20,8 +20,6 @@ struct ExampleMultipleReturnDeviceOperation {
     struct operation_attributes_t {
         bool attribute = true;
         int some_other_attribute = 42;
-        uint32_t return_output1 = true;
-        uint32_t return_output2 = true;
     };
 
     // Define the tensor arguments. This is it to store all tensors passed in and/or out of the operation
@@ -29,7 +27,9 @@ struct ExampleMultipleReturnDeviceOperation {
     // tensors, etc.
     struct tensor_args_t {
         // This example will use a tensor that can only be used as an input
-        const Tensor& input_tensor;
+        const Tensor& input;
+        const Tensor& other;
+        const Tensor& output;
 
         // However, the following examples show what else can be done with tensor_args_t
 
@@ -55,11 +55,11 @@ struct ExampleMultipleReturnDeviceOperation {
     // Define the return types for the spec(s) of the operation
     // Can be a single ttnn::TensorSpec, std::optional<ttnn::TensorSpec>, std::vector<ttnn::TensorSpec>,
     // std::tuple<ttnn::TensorSpec> etc.
-    using spec_return_value_t = std::tuple<std::optional<ttnn::TensorSpec>, std::optional<ttnn::TensorSpec>>;
+    using spec_return_value_t = ttnn::TensorSpec;
 
     // Define the return types for the tensor(s) of the operation
     // Can be a single Tensor, std::optional<Tensor, ...>, std::vector<Tensor>, std::tuple<Tensor, ...> etc.
-    using tensor_return_value_t = std::vector<std::optional<Tensor>>;
+    using tensor_return_value_t = Tensor;
 
     // Note spec_return_value_t and tensor_return_value_t should follow the same pattern
     // i.e. if spec_return_value_t is a std::vector<std::optional<ttnn::TensorSpec>> then tensor_return_value_t should
@@ -111,7 +111,7 @@ struct ExampleMultipleReturnDeviceOperation {
     // argument will be added automatically for primitive operations So, the user can also call this operation using
     // `tensor_return_value_t output = ttnn::prim::example(queue_id, input_tensor)`
     static std::tuple<operation_attributes_t, tensor_args_t> invoke(
-        const Tensor& input_tensor, bool return_output1, bool return_output2);
+        const Tensor& input, const Tensor& other, const Tensor& output);
 
     // Optional methods
 
