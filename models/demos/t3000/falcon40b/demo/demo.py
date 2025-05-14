@@ -166,6 +166,30 @@ def top_pk_logits_efficient(logits, p=0.9, k=10, temperature=1.0, return_probs=F
         return token
 
 
+def get_ccl_config(mesh_device):
+    compute_grid_size = mesh_device.compute_with_storage_grid_size()
+    ccl_sub_device_crs = ttnn.CoreRangeSet(
+        {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
+    )
+
+    worker_sub_device = ttnn.SubDevice(
+        [
+            ccl_sub_device_crs,
+        ]
+    )
+    worker_sub_device_id = ttnn.SubDeviceId(0)
+    sub_device_stall_group = [worker_sub_device_id]
+    sub_device_manager = mesh_device.create_sub_device_manager([worker_sub_device], 0)
+    mesh_device.load_sub_device_manager(sub_device_manager)
+    mesh_device.set_sub_device_stall_group(sub_device_stall_group)
+
+    # create global semaphore handles
+    ccl_semaphore_handle = ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0)
+    from_remote_semaphore_handles = ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0)
+    to_remote_semaphore_handles = ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0)
+    return worker_sub_device_id, ccl_semaphore_handle, from_remote_semaphore_handles, to_remote_semaphore_handles
+
+
 def run_falcon_demo_kv(
     user_input,
     model_version,
@@ -230,6 +254,12 @@ def run_falcon_demo_kv(
     logger.info("Moving weights (single layer) to devices; might take some time...")
     base_url = ""
     use_global_cos_sin_cache = True
+    (
+        worker_sub_device_id,
+        ccl_semaphore_handle,
+        from_remote_semaphore_handles,
+        to_remote_semaphore_handles,
+    ) = get_ccl_config(mesh_device)
     tt_FalconCausalLM_singlelayer = TtFalconCausalLM(
         mesh_device,
         state_dict,
@@ -240,6 +270,10 @@ def run_falcon_demo_kv(
         model_config,
         tt_cache_path,
         use_global_cos_sin_cache,
+        worker_sub_device_id,
+        ccl_semaphore_handle,
+        from_remote_semaphore_handles,
+        to_remote_semaphore_handles,
     )  # single layer only used for compile
     logger.info("Moved weights (single layer) to devices!")
 
@@ -347,6 +381,10 @@ def run_falcon_demo_kv(
         model_config,
         tt_cache_path,
         use_global_cos_sin_cache,
+        worker_sub_device_id,
+        ccl_semaphore_handle,
+        from_remote_semaphore_handles,
+        to_remote_semaphore_handles,
     )
     logger.info("Moved weights (all layers) to device!")
     profiler.end(f"moving_to_device")
@@ -571,6 +609,7 @@ def run_falcon_demo_kv(
 @pytest.mark.parametrize("perf_mode", (False,))  # Option to measure perf using max seq length (with invalid outputs)
 @pytest.mark.parametrize("greedy_sampling", (False,))
 @pytest.mark.parametrize("max_seq_len", (128,))
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 def test_demo(
     perf_mode,
     greedy_sampling,

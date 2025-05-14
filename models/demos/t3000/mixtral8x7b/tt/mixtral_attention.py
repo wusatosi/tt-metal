@@ -10,7 +10,7 @@ from ttnn import ReplicateTensorToMesh, ShardTensorToMesh
 
 
 class TtMixtralAttention(LightweightModule):
-    def __init__(self, mesh_device, state_dict, args, layer_num, dtype):
+    def __init__(self, mesh_device, state_dict, args, layer_num, dtype, ccl_semaphore_handle):
         super().__init__()
         self.num_devices = 8
         self.tile_size = 32
@@ -29,6 +29,7 @@ class TtMixtralAttention(LightweightModule):
         self.n_local_kv_heads = self.n_kv_heads // self.num_devices
 
         self.dtype = dtype
+        self.ccl_semaphore_handle = ccl_semaphore_handle
 
         self.model_config = self.model_args.get_model_config()
 
@@ -270,7 +271,13 @@ class TtMixtralAttention(LightweightModule):
         )
         attn_output_11BH.deallocate(True)
         # All gather
-        dense_outputs_11BH = ttnn.all_gather(dense_out_11BH, dim=2, num_links=1)
+        dense_outputs_11BH = ttnn.experimental.all_gather_async(
+            dense_out_11BH,
+            dim=2,
+            num_links=1,
+            multi_device_global_semaphore=self.ccl_semaphore_handle,
+            topology=ttnn.Topology.Linear,
+        )
 
         # return the sum of the outputs
 
@@ -407,7 +414,13 @@ class TtMixtralAttention(LightweightModule):
 
         if seq_len > 2048:  # Reshape back to intended shape
             output_11SH = ttnn.reshape(output_11SH, (1, 1, seq_len, -1))
-        output_11BH_gathered = ttnn.all_gather(output_11SH, dim=1, num_links=1)
+        output_11BH_gathered = ttnn.experimental.all_gather_async(
+            output_11SH,
+            dim=1,
+            num_links=1,
+            multi_device_global_semaphore=self.ccl_semaphore_handle,
+            topology=ttnn.Topology.Linear,
+        )
         output_11SH.deallocate(True)
         output_11BH_reduced = ttnn.experimental.fast_reduce_nc(
             output_11BH_gathered, dims=[1], output=None, compute_kernel_config=None

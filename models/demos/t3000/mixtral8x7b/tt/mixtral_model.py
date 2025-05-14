@@ -12,7 +12,9 @@ from models.demos.t3000.mixtral8x7b.tt.mixtral_decoder import TtTransformerBlock
 
 
 class TtTransformer(LightweightModule):
-    def __init__(self, mesh_device, state_dict, args, dtype, layers, start_pos_ids, rotary_on_host=False):
+    def __init__(
+        self, mesh_device, state_dict, args, dtype, layers, start_pos_ids, ccl_semaphore_handle, rotary_on_host=False
+    ):
         super().__init__()
         self.args = args
         self.vocab_size = args.vocab_size
@@ -20,6 +22,7 @@ class TtTransformer(LightweightModule):
         self.mesh_device = mesh_device
         self.model_config = args.get_model_config()
         self.rotary_on_host = rotary_on_host
+        self.ccl_semaphore_handle = ccl_semaphore_handle
         assert self.vocab_size > 0
 
         self.layers = [
@@ -29,6 +32,7 @@ class TtTransformer(LightweightModule):
                 args=args,
                 dtype=dtype,
                 layer_num=i,
+                ccl_semaphore_handle=ccl_semaphore_handle,
             )
             for i in layers
         ]

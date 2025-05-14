@@ -32,8 +32,32 @@ class Emb(torch.nn.Module):
         return self.emb(x)
 
 
+def get_ccl_config(mesh_device):
+    compute_grid_size = mesh_device.compute_with_storage_grid_size()
+    ccl_sub_device_crs = ttnn.CoreRangeSet(
+        {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(compute_grid_size.x - 1, compute_grid_size.y - 1))}
+    )
+    """
+    worker_sub_device = ttnn.SubDevice(
+        [
+            ccl_sub_device_crs,
+        ]
+    )
+    worker_sub_device_id = ttnn.SubDeviceId(0)
+    sub_device_stall_group = [worker_sub_device_id]
+    sub_device_manager = mesh_device.create_sub_device_manager([worker_sub_device], 0)
+    mesh_device.load_sub_device_manager(sub_device_manager)
+    mesh_device.set_sub_device_stall_group(sub_device_stall_group)
+    """
+    # create global semaphore handles
+    ccl_semaphore_handle = ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0)
+    # from_remote_semaphore_handles = ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0)
+    # to_remote_semaphore_handles = ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0)
+    return ccl_semaphore_handle
+
+
 @torch.no_grad()
-def run_mixtral_demo(user_input, batch_size, mesh_device, instruct_mode, is_ci_env):
+def run_mixtral_demo(user_input, batch_size, mesh_device, instruct_mode, is_ci_env, ccl_semaphore_handle):
     if batch_size == 32:
         max_seq_len = 16384
     elif batch_size in [4, 8, 16]:
@@ -91,6 +115,7 @@ def run_mixtral_demo(user_input, batch_size, mesh_device, instruct_mode, is_ci_e
         layers=list(range(model_args.n_layers)),
         start_pos_ids=[0 for _ in range(batch_size)],  # Start position for decode mode
         dtype=dtype,
+        ccl_semaphore_handle=ccl_semaphore_handle,
         rotary_on_host=False,
     )
 
@@ -133,6 +158,7 @@ def run_mixtral_demo(user_input, batch_size, mesh_device, instruct_mode, is_ci_e
         current_rot_mat,
         rot_matrix,
         dtype,
+        ccl_semaphore_handle,
     )
 
     logger.info("Starting inference...")
@@ -256,6 +282,7 @@ def run_mixtral_demo(user_input, batch_size, mesh_device, instruct_mode, is_ci_e
     #     logger.info("[CI-Only] Output token validation passed!")
 
 
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 @pytest.mark.parametrize(
     "input_prompts, instruct_weights",
     [
@@ -267,11 +294,12 @@ def run_mixtral_demo(user_input, batch_size, mesh_device, instruct_mode, is_ci_e
 def test_mixtral8x7b_demo(t3k_mesh_device, use_program_cache, input_prompts, instruct_weights, is_ci_env):
     if is_ci_env and instruct_weights == True:
         pytest.skip("CI demo test only runs general weights to reduce CI pipeline load (both are supported)")
-
+    ccl_semaphore_handle = get_ccl_config(t3k_mesh_device)
     return run_mixtral_demo(
         user_input=input_prompts,
         batch_size=32,
         mesh_device=t3k_mesh_device,
         instruct_mode=instruct_weights,
         is_ci_env=is_ci_env,
+        ccl_semaphore_handle=ccl_semaphore_handle,
     )

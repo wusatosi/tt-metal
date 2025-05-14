@@ -10,20 +10,14 @@ from models.demos.t3000.mixtral8x7b.tt.mixtral_moe import TtMoeLayer
 
 
 class TtTransformerBlock(LightweightModule):
-    def __init__(
-        self,
-        mesh_device,
-        state_dict,
-        args,
-        layer_num,
-        dtype,
-    ):
+    def __init__(self, mesh_device, state_dict, args, layer_num, dtype, ccl_semaphore_handle):
         super().__init__()
 
         self.state_dict = state_dict
         self.mesh_device = mesh_device
 
         self.args = args
+        self.ccl_semaphore_handle = ccl_semaphore_handle
 
         self.layer_num = layer_num
         self.attention = TtMixtralAttention(
@@ -32,6 +26,7 @@ class TtTransformerBlock(LightweightModule):
             args=args,
             layer_num=layer_num,
             dtype=dtype,
+            ccl_semaphore_handle=ccl_semaphore_handle,
         )
 
         self.feed_forward = TtMoeLayer(
@@ -51,6 +46,7 @@ class TtTransformerBlock(LightweightModule):
             args=args,
             layer_num=layer_num,
             dtype=dtype,
+            ccl_semaphore_handle=ccl_semaphore_handle,
         )
         self.attention_norm = RMSNorm(
             device=mesh_device,
