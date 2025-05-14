@@ -34,10 +34,8 @@ std::string get_macro_definition(UnaryOpType op_type) {
         case UnaryOpType::DIV_UNARY_SFPU: return "SFPU_OP_BINOP_WITH_SCALAR_INCLUDE";
         case UnaryOpType::IDENTITY:
         case UnaryOpType::IDENTITY_UINT32: return "SFPU_OP_IDENTITY_INCLUDE";
-        case UnaryOpType::FLOOR:
-        case UnaryOpType::FLOOR_FLOAT32: return "SFPU_OP_FLOOR_INCLUDE";
-        case UnaryOpType::CEIL:
-        case UnaryOpType::CEIL_FLOAT32: return "SFPU_OP_CEIL_INCLUDE";
+        case UnaryOpType::FLOOR: return "SFPU_OP_FLOOR_INCLUDE";
+        case UnaryOpType::CEIL: return "SFPU_OP_CEIL_INCLUDE";
         case UnaryOpType::RDIV:
         case UnaryOpType::RSUB: return "SFPU_OP_REVERSE_FAMILY_INCLUDE";
         case UnaryOpType::ISINF:
@@ -424,13 +422,23 @@ std::pair<string, string> get_op_init_and_func_default(
         case UnaryOpType::IDENTITY_UINT32:
             op_init_and_name = {"identity_tile_init();", fmt::format("identity_tile_uint32({});", idst)};
             break;
-        case UnaryOpType::FLOOR: op_init_and_name = {"floor_tile_init();", fmt::format("floor_tile({});", idst)}; break;
-        case UnaryOpType::FLOOR_FLOAT32:
-            op_init_and_name = {"floor_tile_init();", fmt::format("floor_tile_float32({});", idst)};
+        case UnaryOpType::FLOOR:
+            TT_FATAL(
+                input_dtype.has_value(), "Missing input dtype: Expected a valid input dtype, but none was provided.");
+            if (input_dtype == DataType::FLOAT32) {
+                op_init_and_name = {"floor_tile_init();", fmt::format("floor_tile_float32({});", idst)};
+            } else {
+                op_init_and_name = {"floor_tile_init();", fmt::format("floor_tile({});", idst)};
+            }
             break;
-        case UnaryOpType::CEIL: op_init_and_name = {"ceil_tile_init();", fmt::format("ceil_tile({});", idst)}; break;
-        case UnaryOpType::CEIL_FLOAT32:
-            op_init_and_name = {"ceil_tile_init();", fmt::format("ceil_tile_float32({});", idst)};
+        case UnaryOpType::CEIL:
+            TT_FATAL(
+                input_dtype.has_value(), "Missing input dtype: Expected a valid input dtype, but none was provided.");
+            if (input_dtype == DataType::FLOAT32) {
+                op_init_and_name = {"ceil_tile_init();", fmt::format("ceil_tile_float32({});", idst)};
+            } else {
+                op_init_and_name = {"ceil_tile_init();", fmt::format("ceil_tile({});", idst)};
+            }
             break;
         case UnaryOpType::RELU6:
             op_init_and_name = {"relu_max_tile_init();", fmt::format("relu_max_tile({}, 0x40c00000u);", idst)};
