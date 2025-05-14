@@ -40,6 +40,7 @@
 #include <umd/device/tt_xy_pair.h>
 #include "work_executor.hpp"
 #include "data_collection.hpp"
+#include "simple_trace_allocator.hpp"
 
 namespace tt {
 namespace tt_metal {
@@ -698,49 +699,17 @@ void HWCommandQueue::record_begin(const uint32_t tid, const std::shared_ptr<Trac
     this->manager_.set_bypass_mode(true, true);  // start trace capture
 }
 
-// Allocate space for program binaries and other data in the worker config ring buffer.
-void HWCommandQueue::allocate_trace_programs() {
-    const auto& hal = MetalContext::instance().hal();
-    uint32_t expected_workers_completed = 0;
-    for (auto& node : this->trace_nodes_) {
-        auto& program = *node.program;
-        auto sub_device_id = node.sub_device_id;
-        auto sub_device_index = *sub_device_id;
-        uint32_t num_workers = 0;
-        if (program.runs_on_noc_multicast_only_cores()) {
-            num_workers += device_->num_worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
-        }
-        if (program.runs_on_noc_unicast_only_cores()) {
-            num_workers += device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
-        }
-        program_dispatch::ProgramDispatchMetadata dispatch_metadata;
-        // Reserve space for this program in the kernel config ring buffer
-        program_dispatch::reserve_space_in_kernel_config_buffer(
-            this->config_buffer_mgr_[sub_device_index],
-            program.get_program_config_sizes(),
-            program.get_program_binary_status(device_->id()),
-            num_workers,
-            expected_workers_completed,
-            dispatch_metadata);
-        uint32_t index = hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX);
-        ProgramConfig& program_config = program.get_program_config(index);
-
-        node.dispatch_metadata.binary_kernel_config_addrs = dispatch_metadata.kernel_config_addrs;
-        node.dispatch_metadata.nonbinary_kernel_config_addrs = dispatch_metadata.kernel_config_addrs;
-        node.dispatch_metadata.sync_count = dispatch_metadata.sync_count;
-        node.dispatch_metadata.stall_first = dispatch_metadata.stall_first;
-        node.dispatch_metadata.stall_before_program = dispatch_metadata.stall_before_program;
-
-        // Allocate non-binaries before binaries for tensix. Non-tensix doesn't use a ringbuffer for binaries, so its
-        // addresses don't need adjustment.
-        node.dispatch_metadata.binary_kernel_config_addrs[index].addr += program_config.kernel_text_offset;
-
-        expected_workers_completed += num_workers;
-    }
-}
-
 void HWCommandQueue::record_end() {
-    allocate_trace_programs();
+    const auto& hal = MetalContext::instance().hal();
+    uint32_t worker_ringbuffer_start =
+        hal.get_dev_addr(HalProgrammableCoreType::TENSIX, tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG);
+    uint32_t worker_ringbuffer_size = device_->allocator()->get_config().l1_unreserved_base - worker_ringbuffer_start;
+    SimpleTraceAllocator allocator{
+        worker_ringbuffer_start,
+        worker_ringbuffer_size,
+        hal.get_dev_addr(HalProgrammableCoreType::ACTIVE_ETH, tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG),
+        hal.get_dev_size(HalProgrammableCoreType::ACTIVE_ETH, tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG)};
+    allocator.allocate_trace_programs(this->device_, this->trace_nodes_);
     for (auto& node : this->trace_nodes_) {
         auto sub_device_id = node.sub_device_id;
         auto& program = *node.program;
