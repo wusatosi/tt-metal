@@ -102,12 +102,7 @@ void kernel_main() {
 
         if constexpr (is_2d_fabric) {
             DPRINT << "Set mcast route" << ENDL();
-            fabric_set_mcast_route(
-                (MeshPacketHeader*)packet_header_buffer_address,
-                fwd_dev_id,
-                mcast_fwd_hops,
-                eth_chan_directions::EAST  // mcast in north direction
-            );
+            fabric_set_mcast_route((MeshPacketHeader*)packet_header_buffer_address, fwd_dev_id, 2, 1, 0, 0);
         }
 
         setup_connection_and_headers(

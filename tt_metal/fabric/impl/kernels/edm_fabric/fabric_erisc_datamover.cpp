@@ -451,16 +451,6 @@ FORCE_INLINE bool can_forward_packet_completely(
     return deliver_locally_only || downstream_edm_interface.edm_has_space_for_packet();
 }
 
-FORCE_INLINE eth_chan_directions get_mcast_dir(tt_l1_ptr PACKET_HEADER_TYPE* packet_header) {
-    // Check if an mcast hop count is specified for a particular direction
-    for (uint32_t i = eth_chan_directions::EAST; i < eth_chan_directions::COUNT; i++) {
-        if (packet_header->mcast_params[i]) {
-            return (eth_chan_directions)(i);
-        }
-    }
-    return eth_chan_directions::COUNT;
-}
-
 template <uint8_t SENDER_NUM_BUFFERS>
 FORCE_INLINE __attribute__((optimize("jump-tables"))) bool can_forward_packet_completely(
     tt_l1_ptr PACKET_HEADER_TYPE* packet_header,
@@ -468,15 +458,19 @@ FORCE_INLINE __attribute__((optimize("jump-tables"))) bool can_forward_packet_co
         downstream_edm_interface) {
     volatile tt_l1_ptr fabric_router_l1_config_t* routing_table =
         reinterpret_cast<tt_l1_ptr fabric_router_l1_config_t*>(eth_l1_mem::address_map::FABRIC_ROUTER_CONFIG_BASE);
-    DPRINT << "MCAST ACTIVE:  " << +(packet_header->is_mcast_active) << ENDL();
+
     if (packet_header->is_mcast_active) {
         // mcast downstream needs to check if downstream has space (lookup from set direction field)
         // forward to local and remote
-        auto mcast_dir = get_mcast_dir(packet_header);
-        if (mcast_dir != eth_chan_directions::COUNT) {
-            return downstream_edm_interface[mcast_dir].edm_has_space_for_packet();
+        bool has_space = true;
+        // If the current chip is part of an mcast group, stall until all downstream mcast receivers have
+        // space
+        for (size_t i = eth_chan_directions::EAST; i < eth_chan_directions::COUNT; i++) {
+            if (packet_header->mcast_params[i]) {
+                has_space &= downstream_edm_interface[i].edm_has_space_for_packet();
+            }
         }
-        return true;
+        return has_space;
     } else {
         // check if header matches curr. If so, check mcast fields, set mcast true and forward to specific direction
         auto dest_chip_id = packet_header->dst_start_chip_id;
@@ -491,13 +485,17 @@ FORCE_INLINE __attribute__((optimize("jump-tables"))) bool can_forward_packet_co
             if (dest_chip_id == routing_table->my_device_id) {
                 // Packet has reached its intended chip. Check if this is an mcast or unicast txn.
                 // If mcast, this packet needs to be forwarded to remote and unicasted locally.
-                auto mcast_dir = get_mcast_dir(packet_header);
-                if (mcast_dir != eth_chan_directions::COUNT) {
-                    packet_header->is_mcast_active = 1;  // Set mcast mode if a valid mcast direction is specified
-                    // Issuing Mcast, check if downstream has space for packet
-                    return downstream_edm_interface[mcast_dir].edm_has_space_for_packet();
+                bool mcast_active = false;
+                bool has_space = true;
+                for (size_t i = eth_chan_directions::EAST; i < eth_chan_directions::COUNT; i++) {
+                    if (packet_header->mcast_params[i] and i != my_direction) {
+                        mcast_active = true;
+                        has_space &= downstream_edm_interface[i].edm_has_space_for_packet();
+                    }
                 }
-                return true;
+                packet_header->is_mcast_active =
+                    mcast_active;  // Set mcast mode if a valid mcast directions are specified
+                return has_space;
             } else {
                 // Unicast packet needs to be forwarded
                 uint8_t port_direction_table[16];
@@ -641,14 +639,12 @@ FORCE_INLINE __attribute__((optimize("jump-tables"))) void receiver_forward_pack
             execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id, rx_channel_id);
             if (mcast_active) {
                 // This packet is in an active mcast
-                auto mcast_dir = get_mcast_dir(packet_start);  // Query downstream mcast dir
-                DPRINT << "Issue mcast " << (uint32_t)(mcast_dir) << " " << packet_start->mcast_params[mcast_dir]
-                       << ENDL();
-                if (mcast_dir != eth_chan_directions::COUNT) {
-                    // Valid dir found - this packet needs to be sent downstream
-                    packet_start->mcast_params[mcast_dir]--;
-                    forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support, false>(
-                        packet_start, payload_size_bytes, downstream_edm_interface[mcast_dir], transaction_id);
+                for (size_t i = eth_chan_directions::EAST; i < eth_chan_directions::COUNT; i++) {
+                    if (packet_start->mcast_params[i] and i != my_direction) {
+                        packet_start->mcast_params[i]--;
+                        forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support, false>(
+                            packet_start, payload_size_bytes, downstream_edm_interface[i], transaction_id);
+                    }
                 }
             }
         } else {
@@ -953,9 +949,7 @@ void run_receiver_channel_step(
             did_something = true;
             uint8_t trid = receiver_channel_trid_tracker.update_buffer_slot_to_next_trid_and_advance_trid_counter(
                 receiver_buffer_index);
-            DPRINT << "Sending" << ENDL();
             if constexpr (is_2d_fabric) {
-                DPRINT << "2d FABRIC" << ENDL();
 #if defined(DYNAMIC_ROUTING_ENABLED)
                 DPRINT << "FORWARD PACKET WITH DYNAMIC ROUTING" << ENDL();
                 receiver_forward_packet(packet_header, downstream_edm_interface, trid, rx_channel_id);

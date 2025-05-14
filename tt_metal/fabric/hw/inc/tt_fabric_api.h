@@ -427,21 +427,18 @@ void fabric_set_unicast_route(
 }
 
 void fabric_set_mcast_route(
-    MeshPacketHeader* packet_header, uint16_t mcast_start_id, uint16_t num_mcast_hops, eth_chan_directions mcast_dir) {
-    DPRINT << "Start chip id: " << mcast_start_id << ENDL();
-    packet_header->dst_start_chip_id = mcast_start_id;
+    MeshPacketHeader* packet_header,
+    uint16_t dst_dev_id,
+    uint16_t e_num_hops,
+    uint16_t w_num_hops,
+    uint16_t n_num_hops,
+    uint16_t s_num_hops) {
+    packet_header->dst_start_chip_id = dst_dev_id;
     packet_header->dst_start_mesh_id = 0;
-    packet_header->mcast_params[0] = 0;
-    packet_header->mcast_params[1] = 0;
-    packet_header->mcast_params[2] = 0;
-    packet_header->mcast_params[3] = 0;
-    // Specify number of hops for mcast direction
-
-    DPRINT << "Mcast Dir: " << (uint32_t)mcast_dir << ENDL();
-    DPRINT << "Num mcast hops: " << num_mcast_hops << ENDL();
-
-    packet_header->mcast_params[mcast_dir] = num_mcast_hops;
-
+    packet_header->mcast_params[0] = e_num_hops;
+    packet_header->mcast_params[1] = w_num_hops;
+    packet_header->mcast_params[2] = n_num_hops;
+    packet_header->mcast_params[3] = s_num_hops;
     packet_header->is_mcast_active = 0;
 }
 

@@ -129,14 +129,14 @@ bool find_device_with_neighbor_in_multi_direction(
     return connection_found;
 }
 
-void RunTestMcastRaw(BaseFabricFixture* fixture) {
+void RunTestLineMcast(BaseFabricFixture* fixture) {
     CoreCoord sender_logical_core = {0, 0};
     CoreCoord receiver_logical_core = {1, 0};
 
     auto* control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
-    chip_id_t sender_phys_id = 4;
-    chip_id_t recv_phys_id_0 = 5;
-    chip_id_t recv_phys_id_1 = 6;
+    chip_id_t sender_phys_id = 1;
+    chip_id_t recv_phys_id_0 = 0;
+    chip_id_t recv_phys_id_1 = 7;
     auto sender_id = control_plane->get_mesh_chip_id_from_physical_chip_id(sender_phys_id);
     auto recv_id_0 = control_plane->get_mesh_chip_id_from_physical_chip_id(recv_phys_id_0);
     auto recv_id_1 = control_plane->get_mesh_chip_id_from_physical_chip_id(recv_phys_id_1);
@@ -160,16 +160,6 @@ void RunTestMcastRaw(BaseFabricFixture* fixture) {
 
         GTEST_SKIP() << "Skipping Test";
     }
-    auto virtual_router = routers[0].second;
-    auto logical_router = tt::tt_metal::MetalContext::instance().get_cluster().get_logical_ethernet_core_from_virtual(
-        sender_phys_id, virtual_router);
-    chan_id_t edm_port = logical_router.y;
-
-    auto edm_direction = control_plane->get_eth_chan_direction(sender_id.first, sender_id.second, edm_port);
-    CoreCoord edm_eth_core = tt::tt_metal::MetalContext::instance().get_cluster().get_virtual_eth_core_from_channel(
-        sender_phys_id, edm_port);
-
-    tt::log_info(tt::LogTest, "Using edm port {} in direction {}", edm_port, edm_direction);
 
     auto* sender_device = DevicePool::instance().get_active_device(sender_phys_id);
     auto* receiver_device = DevicePool::instance().get_active_device(recv_phys_id_0);
@@ -230,30 +220,8 @@ void RunTestMcastRaw(BaseFabricFixture* fixture) {
         1};
 
     // append the EDM connection rt args
-    const auto sender_channel = edm_config.topology == Topology::Mesh ? edm_direction : 0;
-    tt::tt_fabric::SenderWorkerAdapterSpec edm_connection = {
-        .edm_noc_x = edm_eth_core.x,
-        .edm_noc_y = edm_eth_core.y,
-        .edm_buffer_base_addr = edm_config.sender_channels_base_address[sender_channel],
-        .num_buffers_per_channel = edm_config.sender_channels_num_buffers[sender_channel],
-        .edm_l1_sem_addr = edm_config.sender_channels_local_flow_control_semaphore_address[sender_channel],
-        .edm_connection_handshake_addr = edm_config.sender_channels_connection_semaphore_address[sender_channel],
-        .edm_worker_location_info_addr = edm_config.sender_channels_worker_conn_info_base_address[sender_channel],
-        .buffer_size_bytes = edm_config.channel_buffer_size_bytes,
-        .buffer_index_semaphore_id = edm_config.sender_channels_buffer_index_semaphore_address[sender_channel],
-        .persistent_fabric = true,
-        .edm_direction = edm_direction};
-
-    auto worker_flow_control_semaphore_id = tt_metal::CreateSemaphore(sender_program, sender_logical_core, 0);
-    auto worker_teardown_semaphore_id = tt_metal::CreateSemaphore(sender_program, sender_logical_core, 0);
-    auto worker_buffer_index_semaphore_id = tt_metal::CreateSemaphore(sender_program, sender_logical_core, 0);
-
-    append_worker_to_fabric_edm_sender_rt_args(
-        edm_connection,
-        worker_flow_control_semaphore_id,
-        worker_teardown_semaphore_id,
-        worker_buffer_index_semaphore_id,
-        sender_runtime_args);
+    append_fabric_connection_rt_args(
+        sender_phys_id, recv_phys_id_0, 0, sender_program, {sender_logical_core}, sender_runtime_args);
 
     tt_metal::SetRuntimeArgs(sender_program, sender_kernel, sender_logical_core, sender_runtime_args);
 
@@ -891,6 +859,6 @@ void RunTestMCastConnAPI(BaseFabricFixture* fixture) {
 // TEST_F(Fabric1DFixture, TestUnicastRaw) { RunTestUnicastRaw(this, 1); }
 TEST_F(Fabric1DFixture, TestUnicastConnAPI) { RunTestUnicastConnAPI(this, 1); }
 TEST_F(Fabric1DFixture, TestMCastConnAPI) { RunTestMCastConnAPI(this); }
-TEST_F(Fabric2DPushFixture, TestMcastRaw) { RunTestMcastRaw(this); }
+TEST_F(Fabric2DPushFixture, TestMcastRaw) { RunTestLineMcast(this); }
 }  // namespace fabric_router_tests
 }  // namespace tt::tt_fabric
