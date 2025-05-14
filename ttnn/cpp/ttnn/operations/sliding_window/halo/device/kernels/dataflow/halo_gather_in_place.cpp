@@ -316,7 +316,7 @@ void kernel_main() {
     // DPRINT << "untilize done" << ENDL();
 
     // copy remote sticks to temp buffer or their final destinations
-    if constexpr (remote_config_cb_id && remote_temp_cb_id) {
+    if constexpr (remote_config_cb_id) {
         // tt::data_movement::common::print_bf16_pages(in_base_l1_addr, 32, 224);
 
         // DPRINT << "REMOTE TO TEMP" << ENDL();
