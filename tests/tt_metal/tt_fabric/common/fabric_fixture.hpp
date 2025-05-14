@@ -110,7 +110,8 @@ bool find_device_with_neighbor_in_multi_direction(
     std::unordered_map<RoutingDirection, std::vector<std::pair<mesh_id_t, chip_id_t>>>& dst_mesh_chip_ids_by_dir,
     chip_id_t& src_physical_device_id,
     std::unordered_map<RoutingDirection, std::vector<chip_id_t>>& dst_physical_device_ids_by_dir,
-    const std::unordered_map<RoutingDirection, uint32_t>& mcast_hops);
+    const std::unordered_map<RoutingDirection, uint32_t>& mcast_hops,
+    std::optional<RoutingDirection> incoming_direction = std::nullopt);
 
 bool find_device_with_neighbor_in_direction(
     BaseFabricFixture* fixture,
