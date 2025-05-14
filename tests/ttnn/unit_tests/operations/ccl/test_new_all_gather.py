@@ -613,8 +613,8 @@ def test_line_all_gather_async_on_T3K_cols_persistent_fabric_post_commit(
 def test_all_gather_ring_async_on_T3K(mesh_device):
     torch_tensor = torch.rand((32, 512), dtype=torch.bfloat16)
     for i in range(16):
-        # torch_tensor[:, i * 32 : (i + 1) * 32] = torch.randn(32, 32, dtype=torch.bfloat16)
-        torch_tensor[:, i * 32 : (i + 1) * 32] = i
+        torch_tensor[:, i * 32 : (i + 1) * 32] = torch.randn(32, 32, dtype=torch.bfloat16)
+        # torch_tensor[:, i * 32 : (i + 1) * 32] = i
     # Convert to ttnn.Tensor, tilize and move onto devices across mesh DRAM
     mesh_tensor = ttnn.from_torch(
         torch_tensor,

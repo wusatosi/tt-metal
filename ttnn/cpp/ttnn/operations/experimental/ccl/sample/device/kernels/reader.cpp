@@ -16,7 +16,7 @@ using address_t = uint32_t;
 using tt::tt_metal::BufferType;
 
 constexpr uint32_t in_cb_index = get_compile_time_arg_val(0);
-constexpr uint32_t is_forward = get_compile_time_arg_val(1);
+constexpr uint32_t is_forward = !get_compile_time_arg_val(1);
 // constexpr uint32_t dst_cb_index = get_compile_time_arg_val(1);
 
 void kernel_main() {
@@ -74,6 +74,9 @@ void kernel_main() {
                << *reinterpret_cast<volatile tt_l1_ptr uint32_t*>(signal_semaphore_addr_ptr) << "\n";
         noc_semaphore_wait(signal_semaphore_addr_ptr, device_iter + 1);
     }
+
+    DPRINT << "READER: FINAL semaphore value: "
+           << *reinterpret_cast<volatile tt_l1_ptr uint32_t*>(signal_semaphore_addr_ptr) << "\n";
 
     DPRINT << "DONE READER\n";
 }

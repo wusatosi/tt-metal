@@ -112,13 +112,14 @@ void kernel_main() {
 
     for (uint32_t device_iter = 0; device_iter < 7; device_iter++) {
         // Sync up, let next device know we can receive data
+        pkt_hdr_bwd->to_chip_multicast(UNICAST_HDR);
         pkt_hdr_bwd->to_noc_unicast_atomic_inc(INC_HDR(out_global_sem_can_receive_noc_addr, true));
         bwd_conn.wait_for_empty_write_slot();
         bwd_conn.send_payload_flush_non_blocking_from_address(
             reinterpret_cast<uint32_t>(pkt_hdr_bwd), sizeof(PACKET_HEADER_TYPE));
 
         // Wait until the next device told us it can recieve data
-        while (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(global_sem_addr_can_receive_ptr) < (device_iter + 1));
+        while (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(global_sem_addr_can_receive_ptr) != (device_iter + 1));
 
         uint32_t device_to_process = (((device_order + device_iter * device_direction) % 8) + 8) % 8;
         uint32_t prev_device = (((device_to_process + device_direction) % 8) + 8) % 8;
@@ -132,6 +133,7 @@ void kernel_main() {
             uint32_t l1_read_addr = get_read_ptr(in_cb_index);
             uint64_t dst_noc_addr = safe_get_noc_addr(out_noc_x, out_noc_y, l1_dst_addr, 0);
 
+            pkt_hdr_fwd->to_chip_multicast(UNICAST_HDR);
             pkt_hdr_fwd->to_noc_unicast_write(
                 tt::tt_fabric::NocUnicastCommandHeader{dst_noc_addr}, input_tensor_page_size);
             conn.wait_for_empty_write_slot();
@@ -146,6 +148,7 @@ void kernel_main() {
 
         // Increase global semaphore of next device, let next device know it can read data
         DPRINT << "Sending semaphore increase...\n";
+        pkt_hdr_fwd->to_chip_multicast(UNICAST_HDR);
         pkt_hdr_fwd->to_noc_unicast_atomic_inc(INC_HDR(out_global_sem_sent_noc_addr, true));
         conn.wait_for_empty_write_slot();
         conn.send_payload_flush_non_blocking_from_address(
@@ -154,7 +157,7 @@ void kernel_main() {
         DPRINT << "WRITER: Waiting on semaphore val: " << (device_iter + 1) << " and got "
                << *reinterpret_cast<volatile tt_l1_ptr uint32_t*>(global_sem_addr_sent_ptr) << "\n";
         // Wait to recieve the data
-        while (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(global_sem_addr_sent_ptr) < (device_iter + 1));
+        while (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(global_sem_addr_sent_ptr) != (device_iter + 1));
 
         DPRINT << "!!! GOT SEMAPHORE !!!\n";
 
@@ -171,6 +174,10 @@ void kernel_main() {
         noc_semaphore_inc(local_noc_sem_addr, 1);
         noc_async_writes_flushed();
     }
+
+    // final semaphor value
+    DPRINT << "WRITER: FINAL semaphore val: "
+           << *reinterpret_cast<volatile tt_l1_ptr uint32_t*>(global_sem_addr_sent_ptr) << "\n";
 
     fabric_connection.close();
     DPRINT << "Done writer.\n";
