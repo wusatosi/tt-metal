@@ -928,25 +928,25 @@ TEST_F(Fabric2DPushFixture, TestLineMcastS1HopW3Hops) {
     RunTestLineMcast(this, RoutingDirection::S, {routing_info});
 }
 
-TEST_F(Fabric2DPushFixture, TestBirDirLineMcastS1HopE1HopW1Hop) {
+TEST_F(Fabric2DPushFixture, TestBiDirLineMcastS1HopE1HopW1Hop) {
     auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 1};
     auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 1};
     RunTestLineMcast(this, RoutingDirection::S, {e_routing_info, w_routing_info});
 }
 
-TEST_F(Fabric2DPushFixture, TestBirDirLineMcastN1HopE1HopW1Hop) {
+TEST_F(Fabric2DPushFixture, TestBiDirLineMcastN1HopE1HopW1Hop) {
     auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 1};
     auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 1};
     RunTestLineMcast(this, RoutingDirection::N, {e_routing_info, w_routing_info});
 }
 
-TEST_F(Fabric2DPushFixture, TestBirDirLineMcastS1HopE2HopsW1Hop) {
+TEST_F(Fabric2DPushFixture, TestBiDirLineMcastS1HopE2HopsW1Hop) {
     auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 2};
     auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 1};
     RunTestLineMcast(this, RoutingDirection::S, {e_routing_info, w_routing_info});
 }
 
-TEST_F(Fabric2DPushFixture, TestBirDirLineMcastS1HopE1HopW2Hops) {
+TEST_F(Fabric2DPushFixture, TestBiDirLineMcastS1HopE1HopW2Hops) {
     auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 1};
     auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 2};
     RunTestLineMcast(this, RoutingDirection::S, {e_routing_info, w_routing_info});

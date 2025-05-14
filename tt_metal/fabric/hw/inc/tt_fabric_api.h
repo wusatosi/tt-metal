@@ -482,6 +482,7 @@ void fabric_set_unicast_route(
     }
 }
 
+// Make this have same args as 2D Mesh + change invocations
 void fabric_set_mcast_route(LowLatencyMeshPacketHeader* packet_header, eth_chan_directions direction, uint32_t hops) {
     fabric_set_route<true>(packet_header, (eth_chan_directions)direction, 0, hops);
 }
