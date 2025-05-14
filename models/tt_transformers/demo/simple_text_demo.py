@@ -150,6 +150,7 @@ def prepare_generator_args(
             dtype=ttnn.bfloat8_b,
             state_dict=state_dict,
         )
+        model_args_i.n_layers = 1  # NOCOMMIT
         model_args.append(model_args_i)
         model.append(model_i)
         tt_kv_cache.append(tt_kv_cache_i)
@@ -190,7 +191,7 @@ def prepare_generator_args(
             1,  # repeat_batches
             1024,  # max_seq_len
             1,  # batch_size
-            200,  # max_generated_tokens
+            5,  # NOCOMMIT max_generated_tokens
             True,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks_per_dp": 1024},  # page_params
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)

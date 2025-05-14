@@ -8,7 +8,7 @@ import torch
 
 import ttnn
 from models.common.lightweightmodule import LightweightModule
-from models.tt_transformers.tt.ccl import tt_all_gather, tt_all_reduce
+from models.tt_transformers.tt.ccl import log_tensor_details, tt_all_gather, tt_all_reduce
 from models.tt_transformers.tt.model_config import OpGroup, TensorGroup
 
 
@@ -757,6 +757,15 @@ class Attention(LightweightModule):
 
         # Non fused All Gather Matmul
         if self.use_fused_all_gather_matmul:  # is true for Ring topology
+            # Log tensor details before collective
+            log_tensor_details(
+                input_tensor=attn_output_11SH,
+                mesh_device=self.mesh_device,
+                dim=3,
+                num_links=1,
+                topology=self.ccl_topology,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            )
             attn_output_11SH = ttnn.all_gather(
                 attn_output_11SH,
                 dim=3,

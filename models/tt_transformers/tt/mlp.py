@@ -6,7 +6,7 @@ import torch
 
 import ttnn
 from models.common.lightweightmodule import LightweightModule
-from models.tt_transformers.tt.ccl import tt_all_reduce
+from models.tt_transformers.tt.ccl import log_tensor_details, tt_all_reduce
 from models.tt_transformers.tt.common import pad_to_size
 from models.tt_transformers.tt.model_config import OpGroup, TensorGroup
 
@@ -134,6 +134,16 @@ class MLP(LightweightModule):
             #     w3_out = ttnn.to_memory_config(w3_out, ttnn.DRAM_MEMORY_CONFIG)
             if self.dim == 8192 or mode == "prefill":
                 input_mem_cfg = w1_out.memory_config()
+                # Log tensor details before collective
+                log_tensor_details(
+                    input_tensor=w1_out,
+                    mesh_device=self.mesh_device,
+                    dim=3,
+                    num_links=self.args.num_reduce_scatter_links,
+                    cluster_axis=1,
+                    topology=ttnn.Topology.Linear,
+                    memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
+                )
                 w1_out = ttnn.reduce_scatter(
                     w1_out,
                     dim=3,
@@ -141,6 +151,16 @@ class MLP(LightweightModule):
                     num_links=self.args.num_reduce_scatter_links,
                     cluster_axis=1,
                     mesh_device=self.mesh_device,
+                    topology=ttnn.Topology.Linear,
+                    memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
+                )
+                # Log tensor details before collective
+                log_tensor_details(
+                    input_tensor=w3_out,
+                    mesh_device=self.mesh_device,
+                    dim=3,
+                    num_links=1,
+                    cluster_axis=1,
                     topology=ttnn.Topology.Linear,
                     memory_config=self.model_config["FF1_OUT_REDUCE_SCATTER_MEMCFG"] if mode == "decode" else None,
                 )
@@ -190,6 +210,16 @@ class MLP(LightweightModule):
         ttnn.deallocate(w1_out)
 
         if TG and (self.dim == 8192 or mode == "prefill"):
+            # Log tensor details before collective
+            log_tensor_details(
+                input_tensor=w2_in,
+                mesh_device=self.mesh_device,
+                dim=3,
+                num_links=2,
+                cluster_axis=1,
+                topology=ttnn.Topology.Linear,
+                memory_config=input_mem_cfg,
+            )
             w2_in = ttnn.all_gather(
                 w2_in,
                 3,

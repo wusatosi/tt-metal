@@ -8,6 +8,7 @@ from tqdm import tqdm
 import ttnn
 from models.common.lightweightmodule import LightweightModule
 from models.common.rmsnorm import RMSNorm
+from models.tt_transformers.tt.ccl import log_tensor_details
 from models.tt_transformers.tt.common import copy_host_to_device
 from models.tt_transformers.tt.decoder import TransformerBlock
 from models.tt_transformers.tt.distributed_norm import DistributedNorm
@@ -318,6 +319,15 @@ class Transformer(LightweightModule):
         # Gather the output across all devices and untilize the tensor (for argmax)
         if self.args.num_devices > 1:
             if self.args.is_galaxy:
+                # Log tensor details before collective
+                log_tensor_details(
+                    input_tensor=tt_logits,
+                    mesh_device=self.mesh_device,
+                    dim=3,
+                    num_links=2,
+                    cluster_axis=0,
+                    topology=self.args.ccl_topology(),
+                )
                 tt_logits = ttnn.all_gather(
                     tt_logits,
                     dim=3,
@@ -327,6 +337,14 @@ class Transformer(LightweightModule):
                     topology=self.args.ccl_topology(),
                 )
             else:
+                # Log tensor details before collective
+                log_tensor_details(
+                    input_tensor=tt_logits,
+                    mesh_device=self.mesh_device,
+                    dim=3,
+                    num_links=1,
+                    topology=self.args.ccl_topology(),
+                )
                 tt_logits = ttnn.all_gather(tt_logits, dim=3, num_links=1, topology=self.args.ccl_topology())
         tt_logits = ttnn.untilize(tt_logits, use_multicore=True)
 

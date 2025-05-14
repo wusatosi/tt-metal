@@ -4,7 +4,7 @@
 
 import ttnn
 from models.common.lightweightmodule import LightweightModule
-from models.tt_transformers.tt.ccl import tt_distributed_rmsnorm, tt_sharded_distributed_rmsnorm
+from models.tt_transformers.tt.ccl import log_tensor_details, tt_distributed_rmsnorm, tt_sharded_distributed_rmsnorm
 
 
 class DistributedNorm(LightweightModule):
@@ -70,6 +70,15 @@ class DistributedNorm(LightweightModule):
 
         # Distributed norm already performs a gather
         if self.args.is_multichip and not self.args.is_distributed_norm(mode):
+            # Log tensor details before collective
+            log_tensor_details(
+                input_tensor=x,
+                mesh_device=self.args.mesh_device,
+                dim=3,
+                num_links=1,
+                topology=self.args.ccl_topology(),
+                memory_config=input_mem_cfg,
+            )
             x = ttnn.all_gather(x, dim=3, num_links=1, topology=self.args.ccl_topology(), memory_config=input_mem_cfg)
         else:
             x = ttnn.to_memory_config(x, input_mem_cfg)
@@ -78,6 +87,10 @@ class DistributedNorm(LightweightModule):
 
         # Distributed norm requires a gather
         if self.args.is_distributed_norm(mode):
+            # Log tensor details before collective
+            log_tensor_details(
+                input_tensor=x, mesh_device=self.args.mesh_device, dim=3, num_links=1, topology=self.args.ccl_topology()
+            )
             x = ttnn.all_gather(x, dim=3, num_links=1, topology=self.args.ccl_topology())
 
         return x

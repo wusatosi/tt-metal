@@ -369,6 +369,7 @@ def test_tt_model_acc(
             top1_match = tt_argmax_token.item() == ref_top5_tokens[0].item()
             top5_match = tt_argmax_token in ref_top5_tokens
             ref_top5_text = [tokenizer.decode([t]) for t in ref_top5_tokens]
+            breakpoint()
 
         # Check top-1 and top-5 accuracy
         top1_correct.append(top1_match)

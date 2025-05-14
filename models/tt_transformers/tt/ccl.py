@@ -2,7 +2,14 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
+import json
+import os
+import traceback
+
 import ttnn
+
+# Global set to store seen configurations
+_seen_configs = None
 
 
 # def tt_all_reduce(input_tensor, mesh_device, cluster_axis=0, dim=0, num_links=2, memory_config=None, sharded=False):
@@ -22,6 +29,21 @@ def tt_all_reduce(
     # N150
     if list(mesh_device.shape) == [1, 1] or (cluster_axis == 1 and 1 in list(mesh_device.shape)):
         return input_tensor
+
+    # Log tensor details before collective
+    log_tensor_details(
+        input_tensor=input_tensor,
+        mesh_device=mesh_device,
+        cluster_axis=cluster_axis,
+        dim=dim,
+        num_reduce_scatter_links=num_reduce_scatter_links,
+        num_all_gather_links=num_all_gather_links,
+        topology=topology,
+        memory_config=memory_config,
+        sharded=sharded,
+        dtype=dtype,
+        use_composite=use_composite,
+    )
 
     # Ensure dim 0 and 1 are 1
     original_shape = input_tensor.shape
@@ -124,6 +146,19 @@ def tt_all_gather(
     if list(mesh_device.shape) == (1, 1) or (cluster_axis == 1 and 1 in list(mesh_device.shape)):
         return input_tensor
 
+    # Log tensor details before collective
+    log_tensor_details(
+        input_tensor=input_tensor,
+        mesh_device=mesh_device,
+        cluster_axis=cluster_axis,
+        dim=dim,
+        num_links=num_links,
+        memory_config=memory_config,
+        sharded=sharded,
+        topology=topology,
+        dtype=dtype,
+    )
+
     # Ensure the input tensor is in the correct memory configuration
     if not sharded:
         input_tensor = ttnn.to_memory_config(input_tensor, ttnn.DRAM_MEMORY_CONFIG)
@@ -161,6 +196,18 @@ def tt_distributed_rmsnorm(inp, epsilon, gamma, mesh_device, compute_kernel_conf
     tt_stats = ttnn.rms_norm_pre_all_gather(inp, compute_kernel_config=compute_kernel_config, dtype=ttnn.bfloat16)
     padded_shape = (1, 1, inp.shape[-2], 32)
     tt_stats = ttnn.reshape(tt_stats, ttnn.Shape(padded_shape))  # TODO: Figure out why we need this
+
+    # Log tensor details before collective
+    log_tensor_details(
+        input_tensor=tt_stats,
+        mesh_device=mesh_device,
+        dim=3,
+        cluster_axis=1,
+        num_links=1,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        topology=ttnn.Topology.Linear,
+    )
+
     tt_stats_gathered = tt_all_gather(
         tt_stats,
         mesh_device=mesh_device,
@@ -191,6 +238,17 @@ def tt_sharded_distributed_rmsnorm(
     # Run distributed rmsnorm part 1
     tt_stats = ttnn.rms_norm_pre_all_gather(inp, program_config=ln_sharded_progcfg)
 
+    # Log tensor details before collective
+    log_tensor_details(
+        input_tensor=tt_stats,
+        mesh_device=mesh_device,
+        dim=3,
+        num_links=1,
+        cluster_axis=1,
+        memory_config=ln_sharded_stats_memcfg,
+        topology=ttnn.Topology.Linear,
+    )
+
     # All gather stats
     tt_stats = ttnn.all_gather(
         tt_stats,
@@ -213,3 +271,77 @@ def tt_sharded_distributed_rmsnorm(
     tt_stats.deallocate(True)
 
     return tt_out
+
+
+def log_tensor_details(**kwargs):
+    """
+    Log tensor and environment details to a JSONL file, but only for unique configurations.
+    A configuration is considered unique based on all parameters except input tensors.
+    Input tensors are logged as their shape and memory config.
+
+    Args:
+        **kwargs: All parameters of the ttnn function being logged, where input tensors
+                 will be logged as their shape and memory config
+    """
+    global _seen_configs
+
+    # Extract input tensors and convert them to shape/memory_config
+    processed_kwargs = {}
+    for name, value in kwargs.items():
+        if isinstance(value, ttnn.Tensor):
+            processed_kwargs[f"{name}_shape"] = tuple(value.shape)  # Convert list to tuple
+            processed_kwargs[f"{name}_memory_config"] = str(value.memory_config())
+        else:
+            processed_kwargs[name] = str(value)
+
+    # Create a unique key for this configuration
+    config_key = tuple(sorted(processed_kwargs.items()))
+
+    # Initialize seen configs from file if not done yet
+    if _seen_configs is None:
+        _seen_configs = set()
+        if os.path.exists("tensor_details.jsonl"):
+            with open("tensor_details.jsonl", "r") as f:
+                for line in f:
+                    entry = json.loads(line)
+                    # Convert entry back to sorted tuple of items
+                    convert_list = lambda x: tuple(x) if isinstance(x, list) else x
+                    entry_items = [
+                        (k, convert_list(v))
+                        for k, v in entry.items()
+                        if k not in ["caller_location", "model_path", "mesh_device_env"]
+                    ]
+                    _seen_configs.add(tuple(sorted(entry_items)))
+
+    # Skip if we've seen this configuration before
+    if config_key in _seen_configs:
+        return
+
+    # Get the calling function location from the stack trace
+    stack = traceback.extract_stack()
+    current_file = os.path.basename(__file__)
+
+    # Find the closest caller from a different file
+    caller_location = None
+    for frame in reversed(stack[:-1]):  # Skip the current frame
+        if os.path.basename(frame.filename) not in [current_file, "distributed_norm.py", "lightweightmodule.py"]:
+            caller_location = f"{os.path.basename(frame.filename)}:{frame.lineno}"
+            break
+
+    # Get environment variables
+    llama_dir = os.environ.get("LLAMA_DIR", "")
+    hf_model = os.environ.get("HF_MODEL", "")
+    mesh_device_env = os.environ.get("MESH_DEVICE", "")
+
+    # Create log entry
+    log_entry = {
+        **processed_kwargs,
+        "model_path": llama_dir if llama_dir else hf_model,
+        "mesh_device_env": mesh_device_env,
+        "caller_location": caller_location,
+    }
+
+    # Add to seen configs and write to file
+    _seen_configs.add(config_key)
+    with open("tensor_details.jsonl", "a") as f:
+        f.write(json.dumps(log_entry) + "\n")
