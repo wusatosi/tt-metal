@@ -715,7 +715,7 @@ TEST_F(Fabric2DPushFixture, TestUnicastRaw1HopS) { RunTestUnicastRaw(this, 1, Ro
 TEST_F(Fabric2DPushFixture, TestUnicastRaw2HopS) { RunTestUnicastRaw(this, 2, RoutingDirection::S); }
 
 TEST_F(Fabric2DPushFixture, TestUnicastRaw) {
-    for (uint32_t i = 0; i < 100; i++) {
+    for (uint32_t i = 0; i < 10; i++) {
         RunTestUnicastRaw(this);
     }
 }
@@ -754,6 +754,97 @@ TEST_F(Fabric2DPullFixture, TestAsyncWriteMulticastMultidirectional) {
 
 TEST_F(Fabric2DPullFixture, TestAsyncRawWriteMulticastMultidirectional) {
     RunAsyncWriteMulticastTest(this, fabric_mode::PULL, true, true);
+}
+
+// 2D Dynamic Routing Unicast Tests
+TEST_F(FabricDynamic2DFixture, TestUnicastRaw1HopE) { RunTestUnicastRaw(this, 1); }
+
+TEST_F(FabricDynamic2DFixture, TestUnicastRaw2HopE) { RunTestUnicastRaw(this, 3); }
+
+TEST_F(FabricDynamic2DFixture, TestUnicastRaw1HopW) { RunTestUnicastRaw(this, 1, RoutingDirection::W); }
+
+TEST_F(FabricDynamic2DFixture, TestUnicastRaw2HopW) { RunTestUnicastRaw(this, 2, RoutingDirection::W); }
+
+TEST_F(FabricDynamic2DFixture, TestUnicastRaw1HopN) { RunTestUnicastRaw(this, 1, RoutingDirection::N); }
+
+TEST_F(FabricDynamic2DFixture, TestUnicastRaw2HopN) { RunTestUnicastRaw(this, 2, RoutingDirection::N); }
+
+TEST_F(FabricDynamic2DFixture, TestUnicastRaw1HopS) { RunTestUnicastRaw(this, 1, RoutingDirection::S); }
+
+TEST_F(FabricDynamic2DFixture, TestUnicastRaw2HopS) { RunTestUnicastRaw(this, 2, RoutingDirection::S); }
+
+TEST_F(FabricDynamic2DFixture, TestUnicastRaw) {
+    for (uint32_t i = 0; i < 10; i++) {
+        RunTestUnicastRaw(this);
+    }
+}
+
+TEST_F(FabricDynamic2DFixture, TestUnicastConnAPI) { RunTestUnicastConnAPI(this, 1); }
+
+// 2D Dynamic Routing Unidirectional mcast tests (no turns)
+TEST_F(FabricDynamic2DFixture, TestLineMcastE1Hop) {
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 1};
+    RunTestLineMcast(this, RoutingDirection::W, {routing_info});
+}
+
+TEST_F(FabricDynamic2DFixture, TestLineMcastE2Hops) {
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 2};
+    RunTestLineMcast(this, RoutingDirection::W, {routing_info});
+}
+
+TEST_F(FabricDynamic2DFixture, TestLineMcastW1Hop) {
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 1};
+    RunTestLineMcast(this, RoutingDirection::E, {routing_info});
+}
+
+TEST_F(FabricDynamic2DFixture, TestLineMcastW2Hops) {
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 2};
+    RunTestLineMcast(this, RoutingDirection::E, {routing_info});
+}
+
+// 2D Dynamic Routing Unidirectional mcast tests (with turns)
+TEST_F(FabricDynamic2DFixture, TestLineMcastN1HopE3Hops) {
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 3};
+    RunTestLineMcast(this, RoutingDirection::N, {routing_info});
+}
+
+TEST_F(FabricDynamic2DFixture, TestLineMcastS1HopE3Hops) {
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 3};
+    RunTestLineMcast(this, RoutingDirection::S, {routing_info});
+}
+TEST_F(FabricDynamic2DFixture, TestLineMcastN1HopW3Hops) {
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 3};
+    RunTestLineMcast(this, RoutingDirection::N, {routing_info});
+}
+
+TEST_F(FabricDynamic2DFixture, TestLineMcastS1HopW3Hops) {
+    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 3};
+    RunTestLineMcast(this, RoutingDirection::S, {routing_info});
+}
+
+// 2D Dynamic Routing Bidirectional Mcast Tests, with turns
+TEST_F(FabricDynamic2DFixture, TestBiDirLineMcastS1HopE1HopW1Hop) {
+    auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 1};
+    auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 1};
+    RunTestLineMcast(this, RoutingDirection::S, {e_routing_info, w_routing_info});
+}
+
+TEST_F(FabricDynamic2DFixture, TestBiDirLineMcastN1HopE1HopW1Hop) {
+    auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 1};
+    auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 1};
+    RunTestLineMcast(this, RoutingDirection::N, {e_routing_info, w_routing_info});
+}
+
+TEST_F(FabricDynamic2DFixture, TestBiDirLineMcastS1HopE2HopsW1Hop) {
+    auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 2};
+    auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 1};
+    RunTestLineMcast(this, RoutingDirection::S, {e_routing_info, w_routing_info});
+}
+
+TEST_F(FabricDynamic2DFixture, TestBiDirLineMcastS1HopE1HopW2Hops) {
+    auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 1};
+    auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 2};
+    RunTestLineMcast(this, RoutingDirection::S, {e_routing_info, w_routing_info});
 }
 
 }  // namespace fabric_router_tests

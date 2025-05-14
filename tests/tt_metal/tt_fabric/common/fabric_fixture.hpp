@@ -93,7 +93,16 @@ class Fabric2DPullFixture : public BaseFabricFixture {
 };
 
 class Fabric2DPushFixture : public BaseFabricFixture {
+    void SetUp() override { this->SetUpDevices(tt::tt_metal::FabricConfig::FABRIC_2D_PUSH); }
+};
+
+class FabricDynamic2DFixture : public BaseFabricFixture {
     void SetUp() override { this->SetUpDevices(tt::tt_metal::FabricConfig::FABRIC_2D_DYNAMIC); }
+};
+
+struct McastRoutingInfo {
+    RoutingDirection mcast_dir;
+    uint32_t num_mcast_hops;
 };
 
 void RunTestUnicastRaw(
@@ -103,6 +112,9 @@ void RunTestUnicastConnAPI(
     BaseFabricFixture* fixture, uint32_t num_hops = 1, RoutingDirection direction = RoutingDirection::E);
 
 void RunTestMCastConnAPI(BaseFabricFixture* fixture);
+
+void RunTestLineMcast(
+    BaseFabricFixture* fixture, RoutingDirection unicast_dir, const std::vector<McastRoutingInfo>& mcast_routing_info);
 
 bool find_device_with_neighbor_in_multi_direction(
     BaseFabricFixture* fixture,

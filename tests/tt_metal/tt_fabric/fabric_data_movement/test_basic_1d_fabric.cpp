@@ -139,11 +139,6 @@ bool find_device_with_neighbor_in_multi_direction(
     return connection_found;
 }
 
-struct McastRoutingInfo {
-    RoutingDirection mcast_dir;
-    uint32_t num_mcast_hops;
-};
-
 std::shared_ptr<tt_metal::Program> create_receiver_program(
     const std::vector<uint32_t>& compile_time_args,
     const std::vector<uint32_t>& runtime_args,
@@ -450,13 +445,16 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
     uint32_t target_address = 0x30000;
     uint32_t time_seed = std::chrono::system_clock::now().time_since_epoch().count();
 
+    const auto fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
+
     // common compile time args for sender and receiver
     std::vector<uint32_t> compile_time_args = {
         test_results_address,
         test_results_size_bytes,
         target_address,
         0 /* mcast_mode */,
-        edm_config.topology == Topology::Mesh};
+        edm_config.topology == Topology::Mesh,
+        fabric_config == tt_metal::FabricConfig::FABRIC_2D_DYNAMIC};
 
     std::map<string, string> defines = {};
     if (is_2d_fabric) {
@@ -598,6 +596,7 @@ void RunTestUnicastConnAPI(BaseFabricFixture* fixture, uint32_t num_hops, Routin
     auto receiver_noc_encoding =
         tt::tt_metal::MetalContext::instance().hal().noc_xy_encoding(receiver_virtual_core.x, receiver_virtual_core.y);
     const auto edm_config = get_tt_fabric_config();
+    const auto fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
     uint32_t is_2d_fabric = edm_config.topology == Topology::Mesh;
 
     // test parameters
@@ -616,7 +615,8 @@ void RunTestUnicastConnAPI(BaseFabricFixture* fixture, uint32_t num_hops, Routin
         test_results_size_bytes,
         target_address,
         0 /* mcast_mode */,
-        edm_config.topology == Topology::Mesh};
+        edm_config.topology == Topology::Mesh,
+        fabric_config == tt_metal::FabricConfig::FABRIC_2D_DYNAMIC};
 
     std::map<string, string> defines = {};
     if (is_2d_fabric) {
@@ -763,13 +763,16 @@ void RunTestMCastConnAPI(BaseFabricFixture* fixture) {
     uint32_t target_address = 0x30000;
     uint32_t time_seed = std::chrono::system_clock::now().time_since_epoch().count();
 
+    const auto fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
+
     // common compile time args for sender and receiver
     std::vector<uint32_t> compile_time_args = {
         test_results_address,
         test_results_size_bytes,
         target_address,
         1 /* mcast_mode */,
-        edm_config.topology == Topology::Mesh};
+        edm_config.topology == Topology::Mesh,
+        fabric_config == tt_metal::FabricConfig::FABRIC_2D_DYNAMIC};
 
     std::map<string, string> defines = {};
     if (is_2d_fabric) {
@@ -883,74 +886,9 @@ void RunTestMCastConnAPI(BaseFabricFixture* fixture) {
     EXPECT_EQ(left_recv_bytes, right_recv_bytes);
 }
 
-// TEST_F(Fabric1DFixture, TestUnicastRaw) { RunTestUnicastRaw(this, 1); }
+TEST_F(Fabric1DFixture, TestUnicastRaw) { RunTestUnicastRaw(this, 1); }
 TEST_F(Fabric1DFixture, TestUnicastConnAPI) { RunTestUnicastConnAPI(this, 1); }
 TEST_F(Fabric1DFixture, TestMCastConnAPI) { RunTestMCastConnAPI(this); }
-
-// Unidirectional mcast tests (no turns)
-TEST_F(Fabric2DPushFixture, TestLineMcastE1Hop) {
-    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 1};
-    RunTestLineMcast(this, RoutingDirection::W, {routing_info});
-}
-
-TEST_F(Fabric2DPushFixture, TestLineMcastE2Hops) {
-    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 2};
-    RunTestLineMcast(this, RoutingDirection::W, {routing_info});
-}
-
-TEST_F(Fabric2DPushFixture, TestLineMcastW1Hop) {
-    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 1};
-    RunTestLineMcast(this, RoutingDirection::E, {routing_info});
-}
-
-TEST_F(Fabric2DPushFixture, TestLineMcastW2Hops) {
-    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 2};
-    RunTestLineMcast(this, RoutingDirection::E, {routing_info});
-}
-
-// Unidirectional mcast tests (with turns)
-TEST_F(Fabric2DPushFixture, TestLineMcastN1HopE3Hops) {
-    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 3};
-    RunTestLineMcast(this, RoutingDirection::N, {routing_info});
-}
-
-TEST_F(Fabric2DPushFixture, TestLineMcastS1HopE3Hops) {
-    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 3};
-    RunTestLineMcast(this, RoutingDirection::S, {routing_info});
-}
-TEST_F(Fabric2DPushFixture, TestLineMcastN1HopW3Hops) {
-    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 3};
-    RunTestLineMcast(this, RoutingDirection::N, {routing_info});
-}
-
-TEST_F(Fabric2DPushFixture, TestLineMcastS1HopW3Hops) {
-    auto routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 3};
-    RunTestLineMcast(this, RoutingDirection::S, {routing_info});
-}
-
-TEST_F(Fabric2DPushFixture, TestBiDirLineMcastS1HopE1HopW1Hop) {
-    auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 1};
-    auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 1};
-    RunTestLineMcast(this, RoutingDirection::S, {e_routing_info, w_routing_info});
-}
-
-TEST_F(Fabric2DPushFixture, TestBiDirLineMcastN1HopE1HopW1Hop) {
-    auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 1};
-    auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 1};
-    RunTestLineMcast(this, RoutingDirection::N, {e_routing_info, w_routing_info});
-}
-
-TEST_F(Fabric2DPushFixture, TestBiDirLineMcastS1HopE2HopsW1Hop) {
-    auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 2};
-    auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 1};
-    RunTestLineMcast(this, RoutingDirection::S, {e_routing_info, w_routing_info});
-}
-
-TEST_F(Fabric2DPushFixture, TestBiDirLineMcastS1HopE1HopW2Hops) {
-    auto e_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::E, .num_mcast_hops = 1};
-    auto w_routing_info = McastRoutingInfo{.mcast_dir = RoutingDirection::W, .num_mcast_hops = 2};
-    RunTestLineMcast(this, RoutingDirection::S, {e_routing_info, w_routing_info});
-}
 
 }  // namespace fabric_router_tests
 }  // namespace tt::tt_fabric
