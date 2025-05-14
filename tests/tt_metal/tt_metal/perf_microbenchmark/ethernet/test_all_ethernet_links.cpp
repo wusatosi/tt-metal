@@ -315,7 +315,8 @@ std::vector<tt_metal::Program> build(const ConnectedDevicesHelper& device_helper
     // eth core rt args
     std::vector<uint32_t> eth_receiver_rt_args = {
         tt_metal::MetalContext::instance().hal().get_dev_addr(
-            tt_metal::HalProgrammableCoreType::ACTIVE_ETH, tt_metal::HalL1MemAddrType::UNRESERVED),
+            tt_metal::HalProgrammableCoreType::ACTIVE_ETH, tt_metal::HalL1MemAddrType::UNRESERVED) +
+            4096,
         static_cast<uint32_t>(params.num_packets),
         static_cast<uint32_t>(params.packet_size),
         0,  // tensix noc x updated below
@@ -403,7 +404,7 @@ void validation(
     static const uint32_t eth_read_addr =
         tt::tt_metal::MetalContext::instance().hal().get_dev_addr(
             tt_metal::HalProgrammableCoreType::ACTIVE_ETH, tt_metal::HalL1MemAddrType::UNRESERVED) +
-        sizeof(eth_buffer_slot_sync_t);
+        4096 + sizeof(eth_buffer_slot_sync_t);
     std::vector<uint8_t> golden_vec(bytes_to_read);
     std::iota(std::begin(golden_vec), std::end(golden_vec), 0);
     std::vector<uint8_t> result_vec(bytes_to_read, 0);
