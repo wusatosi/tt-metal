@@ -163,7 +163,7 @@ def test_transformer(
         width=width // 8,
     )
 
-    assert_quality(torch_output, tt_output, pcc=0.99989, relative_rmse=0.022)
+    assert_quality(torch_output, tt_output, pcc=0.99984, relative_rmse=0.018)
 
 
 def reshape_noise_pred_torch(

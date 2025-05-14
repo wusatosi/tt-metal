@@ -12,6 +12,7 @@ import ttnn
 from models.experimental.stable_diffusion3.tt.linear import TtLinear, TtLinearParameters
 
 from ..reference.timestep_embedding import CombinedTimestepTextProjEmbeddings
+from . import utils
 from .substate import substate
 from .utils import from_torch_fast, to_torch
 
@@ -51,7 +52,7 @@ class TtCombinedTimestepTextProjEmbeddingsParameters:
         *,
         dtype: ttnn.DataType | None = None,
         device: ttnn.Device,
-        use_cpu_fallback: bool = True,
+        use_cpu_fallback: bool = False,
     ) -> TtCombinedTimestepTextProjEmbeddingsParameters | dict[str, torch.Tensor]:
         if use_cpu_fallback:
             return state
@@ -111,13 +112,7 @@ class TtCombinedTimestepTextProjEmbeddings:
 
         assert timestep.shape[0] == self._time_proj_factor.shape[0], "timestep needs correct batch size"
 
-        # Elementwise multiplication is inaccurate here. Not sure if problematic.
-        emb = from_torch_fast(
-            to_torch(timestep) * to_torch(self._time_proj_factor),
-            device=self._device,
-            dtype=ttnn.float32,
-            layout=ttnn.TILE_LAYOUT,
-        )
+        emb = timestep * self._time_proj_factor
 
         c = ttnn.cos(emb)
         s = ttnn.sin(emb)
@@ -158,7 +153,7 @@ class _TimestepEmbedding:
 
     def __call__(self, x: ttnn.Tensor) -> ttnn.Tensor:
         x = self._linear_1(x)
-        x = ttnn.silu(x)
+        x = utils.silu(x)
         return self._linear_2(x)
 
     @property
