@@ -139,8 +139,13 @@ bool find_device_with_neighbor_in_multi_direction(
     return connection_found;
 }
 
+struct McastRoutingInfo {
+    RoutingDirection mcast_dir;
+    uint32_t num_mcast_hops;
+};
+
 void RunTestLineMcast(
-    BaseFabricFixture* fixture, RoutingDirection unicast_dir, uint32_t num_mcast_hops, RoutingDirection mcast_dir) {
+    BaseFabricFixture* fixture, RoutingDirection unicast_dir, const std::vector<McastRoutingInfo>& mcast_routing_info) {
     auto* control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
     // Setup mcast path
     chip_id_t mcast_start_phys_id;                              // Physical ID for chip starting mcast
@@ -151,7 +156,9 @@ void RunTestLineMcast(
     std::unordered_map<RoutingDirection, std::vector<chip_id_t>>
         mcast_group_phys_ids;  // Physical IDs for chips involved in mcast
 
-    mcast_hops[mcast_dir] = num_mcast_hops;
+    for (const auto& routing_info : mcast_routing_info) {
+        mcast_hops[routing_info.mcast_dir] = routing_info.num_mcast_hops;
+    }
 
     find_device_with_neighbor_in_multi_direction(
         fixture, mcast_start_id, mcast_group, mcast_start_phys_id, mcast_group_phys_ids, mcast_hops, unicast_dir);
@@ -160,8 +167,13 @@ void RunTestLineMcast(
         mcast_start_id.first,
         control_plane->get_intra_chip_neighbors(mcast_start_id.first, mcast_start_id.second, unicast_dir)[0]};
     auto sender_phys_id = control_plane->get_physical_chip_id_from_mesh_chip_id(sender_id);
-    // Compute physical IDs for mcast end chip
-    auto mcast_end_phys_id = mcast_group_phys_ids[mcast_dir][num_mcast_hops - 1];
+    // Compute physical IDs for mcast group chips
+    std::vector<chip_id_t> mcast_group_phys_ids = {};
+    for (const auto& routing_info : mcast_routing_info) {
+        for (auto phys_id : mcast_group_phys_ids[routing_info.mcast_dir]) {
+            mcast_group_phys_ids.push_back(phys_id);
+        }
+    }
 
     CoreCoord sender_logical_core = {0, 0};    // This core on the sender (remote chip) will make the mcast request
     CoreCoord receiver_logical_core = {1, 0};  // Data will be forwarded to this core on al chips in the mcast group
@@ -189,7 +201,10 @@ void RunTestLineMcast(
 
     auto* sender_device = DevicePool::instance().get_active_device(sender_phys_id);
     auto* mcast_start_device = DevicePool::instance().get_active_device(mcast_start_phys_id);
-    auto* mcast_end_device = DevicePool::instance().get_active_device(mcast_end_phys_id);
+    std::vector<IDevice*> mcast_group_devices = {};
+    for (auto id : mcast_group_phys_ids) {
+        mcast_group_devices.push_back(DevicePool::instance().get_active_device(mcast_end_phys_id));
+    }
 
     CoreCoord sender_virtual_core = sender_device->worker_core_from_logical_core(sender_logical_core);
     CoreCoord receiver_virtual_core = mcast_start_device->worker_core_from_logical_core(receiver_logical_core);
@@ -209,12 +224,7 @@ void RunTestLineMcast(
     uint32_t time_seed = std::chrono::system_clock::now().time_since_epoch().count();
 
     // common compile time args for sender and receiver
-    std::vector<uint32_t> compile_time_args = {
-        test_results_address,
-        test_results_size_bytes,
-        target_address,
-        1 /* mcast_mode */,
-        edm_config.topology == Topology::Mesh};
+    std::vector<uint32_t> compile_time_args = {test_results_address, test_results_size_bytes, target_address};
 
     std::map<string, string> defines = {};
     if (is_2d_fabric) {
@@ -225,7 +235,7 @@ void RunTestLineMcast(
     auto sender_program = tt_metal::CreateProgram();
     auto sender_kernel = tt_metal::CreateKernel(
         sender_program,
-        "tests/tt_metal/tt_metal/perf_microbenchmark/routing/kernels/tt_fabric_1d_tx.cpp",
+        "tests/tt_metal/tt_metal/perf_microbenchmark/routing/kernels/tt_fabric_line_mcast_tx.cpp",
         {sender_logical_core},
         tt_metal::DataMovementConfig{
             .processor = tt_metal::DataMovementProcessor::RISCV_0,
@@ -240,11 +250,12 @@ void RunTestLineMcast(
         num_packets,
         receiver_noc_encoding,
         time_seed,
-        mesh_shape[1],
-        sender_id.second,
-        mcast_start_id.second,
-        1};
+        mcast_start_id.second};
 
+    std::vector<uint32_t> mcast_header_rtas(4, 0);
+    mcast_header_rtas[static_cast<uint32_t>(control_plane->routing_direction_to_eth_direction(mcast_dir))] =
+        num_mcast_hops;
+    sender_runtime_args.insert(sender_runtime_args.end(), mcast_header_rtas.begin(), mcast_header_rtas.end());
     // append the EDM connection rt args
     append_fabric_connection_rt_args(
         sender_phys_id, mcast_start_phys_id, 0, sender_program, {sender_logical_core}, sender_runtime_args);
@@ -885,6 +896,30 @@ void RunTestMCastConnAPI(BaseFabricFixture* fixture) {
 // TEST_F(Fabric1DFixture, TestUnicastRaw) { RunTestUnicastRaw(this, 1); }
 TEST_F(Fabric1DFixture, TestUnicastConnAPI) { RunTestUnicastConnAPI(this, 1); }
 TEST_F(Fabric1DFixture, TestMCastConnAPI) { RunTestMCastConnAPI(this); }
-TEST_F(Fabric2DPushFixture, TestMcastRaw) { RunTestLineMcast(this, RoutingDirection::W, 1, RoutingDirection::S); }
+
+// Unidirectional mcast tests (no turns)
+TEST_F(Fabric2DPushFixture, TestLineMcastE1Hop) { RunTestLineMcast(this, RoutingDirection::W, 1, RoutingDirection::E); }
+TEST_F(Fabric2DPushFixture, TestLineMcastE2Hops) {
+    RunTestLineMcast(this, RoutingDirection::W, 2, RoutingDirection::E);
+}
+TEST_F(Fabric2DPushFixture, TestLineMcastW1Hop) { RunTestLineMcast(this, RoutingDirection::E, 1, RoutingDirection::W); }
+TEST_F(Fabric2DPushFixture, TestLineMcastW2Hops) {
+    RunTestLineMcast(this, RoutingDirection::E, 2, RoutingDirection::W);
+}
+
+// Unidirectional mcast tests (with turns)
+TEST_F(Fabric2DPushFixture, TestLineMcastN1HopE3Hops) {
+    RunTestLineMcast(this, RoutingDirection::N, 3, RoutingDirection::E);
+}
+TEST_F(Fabric2DPushFixture, TestLineMcastS1HopE3Hops) {
+    RunTestLineMcast(this, RoutingDirection::S, 3, RoutingDirection::E);
+}
+TEST_F(Fabric2DPushFixture, TestLineMcastN1HopW3Hops) {
+    RunTestLineMcast(this, RoutingDirection::N, 3, RoutingDirection::W);
+}
+TEST_F(Fabric2DPushFixture, TestLineMcastS1HopW3Hops) {
+    RunTestLineMcast(this, RoutingDirection::S, 3, RoutingDirection::W);
+}
+
 }  // namespace fabric_router_tests
 }  // namespace tt::tt_fabric
