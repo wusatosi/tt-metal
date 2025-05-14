@@ -1,8 +1,9 @@
 import ttnn
+import pdb
 
 
-@ttnn.register_operation(name="ttnn.conv_knit")
-def conv_knit(
+@ttnn.register_python_operation(name="ttnn.conv_knit_distribute")
+def conv_knit_distribute(
     input_tensor,
     core_grid,
     kernel_height,
@@ -12,7 +13,7 @@ def conv_knit(
     dealloc_inputs_and_move_outputs=False,
     return_original_size=False,
 ):
-    input_shape = input_tensor.shape()
+    input_shape = input_tensor.shape
 
     nhw = input_shape[2]
     c = input_shape[3]
@@ -41,10 +42,10 @@ def conv_knit(
     )
 
     distributed_shard_shape = (0, 0)
-    if num_blocks_per_core == 0:
-        distributed_shard_shape = (num_cores_with_extra_block, c)
+    if num_cores_with_extra_block == 0:
+        distributed_shard_shape = (num_blocks_per_core * input_width, c)
     else:
-        distributed_shard_shape = (num_blocks_per_core + 1, c)
+        distributed_shard_shape = ((num_blocks_per_core + 1) * input_width, c)
 
     distributed_shard_spec = ttnn.ShardSpec(shard_grid, distributed_shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
     distributed_mem_config = ttnn.MemoryConfig(
@@ -57,13 +58,12 @@ def conv_knit(
     distributed_input = ttnn.conv_distribute(
         input_tensor, distributed_mem_config, input_width, num_blocks_per_core, num_cores_with_extra_block
     )
-
     if dealloc_inputs_and_move_outputs:
         ttnn.deallocate(input_tensor)
         distributed_input = ttnn.move(distributed_input)
 
     output_tensor = ttnn.conv_knit(
-        distributed_input,
+        input_tensor,
         kernel_height,
         num_output_channels,
         input_width,
