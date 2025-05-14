@@ -357,7 +357,11 @@ class Transformer(LightweightModule):
         get_last_token=-1,
         kv_cache=None,
     ):
+        from loguru import logger
+
         for i, layer in enumerate(self.layers):
+            logger.info(f"Layer {i} input shape: {x.shape}")
+            logger.info(f"Input {x}")
             # No-op if callers already provide the right memory config
             activation_dtype = self.model_config["DECODERS_OPTIMIZATIONS"].get_tensor_dtype(
                 decoder_id=i, tensor=TensorGroup.ACTIVATION
@@ -365,7 +369,9 @@ class Transformer(LightweightModule):
             if mode == "decode" and not self.args.is_galaxy:
                 x = ttnn.to_memory_config(x, self.model_config["DECODE_RESIDUAL_MEMCFG"], activation_dtype)
             elif activation_dtype is not None and x.dtype != activation_dtype:
+                logger.info(f"Layer {i} activation dtype: {activation_dtype}")
                 x = ttnn.typecast(x, activation_dtype)
+                logger.info(f"Layer {i} typecasted x: {x}")
 
             x = layer(
                 x,

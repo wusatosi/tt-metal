@@ -78,6 +78,8 @@ class MLP(LightweightModule):
         w3 -> up_proj
         HF reference: self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
         """
+        from loguru import logger
+
         seq_len = x.shape[-2]
         TG = self.args.is_galaxy
         layer_num = max(self.layer_num, 0)  # cross_block uses the configutation of the first decoder
@@ -87,7 +89,6 @@ class MLP(LightweightModule):
         li_ff1_3_compute_kernel_cfg = self.model_config["DECODERS_OPTIMIZATIONS"].get_math_fidelity(
             decoder_id=layer_num, op=OpGroup.LI_FF1_FF3, configuration=self.args
         )
-
         if mode == "decode":  # Sharded config
             if TG:  # TODO: Fix this when TG supports DRAM sharded matmuls
                 pc_1 = self.model_config["FF1_3_TG_PROGCFG"] if self.dim >= 4096 else None
@@ -107,6 +108,7 @@ class MLP(LightweightModule):
 
         # In decode mode (seqlen <= 32) do DRAM sharded matmuls
         # These use HiFi2; this drops 1 bit of the activations but would be FLOP-bound on 12 cores with HiFi4
+        logger.info(f"w1: {self.w1}, x: {x}")
         w1_out = ttnn.linear(
             x,
             self.w1,
@@ -116,6 +118,7 @@ class MLP(LightweightModule):
             program_config=pc_1,
             memory_config=x.memory_config(),
         )
+        logger.info(f"w1_out: {w1_out}")
 
         w3_out = ttnn.linear(
             x,

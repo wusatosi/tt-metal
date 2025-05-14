@@ -108,6 +108,8 @@ class TransformerBlock(LightweightModule):
         chunk_start_idx=None,
         kv_cache=None,
     ) -> ttnn.Tensor:
+        from loguru import logger
+
         TG = self.args.is_galaxy
         # x is fractured across devices and interleaved in DRAM (for prefill) and sharded in L1 (for decode)
         skip_mem_cfg = self.model_config["DECODE_RESIDUAL_MEMCFG"] if mode == "decode" else ttnn.DRAM_MEMORY_CONFIG
@@ -136,10 +138,12 @@ class TransformerBlock(LightweightModule):
 
         # Norms take fractured inputs and output replicated across devices
         ff_in = self.ff_norm(h, mode)
+        logger.info(f"ff_in {ff_in}")
         if TG and mode == "decode":
             ff_in = ttnn.to_memory_config(ff_in, memory_config=self.model_config["MLP_ACT_MEMCFG"])
         # MLP takes replicated inputs and produces fractured outputs
         ff_out = self.feed_forward.forward(ff_in, mode)
+        logger.info(f"ff_out {ff_out}")
         # ff_out and h are both fractured across devices
         activation_dtype = self.model_config["DECODERS_OPTIMIZATIONS"].get_tensor_dtype(
             decoder_id=self.layer_num, tensor=TensorGroup.ACTIVATION

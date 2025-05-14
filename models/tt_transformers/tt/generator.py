@@ -58,6 +58,7 @@ class Generator:
     # Note: This function is called by vLLM
     def prefill_forward_text(self, tokens: torch.Tensor, page_table=None, kv_cache=None, prompt_lens=None):
         batch, batch_seq_len = tokens.shape
+        logger.info(f"Prefill tokens shape: {tokens.shape}")
 
         # Each model expected to run the same model, safe to use 1st vocab size
         output_logits = torch.zeros(batch, 1, self.model_args[0].vocab_size)
@@ -88,6 +89,7 @@ class Generator:
                         page_table[model_id], kv_cache[model_id], seq_len
                     )
 
+                logger.info(f"Prefill ids shape: {prefill_ids.shape}")
                 logits = self.prefill_forward_single_user_text(
                     prefill_ids,
                     page_table=page_table_user if page_table is not None else None,
@@ -96,6 +98,7 @@ class Generator:
                     kv_cache=kv_cache[model_id] if kv_cache is not None else None,
                     model_id=model_id,
                 )
+                logger.info(f"Prefill logits shape: {logits.shape}")
                 out_list.append(logits)
 
         # We gather data back to how at the end of prefill
@@ -108,6 +111,7 @@ class Generator:
             last_token_idx = seq_len - 1
 
             # Since we give unpadded_seq_len, only the tile containing the last token is returned
+            logger.info(f"Prefill out shape: {out.shape}")
             output_logits[user_id] = self.model[model_id].process_output_prefill(
                 out, last_token_idx=(last_token_idx % 32)
             )
@@ -185,6 +189,7 @@ class Generator:
                 tokens,
                 page_table=page_table,
             )
+            logger.info(f"Prefill input shape: {prefill_input.shape}")
 
             tt_logits = self.model[model_id].ttnn_prefill_forward(
                 prefill_input,
@@ -194,6 +199,7 @@ class Generator:
                 get_last_token=(last_token_idx // 32) * 32,
                 kv_cache=kv_cache,
             )
+            logger.info(f"Prefill logits shape: {tt_logits.shape}")
             return tt_logits
 
     # Note: This function is called by vLLM

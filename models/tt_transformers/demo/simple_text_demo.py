@@ -390,7 +390,7 @@ def prepare_generator_args(
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
             False,  # stop_at_eos
             True,  # ci_only
-            32,  # data_parallel
+            1,  # data_parallel
         ),
     ],
     ids=[
@@ -602,7 +602,7 @@ def test_demo_text(
 
         logger.info("Starting prefill warmup...")
         profiler.start(f"compile_prefill", iteration=batch_idx)
-        logits = generator.prefill_forward_text(
+        _ = generator.prefill_forward_text(
             input_tokens_prefill_pt[::batch_size, :],  # Warmup prefill for each device
             page_table=page_table,
             kv_cache=tt_kv_cache,
