@@ -60,7 +60,7 @@ from models.demos.llama3_subdevices.tt.llama_ccl import TT_CCL
 )
 @pytest.mark.parametrize(
     "max_seq_len",
-    (256,),  # For decode-only unit test, there's no need to run with large sequence lengths
+    (128 * 1024,),  # For decode-only unit test, there's no need to run with large sequence lengths
 )
 def test_llama_attention_inference(
     max_seq_len,
@@ -74,7 +74,7 @@ def test_llama_attention_inference(
     dtype = ttnn.bfloat8_b
     pcc = 0.99
 
-    model_args = TtModelArgs(mesh_device, dummy_weights=True, max_batch_size=batch_size, max_seq_len=max_seq_len)
+    model_args = TtModelArgs(mesh_device, dummy_weights=False, max_batch_size=batch_size, max_seq_len=max_seq_len)
     model_args.n_layers = 1  # For the unit test, just run a sigle layer
 
     state_dict = model_args.load_state_dict()
@@ -90,8 +90,8 @@ def test_llama_attention_inference(
 
     seq_len = 1
 
-    generation_start_pos = 127
-    generation_length = 1
+    generation_start_pos = 4096 + 256
+    generation_length = 5
     all_tests_pass = True
 
     # Setup RoPE transformation matrices
@@ -236,7 +236,7 @@ def test_llama_attention_inference(
             all_tests_pass = False
 
         # Increment position
-        current_pos = torch.tensor([generation_start_pos + i for _ in range(batch_size)])
+        current_pos = torch.tensor([generation_start_pos + i + 1 for _ in range(batch_size)])
         current_pos_tensor = ttnn.from_torch(
             current_pos,
             device=mesh_device,

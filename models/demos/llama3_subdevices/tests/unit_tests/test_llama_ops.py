@@ -153,7 +153,7 @@ def test_llama_tg_LayerNorm(
 )
 @pytest.mark.parametrize(
     "b, nh, nkv, s, d, grid_size",
-    ([8, 8, 1, 4096, 128, (8, 4)],),  # Llama2-70B
+    ([8, 8, 1, 32 * 1024, 128, (8, 4)],),  # Llama2-70B
 )
 @pytest.mark.parametrize(
     "start_core, sub_core_grids",
@@ -182,7 +182,7 @@ def test_llama_tg_ScaledDotProductAttentionDecode(
         dtype,
         grid_size,
         q_dtype,
-        cur_pos=127,
+        cur_pos=4096 + 256,
         block_size=32,
         q_chunk_size=0,
         k_chunk_size=0,
