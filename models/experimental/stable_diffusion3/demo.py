@@ -47,6 +47,7 @@ def test_sd3(
         checkpoint=f"stabilityai/stable-diffusion-3.5-{model_name}",
         device=mesh_device,
         enable_t5_text_encoder=mesh_device.get_num_devices() >= 4,
+        t5_text_encoder_cpu_fallback=mesh_device.get_num_devices() < 4,  # this alone does not enable T5
         guidance_cond=guidance_cond,
     )
 

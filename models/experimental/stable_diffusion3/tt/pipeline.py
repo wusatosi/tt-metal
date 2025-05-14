@@ -28,7 +28,13 @@ TILE_SIZE = 32
 
 class TtStableDiffusion3Pipeline:
     def __init__(
-        self, *, checkpoint: str, device: ttnn.MeshDevice, enable_t5_text_encoder: bool = True, guidance_cond: int
+        self,
+        *,
+        checkpoint: str,
+        device: ttnn.MeshDevice,
+        enable_t5_text_encoder: bool = True,
+        t5_text_encoder_cpu_fallback: bool = False,
+        guidance_cond: int,
     ) -> None:
         self._device = device
         device.enable_async(True)
@@ -39,8 +45,9 @@ class TtStableDiffusion3Pipeline:
         self._tokenizer_3 = T5TokenizerFast.from_pretrained(checkpoint, subfolder="tokenizer_3")
         self._text_encoder_1 = CLIPTextModelWithProjection.from_pretrained(checkpoint, subfolder="text_encoder")
         self._text_encoder_2 = CLIPTextModelWithProjection.from_pretrained(checkpoint, subfolder="text_encoder_2")
-        if enable_t5_text_encoder:
-            torch_text_encoder_3 = T5EncoderModel.from_pretrained(checkpoint, subfolder="text_encoder_3")
+        torch_text_encoder_3 = (
+            T5EncoderModel.from_pretrained(checkpoint, subfolder="text_encoder_3") if enable_t5_text_encoder else None
+        )
         self._scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(checkpoint, subfolder="scheduler")
         self._vae = AutoencoderKL.from_pretrained(checkpoint, subfolder="vae")
         torch_transformer = SD3Transformer2DModel.from_pretrained(
@@ -100,7 +107,7 @@ class TtStableDiffusion3Pipeline:
         self._vae_scale_factor = 2 ** (len(self._block_out_channels) - 1)
         self._image_processor = VaeImageProcessor(vae_scale_factor=self._vae_scale_factor)
 
-        if enable_t5_text_encoder:
+        if not t5_text_encoder_cpu_fallback and torch_text_encoder_3 is not None:
             logger.info("creating TT-NN text encoder...")
 
             parameters = TtT5EncoderParameters.from_torch(
@@ -116,7 +123,7 @@ class TtStableDiffusion3Pipeline:
                 layer_norm_epsilon=torch_text_encoder_3.config.layer_norm_epsilon,
             )
         else:
-            self._text_encoder_3 = None
+            self._text_encoder_3 = torch_text_encoder_3
 
     def prepare(
         self,
@@ -604,7 +611,7 @@ def _get_t5_prompt_embeds(
     joint_attention_dim: int,
     max_sequence_length: int,
     num_images_per_prompt: int,
-    text_encoder: TtT5Encoder | None,
+    text_encoder: T5EncoderModel | TtT5Encoder | None,
     tokenizer_max_length: int,
     tokenizer: T5TokenizerFast,
 ) -> torch.Tensor:
@@ -640,12 +647,14 @@ def _get_t5_prompt_embeds(
             f" {max_sequence_length} tokens: {removed_text}"
         )
 
-    tt_text_input_ids = from_torch_fast(text_input_ids, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device)
-    tt_prompt_embeds = text_encoder(tt_text_input_ids, device)
-    tt_prompt_embeds = ttnn.get_device_tensors(tt_prompt_embeds)[0]
-    prompt_embeds = ttnn.to_torch(tt_prompt_embeds)
-
-    prompt_embeds = prompt_embeds.to(device=torch_device)
+    if isinstance(text_encoder, TtT5Encoder):
+        tt_text_input_ids = from_torch_fast(text_input_ids, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device)
+        tt_prompt_embeds = text_encoder(tt_text_input_ids, device)
+        tt_prompt_embeds = ttnn.get_device_tensors(tt_prompt_embeds)[0]
+        prompt_embeds = ttnn.to_torch(tt_prompt_embeds)
+        prompt_embeds = prompt_embeds.to(device=torch_device)
+    else:
+        prompt_embeds = text_encoder.forward(text_input_ids)[0]
 
     _, seq_len, _ = prompt_embeds.shape
 
