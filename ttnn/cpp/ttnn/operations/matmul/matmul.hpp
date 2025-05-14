@@ -37,6 +37,23 @@ ttnn::Tensor bound_matmul(
     const uint8_t& queue_id,
     std::optional<ttnn::Tensor>& optional_output_tensor);
 
+ttnn::Tensor bound_matmul_rs(
+    const ttnn::Tensor& input_tensor_a,
+    const ttnn::Tensor& input_tensor_b,
+    const std::optional<const ttnn::Tensor>& bias,
+    const struct Matmul& parameters,
+    const uint8_t& queue_id,
+    std::optional<ttnn::Tensor>& optional_output_tensor,
+    const Tensor& input_tensor_rs,
+    ttnn::Tensor& intermediate_packet_buffer,
+    uint32_t dim,
+    const global_semaphore::MultiDeviceGlobalSemaphore& cross_device_semaphore,
+    const tt::tt_metal::SubDeviceId& subdevice_id,
+    const uint32_t cluster_axis,
+    const MeshDevice& mesh_device,
+    const uint32_t num_links,
+    const std::optional<ttnn::MemoryConfig>& rs_memory_config);
+
 struct MatmulOperation {
     static Tensor invoke(
         const Tensor& input_tensor_a,
@@ -101,7 +118,7 @@ struct LinearRSOperation {
         const std::optional<tt::tt_metal::SubDeviceId>& sub_device_id = std::nullopt,
         const uint32_t num_links = 1,
         const std::optional<ttnn::MemoryConfig>& rs_memory_config = std::nullopt,
-        QueueId queue_id = DefaultQueueId);
+        const uint8_t queue_id = 0);
 };
 
 }  // namespace matmul

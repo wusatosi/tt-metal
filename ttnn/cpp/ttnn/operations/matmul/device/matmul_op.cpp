@@ -10,6 +10,7 @@
 #include <optional>
 #include <tt-metalium/constants.hpp>
 #include <tt-metalium/work_split.hpp>
+#include "ttnn/operations/ccl/ccl_host_types.hpp"
 
 #include "ttnn/operations/core/compute_kernel/compute_kernel_config.hpp"
 #include "ttnn/run_operation.hpp"
@@ -1340,6 +1341,106 @@ Matmul create_matmul_struct(
         output_tile,
         parameters.global_cb,
         parameters.sub_device_id};
+}
+
+Tensor matmul_rs(
+    const Tensor& input_tensor_a,
+    const Tensor& input_tensor_b,
+    const std::optional<const Tensor>& bias,
+    const struct Matmul& parameters,
+    const QueueId queue_id,
+    const std::optional<Tensor>& optional_output_tensor,
+    const Tensor& input_tensor_rs,
+    ttnn::Tensor& intermediate_packet_buffer,
+    uint32_t dim,
+    const global_semaphore::MultiDeviceGlobalSemaphore& cross_device_semaphore,
+    const tt::tt_metal::SubDeviceId& subdevice_id,
+    const uint32_t cluster_axis,
+    const MeshDevice& mesh_device,
+    const uint32_t num_links,
+    const std::optional<ttnn::MemoryConfig>& rs_memory_config) {
+    std::vector<std::optional<const Tensor>> optional_input_tensors = {};
+    std::vector<Tensor> output_tensors;
+
+    if (bias.has_value()) {
+        optional_input_tensors.push_back(bias.value());
+        output_tensors = {
+            Tensor(operation::get_workers_for_op_output({input_tensor_a, input_tensor_b}, {bias.value()}))};
+    } else {
+        optional_input_tensors.push_back(std::nullopt);
+        output_tensors = {Tensor(operation::get_workers_for_op_output({input_tensor_a, input_tensor_b}))};
+    }
+
+    const auto mesh_view = mesh_device.get_view();
+    auto devices = input_tensor_rs.get_workers();
+    uint32_t ring_devices = (cluster_axis == 0) ? mesh_view.num_rows() : mesh_view.num_cols();
+    ttnn::ccl::Topology ccl_topology = ttnn::ccl::Topology::Linear;
+    uint32_t input_tensor_index = 0;
+    for (const auto& tensor : {input_tensor_rs, intermediate_packet_buffer}) {
+        auto buffers = tensor.buffers();
+        auto first_address = buffers.front()->address();
+        TT_FATAL(
+            std::all_of(
+                buffers.begin(),
+                buffers.end(),
+                [&first_address](const auto& buffer) {
+                    return buffer != nullptr && buffer->address() == first_address;
+                }),
+            "Buffers must be lock-step allocated. Tensor on device id {} was allocated at different addresses "
+            "from address {}",
+            tensor.device()->id(),
+            first_address);
+    }
+    std::vector<GlobalSemaphore> semaphores = cross_device_semaphore.global_semaphores;
+    operation::launch_op(
+        [parameters,
+         queue_id,
+         dim,
+         semaphores,
+         subdevice_id,
+         cluster_axis,
+         ring_devices,
+         rs_memory_config,
+         mesh_view,
+         num_links](
+            const std::vector<Tensor>& input_tensors,
+            const std::vector<std::optional<const Tensor>>& optional_input_tensors,
+            const std::vector<std::optional<Tensor>>& optional_output_tensors) mutable -> std::vector<Tensor> {
+            const auto& input_tensor_a = input_tensors.at(0);
+            const auto& input_tensor_b = input_tensors.at(1);
+            auto input_tensor = input_tensors.at(2);
+            auto intermediate_packet_buffer = input_tensors.at(3);
+            uint32_t ring_index = 0;  // Initialize device index
+            std::optional<IDevice*> forward_device = std::nullopt;
+            std::optional<IDevice*> backward_device = std::nullopt;
+            std::optional<GlobalSemaphore> semaphore = std::nullopt;
+            const auto coordinate = mesh_view.find_device(input_tensor.device()->id());
+            std::vector<IDevice*> devices = (cluster_axis == 0) ? mesh_view.get_devices_on_column(coordinate[1])
+                                                                : mesh_view.get_devices_on_row(coordinate[0]);
+            for (uint32_t i = 0; i < ring_devices; ++i) {
+                if (devices.at(i) == input_tensor.device()) {
+                    ring_index = i;
+                    semaphore = semaphores.at(i);
+                    if (i != 0) {
+                        backward_device = devices.at(i - 1);
+                    }
+                    if (i != ring_devices - 1) {
+                        forward_device = devices.at(i + 1);
+                    }
+                }
+            }
+            return operation::run(
+                create_matmul_struct(input_tensor_a, input_tensor_b, parameters, optional_output_tensors),
+                {input_tensor_a, input_tensor_b},
+                optional_input_tensors,
+                optional_output_tensors,
+                queue_id);
+        },
+        {input_tensor_a, input_tensor_b, input_tensor_rs, intermediate_packet_buffer},
+        output_tensors,
+        optional_input_tensors,
+        {optional_output_tensor});
+    return output_tensors.at(0);
 }
 
 Tensor matmul(

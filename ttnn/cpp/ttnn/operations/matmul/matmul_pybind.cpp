@@ -537,7 +537,7 @@ void py_module(py::module& module) {
 
                const uint32_t num_links,
                const std::optional<ttnn::MemoryConfig>& rs_memory_config,
-               QueueId queue_id) -> ttnn::Tensor {
+               const uint8_t queue_id) -> ttnn::Tensor {
                 return self(
                     input_tensor_a,
                     input_tensor_b,
@@ -593,7 +593,7 @@ void py_module(py::module& module) {
             py::arg("sub_device_id") = std::nullopt,
             py::arg("num_links") = 1,
             py::arg("rs_memory_config") = std::nullopt,
-            py::arg("queue_id") = DefaultQueueId});
+            py::arg("queue_id") = 0});
 }
 
 }  // namespace matmul

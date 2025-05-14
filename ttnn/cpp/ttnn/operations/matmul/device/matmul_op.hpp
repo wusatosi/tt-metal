@@ -13,6 +13,7 @@
 #include "ttnn/tensor/tensor.hpp"
 #include "ttnn/tensor/tensor_utils.hpp"
 #include "ttnn/types.hpp"
+#include "cpp/ttnn/global_semaphore.hpp"
 
 namespace ttnn {
 
@@ -242,6 +243,23 @@ Tensor matmul(
     const struct Matmul& parameters = Matmul{},
     const QueueId queue_id = DefaultQueueId,
     const std::optional<Tensor>& optional_output_tensor = std::nullopt);
+
+Tensor matmul_rs(
+    const Tensor& input_tensor_a,
+    const Tensor& input_tensor_b,
+    const std::optional<const Tensor>& bias,
+    const struct Matmul& parameters,
+    const QueueId queue_id,
+    const std::optional<Tensor>& optional_output_tensor,
+    const Tensor& input_tensor_rs,
+    ttnn::Tensor& intermediate_packet_buffer,
+    uint32_t dim,
+    const global_semaphore::MultiDeviceGlobalSemaphore& cross_device_semaphore,
+    const tt::tt_metal::SubDeviceId& subdevice_id,
+    const uint32_t cluster_axis,
+    const MeshDevice& mesh_device,
+    const uint32_t num_links,
+    const std::optional<ttnn::MemoryConfig>& rs_memory_config);
 
 }  // namespace matmul
 

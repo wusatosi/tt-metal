@@ -38,6 +38,91 @@ std::optional<UnaryWithParam> get_fused_activation(const std::optional<const std
     return ttnn::operations::unary::utils::string_to_unary_with_param(activation.value());
 }
 
+ttnn::Tensor bound_matmul_rs(
+    const ttnn::Tensor& input_tensor_a,
+    const ttnn::Tensor& input_tensor_b,
+    const std::optional<const ttnn::Tensor>& bias,
+    const struct Matmul& parameters,
+    const uint8_t& queue_id,
+    std::optional<ttnn::Tensor>& optional_output_tensor,
+    const Tensor& input_tensor_rs,
+    ttnn::Tensor& intermediate_packet_buffer,
+    uint32_t dim,
+    const global_semaphore::MultiDeviceGlobalSemaphore& cross_device_semaphore,
+    const tt::tt_metal::SubDeviceId& subdevice_id,
+    const uint32_t cluster_axis,
+    const MeshDevice& mesh_device,
+    const uint32_t num_links,
+    const std::optional<ttnn::MemoryConfig>& rs_memory_config) {
+    const auto& input_tensor_a_adjusted = parameters.transpose_a
+                                              ? ttnn::transpose(input_tensor_a, -1, -2, input_tensor_a.memory_config())
+                                              : input_tensor_a;
+    const auto& input_tensor_b_adjusted = parameters.transpose_b
+                                              ? ttnn::transpose(input_tensor_b, -1, -2, input_tensor_b.memory_config())
+                                              : input_tensor_b;
+
+    const auto input_tensor_a_shape = input_tensor_a_adjusted.get_logical_shape();
+    const auto input_tensor_b_shape = input_tensor_b_adjusted.get_logical_shape();
+
+    const auto width_a = input_tensor_a_shape[-1];
+    const auto height_b = input_tensor_b_shape[-2];
+
+    if (width_a != height_b) {
+        TT_THROW(
+            "ttnn.matmul: The width of the first tensor must be equal to the height of the second tensor ({} != {}). "
+            "The shape of first tensor was {} and the shape of second tensor was {})",
+            width_a,
+            height_b,
+            input_tensor_a_shape,
+            input_tensor_b_shape);
+    }
+
+    const bool has_program_config = parameters.program_config.has_value();
+    const bool has_user_grid = parameters.user_core_coord.has_value();
+    bool post_process_bias = false;
+    if (bias.has_value()) {
+        if (!has_program_config && !has_user_grid) {
+            post_process_bias = true;
+        }
+    }
+
+    auto output_tensor = matmul_rs(
+        input_tensor_a_adjusted,
+        input_tensor_b_adjusted,
+        post_process_bias ? std::nullopt : bias,
+        parameters,
+        DefaultQueueId,
+        optional_output_tensor = optional_output_tensor,
+        input_tensor_rs,
+        intermediate_packet_buffer,
+        dim,
+        cross_device_semaphore,
+        subdevice_id,
+        cluster_axis,
+        mesh_device,
+        num_links,
+        rs_memory_config);
+
+    if (post_process_bias) {
+        output_tensor = ttnn::add(output_tensor, bias.value(), std::nullopt, parameters.output_mem_config);
+    }
+
+    if (parameters.user_fused_activation.has_value() && !has_user_grid) {
+        const UnaryOpType& op_type = parameters.user_fused_activation.value().op_type;
+        if (op_type == UnaryOpType::RELU) {
+            output_tensor = ttnn::relu(output_tensor, parameters.output_mem_config);
+        } else if (op_type == UnaryOpType::GELU) {
+            output_tensor = ttnn::gelu(output_tensor, false, parameters.output_mem_config);
+        } else if (op_type == UnaryOpType::SILU) {
+            output_tensor = ttnn::silu(output_tensor, parameters.output_mem_config);
+        } else {
+            TT_THROW("ttnn.matmul: Unsupported activation function");
+        }
+    }
+
+    return output_tensor;
+}
+
 ttnn::Tensor bound_matmul(
     const ttnn::Tensor& input_tensor_a,
     const ttnn::Tensor& input_tensor_b,
@@ -222,7 +307,7 @@ Tensor LinearRSOperation::invoke(
 
     const uint32_t num_links,
     const std::optional<ttnn::MemoryConfig>& rs_memory_config,
-    QueueId queue_id) {
+    const uint8_t queue_id) {
     std::optional<CoreCoord> user_core_coord;
     if (core_grid.has_value()) {
         user_core_coord = CoreCoord(core_grid->x, core_grid->y);
@@ -230,7 +315,7 @@ Tensor LinearRSOperation::invoke(
     bool b_is_batched = detail::is_input_batched(input_tensor_b.get_logical_shape());
     TT_FATAL(!(b_is_batched && bias.has_value()), "Batched input not supported when bias exists (linear operation).");
 
-    return bound_matmul(
+    return bound_matmul_rs(
         input_tensor_a,
         input_tensor_b,
         bias,
@@ -250,7 +335,16 @@ Tensor LinearRSOperation::invoke(
             global_cb,
             sub_device_id},
         /*queue_id=*/queue_id,
-        optional_output_tensor);
+        optional_output_tensor,
+        input_tensor_rs,
+        intermediate_packet_buffer,
+        dim,
+        cross_device_semaphore,
+        subdevice_id,
+        cluster_axis,
+        mesh_device,
+        num_links,
+        rs_memory_config);
 }
 
 }  // namespace matmul
