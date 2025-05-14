@@ -80,7 +80,7 @@ jobs:
       matrix:
         platform: [
           "N150",
-          "P150",
+          "P150a",
         ]
     uses: ./.github/workflows/smoke.yaml
     with:
