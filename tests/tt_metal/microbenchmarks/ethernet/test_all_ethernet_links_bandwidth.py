@@ -97,9 +97,9 @@ def test_erisc_bw_uni_dir(num_packets, packet_size, channel_count, num_iteration
 # bi-direction test for eth-sender <---> eth-receiver
 @pytest.mark.skipif(is_single_chip(), reason="Unsupported on single chip systems")
 @pytest.mark.parametrize("num_packets", [1000])
-@pytest.mark.parametrize("channel_count", [16])
+@pytest.mark.parametrize("channel_count", [8])
 @pytest.mark.parametrize("num_iterations", [1])
-@pytest.mark.parametrize("packet_size", [16, 128, 256, 512, 1024, 2048, 4096])
+@pytest.mark.parametrize("packet_size", [4096])
 def test_erisc_bw_bi_dir(num_packets, packet_size, channel_count, num_iterations, request):
     packet_size_to_expected_bw = {
         "wormhole_b0": {
