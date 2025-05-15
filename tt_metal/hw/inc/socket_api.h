@@ -14,7 +14,7 @@
 
 #ifndef COMPILE_FOR_TRISC
 #include "dataflow_api.h"
-#include "tt_metal/fabric/hw/inc/tt_fabric.h"
+#include "tt_metal/fabric/hw/inc/tt_fabric_api.h"
 #include "tt_metal/api/tt-metalium/fabric_edm_packet_header.hpp"
 #include "tt_metal/fabric/hw/inc/edm_fabric/fabric_connection_manager.hpp"
 
@@ -98,10 +98,20 @@ void fabric_socket_notify_receiver(
     volatile tt_l1_ptr PACKET_HEADER_TYPE* fabric_header_addr) {
     auto downstream_bytes_sent_noc_addr =
         get_noc_addr(socket.downstream_noc_x, socket.downstream_noc_y, socket.downstream_bytes_sent_addr);
+#if defined(DYNAMIC_ROUTING_ENABLED)
+    fabric_set_unicast_route(
+        (MeshPacketHeader*)fabric_header_addr,
+        eth_chan_directions::COUNT,
+        0,
+        socket.downstream_chip_id,
+        socket.downstream_mesh_id,
+        0);
+#else
     fabric_header_addr->to_chip_unicast(static_cast<uint8_t>(socket.downstream_chip_id));
+#endif
+
     fabric_header_addr->to_noc_unicast_inline_write(
         NocUnicastInlineWriteCommandHeader{downstream_bytes_sent_noc_addr, socket.bytes_sent});
-
     fabric_connection.wait_for_empty_write_slot();
     fabric_connection.send_payload_blocking_from_address((uint32_t)fabric_header_addr, sizeof(PACKET_HEADER_TYPE));
 }
@@ -218,7 +228,19 @@ void fabric_socket_notify_sender(
     volatile tt_l1_ptr PACKET_HEADER_TYPE* fabric_header_addr) {
     auto upstream_bytes_acked_noc_addr =
         get_noc_addr(socket.upstream_noc_x, socket.upstream_noc_y, socket.upstream_bytes_acked_addr);
+#if defined(DYNAMIC_ROUTING_ENABLED)
+    DPRINT << "Notify sender using 2D" << ENDL();
+    fabric_set_unicast_route(
+        (MeshPacketHeader*)fabric_header_addr,
+        eth_chan_directions::COUNT,
+        0,
+        socket.upstream_chip_id,
+        socket.upstream_mesh_id,
+        0);
+#else
     fabric_header_addr->to_chip_unicast(static_cast<uint8_t>(socket.upstream_chip_id));
+#endif
+
     fabric_header_addr->to_noc_unicast_inline_write(
         NocUnicastInlineWriteCommandHeader{upstream_bytes_acked_noc_addr, socket.bytes_acked});
     fabric_connection.wait_for_empty_write_slot();

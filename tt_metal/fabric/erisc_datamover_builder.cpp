@@ -514,7 +514,8 @@ std::vector<uint32_t> FabricEriscDatamoverBuilder::get_compile_time_args() const
         soc_desc.get_num_eth_channels(),
         // Special marker to help with identifying misalignment bugs
         0x00c0ffee};
-
+    std::cout << "Core: " << this->my_eth_core_logical.str() << " Dir: " << static_cast<uint32_t>(this->direction)
+              << std::endl;
     for (size_t i = 0; i < num_sender_channels; i++) {
         ct_args.push_back(this->sender_channel_connection_liveness_check_disable_array[i]);
     }

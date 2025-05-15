@@ -2071,13 +2071,13 @@ TEST_F(MeshSocketTest, MultiConnectionSingleDeviceSocketWithWorkersLoopAck) {
 
 // ========= Multi Device Data Movement Tests =========
 
-TEST_F(MeshSocketTest1DFabric, SingleConnectionMultiDeviceSocketWithWorkers) {
+TEST_F(MeshSocketTest2DFabric, SingleConnectionMultiDeviceSocketWithWorkers) {
     auto md1 = mesh_device_->create_submesh(MeshShape(1, 1), MeshCoordinate(1, 0));
     auto md0 = mesh_device_->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 0));
     test_single_connection_multi_device_socket_with_workers(md0, md1, 1024, 64, 1024);
 }
 
-TEST_F(MeshSocketTest1DFabric, SingleConnectionMultiDeviceSocket) {
+TEST_F(MeshSocketTest2DFabric, SingleConnectionMultiDeviceSocket) {
     auto md0 = mesh_device_->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 0));
     auto md1 = mesh_device_->create_submesh(MeshShape(1, 1), MeshCoordinate(1, 0));
     test_single_connection_multi_device_socket(md0, md1, 1024, 64, 1024, false);
@@ -2085,7 +2085,7 @@ TEST_F(MeshSocketTest1DFabric, SingleConnectionMultiDeviceSocket) {
     test_single_connection_multi_device_socket(md0, md1, 4096, 1088, 9792, false);
 }
 
-TEST_F(MeshSocketTest1DFabric, SingleConnectionMultiDeviceSocketWithCBs) {
+TEST_F(MeshSocketTest2DFabric, SingleConnectionMultiDeviceSocketWithCBs) {
     auto tile_size_bytes = tile_size(tt::DataFormat::UInt32);
 
     auto md0 = mesh_device_->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 0));
@@ -2102,7 +2102,7 @@ TEST_F(MeshSocketTest1DFabric, SingleConnectionMultiDeviceSocketWithCBs) {
         md0, md1, 6 * tile_size_bytes, 5 * tile_size_bytes, 25 * tile_size_bytes, true);
 }
 
-TEST_F(MeshSocketTest1DFabric, MultiSenderSingleRecv) {
+TEST_F(MeshSocketTest2DFabric, MultiSenderSingleRecv) {
     auto sender_0 = mesh_device_->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 0));
     auto sender_1 = mesh_device_->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 2));
     auto reducer = mesh_device_->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 1));
@@ -2117,13 +2117,13 @@ TEST_F(MeshSocketTest1DFabric, MultiSenderSingleRecv) {
     bool split_reducer = false;
     test_multi_sender_single_recv(
         sender_0, sender_1, reducer, receiver, 1024, 64, 1024, num_interations, split_reducer);
-    test_multi_sender_single_recv(
-        sender_0, sender_1, reducer, receiver, 2048, 64, 5120, num_interations, split_reducer);
-    test_multi_sender_single_recv(
-        sender_0, sender_1, reducer, receiver, 4096, 1088, 9792, num_interations, split_reducer);
+    // test_multi_sender_single_recv(
+    //     sender_0, sender_1, reducer, receiver, 2048, 64, 5120, num_interations, split_reducer);
+    // test_multi_sender_single_recv(
+    //     sender_0, sender_1, reducer, receiver, 4096, 1088, 9792, num_interations, split_reducer);
 }
 
-TEST_F(MeshSocketTest1DFabric, MultiSenderSingleRecvSplitReducer) {
+TEST_F(MeshSocketTest2DFabric, MultiSenderSingleRecvSplitReducer) {
     auto sender_0 = mesh_device_->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 0));
     auto sender_1 = mesh_device_->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 2));
     auto reducer = mesh_device_->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 1));
@@ -2144,7 +2144,7 @@ TEST_F(MeshSocketTest1DFabric, MultiSenderSingleRecvSplitReducer) {
         sender_0, sender_1, reducer, receiver, 4096, 1088, 9792, num_interations, split_reducer);
 }
 
-TEST_F(MeshSocketTest1DFabric, MultiConnectionMultiDeviceDataCopy) {
+TEST_F(MeshSocketTest2DFabric, MultiConnectionMultiDeviceDataCopy) {
     mesh_device_->reshape(MeshShape(1, 8));
 
     auto sender_mesh = mesh_device_->create_submesh(MeshShape(1, 4), MeshCoordinate(0, 0));

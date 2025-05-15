@@ -325,7 +325,7 @@ void MeshGraph::print_connectivity() const {
             ss << std::endl;
         }
     }
-    log_debug(tt::LogFabric, "{}", ss.str());
+    log_info(tt::LogFabric, "{}", ss.str());
     ss.str(std::string());
     ss << " Mesh Graph:  Inter Mesh Connectivity: " << std::endl;
     for (uint32_t mesh_id = 0; mesh_id < this->inter_mesh_connectivity_.size(); mesh_id++) {

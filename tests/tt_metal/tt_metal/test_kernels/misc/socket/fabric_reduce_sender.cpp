@@ -42,7 +42,17 @@ void kernel_main() {
         socket_reserve_pages(sender_socket, 1);
         // Write Data over Fabric
         uint32_t data_addr = get_read_ptr(out_cb_id);
+#if defined(DYNAMIC_ROUTING_ENABLED)
+        fabric_set_unicast_route(
+            (MeshPacketHeader*)data_packet_header_addr,
+            eth_chan_directions::COUNT,
+            0,
+            sender_socket.downstream_chip_id,
+            0,
+            0);
+#else
         data_packet_header_addr->to_chip_unicast(static_cast<uint8_t>(1));
+#endif
         data_packet_header_addr->to_noc_unicast_write(
             NocUnicastCommandHeader{receiver_noc_coord_addr | sender_socket.write_ptr}, page_size);
         sender_fabric_connection.wait_for_empty_write_slot();

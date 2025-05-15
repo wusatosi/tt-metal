@@ -1980,6 +1980,6 @@ void kernel_main() {
 
     *edm_status_ptr = tt::tt_fabric::EDMStatus::TERMINATED;
 
-    DPRINT << "EDM DONE\n";
+    // DPRINT << "EDM DONE\n";
     WAYPOINT("DONE");
 }

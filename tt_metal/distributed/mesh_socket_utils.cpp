@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "tt_metal/distributed/mesh_socket_utils.hpp"
+#include <tt-metalium/control_plane.hpp>
 #include <tt-metalium/system_mesh.hpp>
 #include "impl/context/metal_context.hpp"
 
@@ -48,9 +49,17 @@ uint32_t get_sender_receiver_chip_fabric_encoding(
         }
         return std::abs(static_cast<int>(sender_global_coord[0]) - static_cast<int>(recv_global_coord[0])) +
                std::abs(static_cast<int>(sender_global_coord[1]) - static_cast<int>(recv_global_coord[1]));
+    } else if (fabric_config == FabricConfig::FABRIC_2D_DYNAMIC) {
+        std::cout << "Using 2D Fabric with dyn routing" << std::endl;
+        // 2D/Mesh Fabric requires looking up "logical" encodings from the control plane
+        auto* control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
+        auto sender_mesh_chip_id = control_plane->get_mesh_chip_id_from_physical_chip_id(sender_physical_device_id);
+        auto recv_mesh_chip_id = control_plane->get_mesh_chip_id_from_physical_chip_id(recv_physical_device_id);
+        return is_sender ? recv_mesh_chip_id.second : sender_mesh_chip_id.second;
+    } else {
+        TT_FATAL(false, "Unsupported Fabric Config for Sockets specified {}", fabric_config);
+        return 0;
     }
-    // 2D fabric requires the physical chip id
-    return is_sender ? recv_physical_device_id : sender_physical_device_id;
 }
 
 }  // namespace
@@ -170,6 +179,7 @@ void write_socket_configs(
                     recv_core.device_coord,
                     fabric_config,
                     SocketEndpoint::SENDER);
+                std::cout << "Recv Logical ID: " << downstream_chip_id << std::endl;
                 auto downstream_mesh_id = get_physical_mesh_id(peer_device, recv_core.device_coord);
                 auto recv_virtual_core = mesh_device->worker_core_from_logical_core(recv_core.core_coord);
 
@@ -201,6 +211,7 @@ void write_socket_configs(
                     recv_core.device_coord,
                     fabric_config,
                     SocketEndpoint::RECEIVER);
+                std::cout << "Sender Logical ID: " << upstream_chip_id << std::endl;
                 auto upstream_mesh_id = get_physical_mesh_id(peer_device, sender_core.device_coord);
                 auto sender_virtual_core = mesh_device->worker_core_from_logical_core(sender_core.core_coord);
 

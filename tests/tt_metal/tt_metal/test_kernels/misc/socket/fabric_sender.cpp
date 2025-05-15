@@ -12,7 +12,12 @@ void fabric_write_any_len(
     uint64_t dst_addr,
     uint32_t xfer_size,
     uint32_t downstream_encoding) {
+#if defined(DYNAMIC_ROUTING_ENABLED)
+    fabric_set_unicast_route(
+        (MeshPacketHeader*)data_packet_header_addr, eth_chan_directions::COUNT, 0, downstream_encoding, 0, 0);
+#else
     data_packet_header_addr->to_chip_unicast(static_cast<uint8_t>(downstream_encoding));
+#endif
     while (xfer_size > FABRIC_MAX_PACKET_SIZE) {
         data_packet_header_addr->to_noc_unicast_write(NocUnicastCommandHeader{dst_addr}, FABRIC_MAX_PACKET_SIZE);
         fabric_connection.wait_for_empty_write_slot();
