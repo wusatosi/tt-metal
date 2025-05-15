@@ -611,10 +611,11 @@ def test_line_all_gather_async_on_T3K_cols_persistent_fabric_post_commit(
 @pytest.mark.parametrize("mesh_device", [pytest.param((1, 8), id="1x8_grid")], indirect=True)
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_all_gather_ring_async_on_T3K(mesh_device):
-    torch_tensor = torch.rand((32, 512), dtype=torch.bfloat16)
-    for i in range(16):
-        torch_tensor[:, i * 32 : (i + 1) * 32] = torch.randn(32, 32, dtype=torch.bfloat16)
-        # torch_tensor[:, i * 32 : (i + 1) * 32] = i
+    num_tiles = 2
+    num_devices = 8
+    torch_tensor = torch.rand((32, 32 * num_tiles * num_devices), dtype=torch.bfloat16)
+    for i in range(num_tiles):
+        torch_tensor[:, i * 32 : (i + 1) * 32] = i
     # Convert to ttnn.Tensor, tilize and move onto devices across mesh DRAM
     mesh_tensor = ttnn.from_torch(
         torch_tensor,
@@ -635,9 +636,8 @@ def test_all_gather_ring_async_on_T3K(mesh_device):
 
     # ttnn.set_printoptions(profile="full")
 
-    for i in range(16):
-        j = i * 32
-        print("DEBUG_ROW", i, output_tensor[0, j : j + 32])
+    for i in range(num_tiles * num_devices):
+        print("DEBUG_ROW", i, output_tensor[0, i * 32 : (i + 1) * 32])
     print(output_tensor)
 
     mesh_composer = ttnn.ConcatMesh2dToTensor(mesh_device, mesh_shape=(1, 8), dims=[0, 1])
@@ -649,7 +649,7 @@ def test_all_gather_ring_async_on_T3K(mesh_device):
     print(torch_tensor.shape, tt_output_tensor.shape, tt_output_tensor)
     assert torch.allclose(torch_tensor, tt_output_tensor, atol=0.1), "Tensor comparison failed"
 
-    # assert comp_equal(torch_tensor, tt_output_tensor)
+    assert comp_equal(torch_tensor, tt_output_tensor)
 
 
 # Enumerate the post-commit cases explicitly

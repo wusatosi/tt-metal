@@ -68,12 +68,11 @@ void createReader(
     Tensor& input_tensor,
     Tensor& output_tensor,
     const std::vector<ttnn::GlobalSemaphore>& semaphores,
-    bool is_forward,
     CoreCoord reader_core,
     uint32_t device_order,
     const uint32_t local_semaphore_id) {
     auto reader_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
-    reader_kernel_config.compile_args = {tt::CB::c_in0, (uint32_t)is_forward};
+    reader_kernel_config.compile_args = {tt::CB::c_in0, tt::CB::c_in1};
 
     uint32_t tile_size = 1088;
 
@@ -93,8 +92,7 @@ void createReader(
         device->id(),
         device_order,
         tile_size,
-        local_semaphore_id,
-    };
+        local_semaphore_id};
 
     tt::tt_metal::SetRuntimeArgs(program, reader_kernel_id, {reader_core}, reader_rt_args);
 }
@@ -108,15 +106,16 @@ void createWriter(
     Tensor& input_tensor,
     Tensor& output_tensor,
     const std::vector<ttnn::GlobalSemaphore>& semaphores,
-    bool is_forward,
     CoreCoord writer_core,
     int link,
     uint32_t device_order,
     const uint32_t local_semaphore_id) {
     tt::DataFormat data_format = tt::DataFormat::Bfp8_b;
     uint32_t src0_cb_index = tt::CB::c_in0;
-    uint32_t dst0_cb_index = tt::CB::c_in1;
-    uint32_t header_cb_index = tt::CB::c_in2;
+    uint32_t src1_cb_index = tt::CB::c_in1;
+    uint32_t dst0_cb_index = tt::CB::c_in2;
+    uint32_t dst1_cb_index = tt::CB::c_in3;
+    uint32_t header_cb_index = tt::CB::c_in4;
     uint32_t num_pages_per_packet = 1;
     uint32_t num_tiles = input_tensor.padded_shape().volume() / tt::constants::TILE_HW;
     std::cout << "Number of tiles: " << num_tiles << std::endl;
@@ -127,14 +126,24 @@ void createWriter(
     static constexpr auto packet_header_size_bytes = sizeof(tt::tt_fabric::PacketHeader);
 
     tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(8 * tile_size, {{src0_cb_index, data_format}})
+        tt::tt_metal::CircularBufferConfig(16 * tile_size, {{src0_cb_index, data_format}})
             .set_page_size(src0_cb_index, tile_size);
     tt::tt_metal::CBHandle cb_src0_workers = tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_src0_config);
 
-    tt::tt_metal::CircularBufferConfig cb_dst_config =
-        tt::tt_metal::CircularBufferConfig(8 * tile_size, {{dst0_cb_index, data_format}})
+    tt::tt_metal::CircularBufferConfig cb_src1_config =
+        tt::tt_metal::CircularBufferConfig(16 * tile_size, {{src1_cb_index, data_format}})
+            .set_page_size(src1_cb_index, tile_size);
+    tt::tt_metal::CBHandle cb_src1_workers = tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_src1_config);
+
+    tt::tt_metal::CircularBufferConfig cb_dst0_config =
+        tt::tt_metal::CircularBufferConfig(16 * tile_size, {{dst0_cb_index, data_format}})
             .set_page_size(dst0_cb_index, tile_size);
-    tt::tt_metal::CBHandle cb_dst_workers = tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_dst_config);
+    tt::tt_metal::CBHandle cb_dst0_workers = tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_dst0_config);
+
+    tt::tt_metal::CircularBufferConfig cb_dst1_config =
+        tt::tt_metal::CircularBufferConfig(16 * tile_size, {{dst1_cb_index, data_format}})
+            .set_page_size(dst1_cb_index, tile_size);
+    tt::tt_metal::CBHandle cb_dst1_workers = tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_dst1_config);
 
     tt::tt_metal::CircularBufferConfig cb_reserved_packet_header_config =
         tt::tt_metal::CircularBufferConfig(
@@ -144,7 +153,7 @@ void createWriter(
         tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_reserved_packet_header_config);
 
     auto writer_kernel_config = tt::tt_metal::WriterDataMovementConfig{};
-    writer_kernel_config.compile_args = {src0_cb_index, dst0_cb_index, header_cb_index, (uint32_t)is_forward};
+    writer_kernel_config.compile_args = {src0_cb_index, src1_cb_index, dst0_cb_index, dst1_cb_index, header_cb_index};
 
     auto writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
@@ -198,56 +207,25 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     auto output_tensor = output_tensors[0];
     auto mesh_device = input_tensor.mesh_device();
 
-    CoreCoord fwd_core = CoreCoord(0, 0);
-    CoreCoord fwd_drain_sync_core = device->worker_core_from_logical_core(fwd_core);
-    CoreCoord bwd_core = CoreCoord(0, 1);
-    CoreCoord bwd_drain_sync_core = device->worker_core_from_logical_core(bwd_core);
+    CoreCoord core_coord = CoreCoord(0, 0);
+    CoreCoord fwd_drain_sync_core = device->worker_core_from_logical_core(core_coord);
+    std::cout << "Forward core: " << core_coord.str() << "\n";
+    std::cout << "Forward drain sync core: " << fwd_drain_sync_core.str() << "\n";
 
     // Forward
     // Reader
-    // auto fwd_local_semaphore = tt::tt_metal::CreateSemaphore(program, fwd_core, 0);
-    // createReader(
-    //     program,
-    //     device,
-    //     fwd_drain_sync_core,
-    //     input_tensor,
-    //     output_tensor,
-    //     semaphores,
-    //     true,
-    //     fwd_core,
-    //     device_order,
-    //     fwd_local_semaphore);
-
-    // // Writer
-    // createWriter(
-    //     program,
-    //     device,
-    //     fwd_device,
-    //     bwd_device,
-    //     fwd_drain_sync_core,
-    //     input_tensor,
-    //     output_tensor,
-    //     semaphores,
-    //     true,
-    //     fwd_core,
-    //     0,
-    //     device_order,
-    //     fwd_local_semaphore);
-
-    // Backward
-    // Reader
-    auto bwd_local_semaphore = tt::tt_metal::CreateSemaphore(program, bwd_core, 0);
+    auto fwd_local_semaphore = tt::tt_metal::CreateSemaphore(program, core_coord, 0);
+    // auto bwd_local_semaphore = tt::tt_metal::CreateSemaphore(program, core_coord, 0);
     createReader(
         program,
         device,
-        bwd_drain_sync_core,
+        fwd_drain_sync_core,
         input_tensor,
         output_tensor,
-        semaphore,
-        false,
-        bwd_core,
+        semaphores,
+        core_coord,
         device_order,
-        bwd_local_semaphore);
+        fwd_local_semaphore);
 
     // Writer
     createWriter(
@@ -255,15 +233,14 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
         device,
         fwd_device,
         bwd_device,
-        bwd_drain_sync_core,
+        fwd_drain_sync_core,
         input_tensor,
         output_tensor,
-        semaphore,
-        false,
-        bwd_core,
+        semaphores,
+        core_coord,
         0,
         device_order,
-        bwd_local_semaphore);
+        fwd_local_semaphore);
 
     return {.program = std::move(program), .override_runtime_arguments_callback = override_runtime_arguments_callback};
 }
