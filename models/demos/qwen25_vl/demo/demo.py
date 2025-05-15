@@ -26,7 +26,7 @@ from models.demos.qwen25_vl.tt.model_config import VisionModelArgs
 from models.demos.utils.llm_demo_utils import create_benchmark_data
 from models.perf.benchmarking_utils import BenchmarkProfiler
 
-from models.tt_transformers.tt.model_config import ModelOptimizations
+from models.tt_transformers.tt.model_config import ModelOptimizations, ModelArgs
 
 
 def create_tt_model(
@@ -39,8 +39,6 @@ def create_tt_model(
     dtype=ttnn.bfloat8_b,
     use_paged_kv_cache=False,
 ):
-    from models.tt_transformers.tt.model_config import ModelArgs
-
     tt_model_args = ModelArgs(
         mesh_device,
         instruct=instruct,
@@ -136,8 +134,47 @@ def create_tt_model(
             1,  # repeat_batches to simulate multiple users (batch_size=1) with the same prompt
             4096,  # max_seq_len, allow for image tokens
             1,  # batch_size -- samples to load from the prompt JSON
-            128,  # max_generated_tokens
+            200,  # max_generated_tokens
             True,  # paged_attention
+            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params
+            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
+            False,  # stop_at_eos
+            True,  # ci_only
+        ),
+        (  # Batch-2 run with single decoder layer (CI only) - two users
+            "models/demos/qwen25_vl/demo/sample_prompts/multi_prompts.json",  # real multi-user prompts
+            True,  # instruct mode
+            1,  # repeat_batches to simulate multiple users with the same prompt
+            4096,  # max_seq_len, allow for image tokens
+            2,  # batch_size -- samples to load from the prompt JSON
+            200,  # max_generated_tokens
+            False,  # paged_attention
+            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params
+            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
+            False,  # stop_at_eos
+            True,  # ci_only
+        ),
+        (  # Batch-1 run with single decoder layer (CI only) - single user, small prompt
+            "models/demos/qwen25_vl/demo/sample_prompts/demo_1.json",  # single qwen demo prompt
+            True,  # instruct mode
+            1,  # repeat_batches to simulate multiple users (batch_size=1) with the same prompt
+            4096,  # max_seq_len, allow for image tokens
+            1,  # batch_size -- samples to load from the prompt JSON
+            200,  # max_generated_tokens
+            False,  # paged_attention
+            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params
+            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
+            False,  # stop_at_eos
+            True,  # ci_only
+        ),
+        (  # Batch-1 run with single decoder layer (CI only) - single user, small prompt
+            "models/demos/qwen25_vl/demo/sample_prompts/demo_2.json",  # single qwen demo prompt
+            True,  # instruct mode
+            1,  # repeat_batches to simulate multiple users (batch_size=1) with the same prompt
+            4096,  # max_seq_len, allow for image tokens
+            1,  # batch_size -- samples to load from the prompt JSON
+            200,  # max_generated_tokens
+            False,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
             False,  # stop_at_eos
@@ -147,7 +184,10 @@ def create_tt_model(
     ids=[
         "batch-1",  # latency
         "batch-2",  # multi-user
-        "ci-only",  # ci_only
+        "ci-only-1",  # ci_only batch-1
+        "ci-only-2",  # ci_only batch-2
+        "ci-only-demo-1",  # ci_only demo-1
+        "ci-only-demo-2",  # ci_only demo-2
     ],
 )
 @pytest.mark.parametrize(
@@ -200,8 +240,9 @@ def test_demo(
         pytest.skip("TG only supports batch 1 and 32")
 
     mesh_device.enable_async(True)
+    logger.info(f"mesh_device: {mesh_device}")
     use_tt_vision = True
-    enable_trace = True  # Use tracing for better perf
+    enable_trace = False  # Use tracing for better perf
     print_to_file = False  # Enable this flag to print the output of all users to a file
 
     # Override parameters from command line if they are provided
@@ -282,7 +323,7 @@ def test_demo(
         # Create the TorchVisionTransformer wrapper using the original vision model as reference
         vision_model_args = VisionModelArgs(
             mesh_device.create_submesh(ttnn.MeshShape(1, 1), offset=None),
-            max_batch_size=1,  # todo)) this may need to change for multiple users?
+            max_batch_size=batch_size,
             max_seq_len=max_seq_len,
         )
         vision_model_args.hf_config.vision_config.depth = config.vision_config.depth
@@ -305,31 +346,66 @@ def test_demo(
             padding=True,
             return_tensors="pt",
         )
+        # DEBUG {
+        merge_length = processor.image_processor.merge_size**2
+        num_image_tokens = [inputs.image_grid_thw[i].prod() // merge_length for i in range(batch_size)]
+        logger.info(f"num_image_tokens: {num_image_tokens}")
+        # } DEBUG
         # Vision prefill
         logger.info(f"Vision model prefill batch {batch_idx}")
+        # demo-2: inputs.pixel_values is tensor of shape torch.Size([14308, 1176]) --> values saved in pt_ref/pixel_values_demo_2.pt
+        # demo-2: inputs.image_grid_thw is list of 2 tensors of shape tensor([[  1,  98, 146]])
+        # # pv = torch.load("pt_ref/pixel_values_demo_2.pt")
+        # # torch.sum(inputs.pixel_values[-14308:,:] != pv)
+        # # tensor(0)
+        # # inputs.image_grid_thw
+        # # tensor([[  1,  64, 114],
+        # #         [  1,  98, 146]])
+        # [INFO] we are good with the inputs of demo 2!!!
         image_embeds = (
             visual_model(inputs.pixel_values, grid_thw=inputs.image_grid_thw)
             if "pixel_values" in inputs
             else torch.tensor([], dtype=torch.bfloat16)
         )
+        # demo-1: image_embeds is a tensor of shape torch.Size([1824, 2048]) --> values saved in pt_ref/image_embeds_demo_1.pt
+        # demo-2: image_embeds is a tensor of shape torch.Size([3577, 2048]) --> values saved in pt_ref/image_embeds_demo_2.pt
+        # # image_embeds.shape
+        # # torch.Size([5401, 2048])
+        # # ie_1 = torch.load("pt_ref/image_embeds_demo_1.pt", weights_only=False)
+        # # torch.sum(image_embeds[:1824,:] != ie_1)
+        # # tensor(0)
+        # # ie_2 = torch.load("pt_ref/image_embeds_demo_2.pt", weights_only=False)
+        # # torch.sum(image_embeds[1824:,:] != ie_2)
+        # # tensor(0)
+        # [INFO] same image for each user, image_embeds is a tensor of shape (batch_size * num_image_tokens, hidden_size): (2 * 3577, 2048)
+        # [INFO] different image for each user, image_embeds is a tensor of shape (sum(num_image_tokens), hidden_size): (5401, 2048)
 
         # Prepare text + vision inputs for decoder model
         logger.info(f"Prepare text + vision inputs for decoder model batch {batch_idx}")
         # FIXME: on-host embeddings - run as part of vision model prefill when merge_vision_tokens is ported to ttnn
-        text_embeds = reference_model.model.embed_tokens(inputs.input_ids)
-        input_embeds = merge_vision_tokens(inputs.input_ids, text_embeds, image_embeds, reference_model.config)
+        text_embeds = reference_model.model.language_model.embed_tokens(inputs.input_ids)
+        # DEBUG: doing merge_vision_tokens and multimodal_rope_from_hf on host one user after another and then compare the results to batched ones
+        input_embeds = merge_vision_tokens(
+            inputs.input_ids, text_embeds, image_embeds, reference_model.config
+        )  # DEBUG: does it work for batch_size > 1?
+        # input_embeds is a tensor of shape (batch_size, seq_len, hidden_size): (2, 3624, 2048)
+        pad_token_id = tokenizer.pad_token_id
         (
             input_prefill_pt,
-            decoding_pos,
+            decoding_pos,  # Position where decoding should start for each user
             prefill_lens,
         ) = preprocess_inputs_prefill(
             input_embeds,
             model_args,
+            inputs.attention_mask,
+            pad_embedding=reference_model.model.language_model.embed_tokens(torch.tensor(pad_token_id)),
         )
-        # replace our generated cos/sin with the reference model's versions
-        cos, sin = multimodal_rope_from_hf(inputs, input_embeds, reference_model, model_args.max_seq_len)
+        # Get user-specific rotary position embeddings
+        cos, sin = multimodal_rope_from_hf(inputs, input_embeds, reference_model, model_args, pad_token_id=pad_token_id)
         model.rope_setup.set_cos_sin(cos, sin)
         profiler.end(f"preprocess_prefill_inputs", iteration=batch_idx)
+        # cos and sin should be potentially different for different users? Yes, we need to check them then
+        # # this checks out against the saved tensors under pt_ref/{cos,sin}_demo_1.pt and pt_ref/{cos,sin}_demo_2.pt
 
         # when doing repeating batches, set kv-caches to zero, to avoid context leaking
         if batch_idx != 0:
@@ -349,6 +425,14 @@ def test_demo(
         profiler.end(f"compile_prefill", iteration=batch_idx)
         logger.info("Finished prefill warmup")
 
+        # Reset KV caches to zero after warmup to avoid interference between users
+        for layer in model.layers:
+            k_cache, v_cache = layer.attention.layer_past
+            k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
+            v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
+
+        logger.info("KV cache reset after warmup to prevent interference between users")
+
         logger.info(f"Starting prefill...")
         profiler.start(f"inference_prefill", iteration=batch_idx)
         logits = generator.prefill_forward_text(
@@ -357,7 +441,7 @@ def test_demo(
             kv_cache=tt_kv_cache,
             prompt_lens=decoding_pos,
         )
-        torch.save(logits, f"ttnn_logits.pt")
+        # torch.save(logits, f"ttnn_logits.pt")
         prefilled_token = torch.argmax(logits, dim=-1)
         profiler.end(f"inference_prefill", iteration=batch_idx)
         logger.info(f"Prefill finished")
@@ -373,7 +457,8 @@ def test_demo(
         user_done = [False] * batch_size  # Keeps track when a user reaches EoD token
 
         # TODO Argmax on device is only supported for batch_size=1
-        argmax_on_device = False if (batch_size > 1 or sampling_params["temperature"] != 0) else True
+        # argmax_on_device = False if (batch_size > 1 or sampling_params["temperature"] != 0) else True
+        argmax_on_device = False
 
         # Initial positions continuing from prefill, no need to offset by rope_deltas
         current_pos = torch.tensor([decoding_pos[b] for b in range(batch_size)])

@@ -1392,7 +1392,7 @@ class ModelArgs:
         self.full_model_n_layers = self.n_layers
         self.norm_eps = params.get("norm_eps", params.get("rms_norm_eps"))
         self.vocab_size = params["vocab_size"]
-        self.padded_vocab_size = 128 * 1024
+        self.padded_vocab_size = nearest_32(self.vocab_size)
         self.head_dim = params.get("head_dim", self.dim // self.n_heads)
         if is_hf:
             self.max_context_len = params.get("max_position_embeddings")
@@ -1649,7 +1649,18 @@ class ModelArgs:
             else:
                 state_dict = load_hf_state_dict(self.CKPT_DIR)
 
-        if self.checkpoint_type == CheckpointType.HuggingFace:
+            # todo)) { aborb into standardize_hf_keys()
+            all_keys = tuple(state_dict.keys())
+            new_state_dict = {}
+            for k in all_keys:
+                if "model.visual." in k:
+                    new_state_dict[k.replace("model.visual.", "visual.")] = state_dict[k]
+                elif "model.language_model." in k:
+                    new_state_dict[k.replace("model.language_model.", "model.")] = state_dict[k]
+                else:
+                    new_state_dict[k] = state_dict[k]
+            state_dict = new_state_dict
+            # todo)) }
             state_dict = standardize_hf_keys(state_dict)
             state_dict = convert_hf_to_meta(state_dict, self.head_dim)
 
