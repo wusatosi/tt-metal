@@ -14,7 +14,7 @@ from .utils import from_torch_fast, to_torch
 
 
 @dataclass
-class TtConv2dParameters:
+class TtPatchEmbeddingConv2dParameters:
     weight: ttnn.Tensor
     bias: ttnn.Tensor | None
     out_channels: int
@@ -30,7 +30,7 @@ class TtConv2dParameters:
         out_channels: int,
         device: ttnn.MeshDevice,
         use_cpu_fallback: bool = False,
-    ) -> TtConv2dParameters | dict[str, torch.Tensor]:
+    ) -> TtPatchEmbeddingConv2dParameters | dict[str, torch.Tensor]:
         if use_cpu_fallback:
             return state
 
@@ -73,8 +73,10 @@ class TtConv2dParameters:
         )
 
 
-class TtConv2d:
-    def __init__(self, parameters: TtConv2dParameters | dict[str, torch.Tensor], device: ttnn.MeshDevice) -> None:
+class TtPatchEmbeddingConv2d:
+    def __init__(
+        self, parameters: TtPatchEmbeddingConv2dParameters | dict[str, torch.Tensor], device: ttnn.MeshDevice
+    ) -> None:
         self._device = device
 
         if isinstance(parameters, dict):
