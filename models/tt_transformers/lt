@@ -2,22 +2,21 @@
 # SPDX-FileCopyrightText: © 2024 Tenstorrent Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-import curses
-import json
-import os
-import re
-import shlex
-import shutil
-import signal
-import subprocess
 import sys
+import os
+import subprocess
+import shutil
+import curses
 import threading
+import shlex
+import re
 import time
-from pathlib import Path
-
+import signal
+import psutil
+import json
 import matplotlib.pyplot as plt
 import numpy as np
-import psutil
+from pathlib import Path
 
 from models.tt_transformers.tt.model_config import parse_optimizations
 
@@ -557,7 +556,7 @@ def main(stdscr):
                                 or (m == "70b" and d in ["n150", "n300", "p150", "p300"])
                                 or (m == "70b-r1" and d in ["n150", "n300", "p150", "p300"])
                                 or (m == "q72b" and d in ["n150", "n300", "p150", "p300"])
-                                or (m == "q7b" and d in ["n150", "t3k"])
+                                or (m == "q7b" and d in ["n300", "p300"])
                                 or ("vision" in c and m not in ["11b", "11b-b"])
                             )
                         ]
@@ -1307,7 +1306,7 @@ def export_results_to_markdown(output_entries, stdscr):
 
     # Collect results from entries in their original order
     for entry in output_entries:
-        if entry.status in ["Finished", "Error"]:
+        if entry.status == "Finished":
             key = (entry.model, entry.device)
 
             if entry.command_name == "demo" or entry.command_name == "accuracy":
@@ -1402,7 +1401,7 @@ def export_results_to_markdown(output_entries, stdscr):
     if perf_entries:
         markdown_lines.extend(
             [
-                "## Performance",
+                "## LlamaOptimizations.performance",
                 "",
                 "This configuration uses bfp4 MLP FF1+FF3 for all models.",
                 "",
@@ -1420,7 +1419,7 @@ def export_results_to_markdown(output_entries, stdscr):
         markdown_lines.extend(
             [
                 "",
-                "## Accuracy",
+                "## LlamaOptimizations.accuracy",
                 "",
                 "This configuration uses bfp4 MLP FF1+FF3 only for the 3.1-70B model.",
                 "",

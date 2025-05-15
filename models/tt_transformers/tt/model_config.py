@@ -78,55 +78,12 @@ class ModelOptimizations:
     @classmethod
     def accuracy(cls, model_name):
         """Configuration optimized for accuracy
-        70B+ models still use bfp4 MLPs and BFP8 attention in this configuration
+        Only 70B models uses bfp4 MLPs in this configuration
         """
-        base_model_name = model_name.split("B-")[0] + "B" if "B-" in model_name else model_name
-        if base_model_name in ["Llama3.1-70B", "Llama3.2-90B", "DeepSeek-R1-Distill-Llama-70B", "Qwen2.5-72B"]:
-            logger.info(
-                f"{model_name} is >70B and large models test insensitive precision, using BFP4 MLPs and BFP8 attention even in accuracy mode"
-            )
-            inst = cls(
-                {
-                    "TensorPrecision": {TensorGroup.FF1_FF3: PrecisionSetting.BFP4},
-                    "OpFidelity": {OpGroup.LI_FF1_FF3: MathFidelitySetting.LOFI},
-                }
-            )
+        if model_name in ["Llama3.1-70B", "Llama3.2-90B-Instruct", "DeepSeek-R1-Distill-Llama-70B", "Qwen2.5-72B"]:
+            inst = ModelOptimizations.performance(model_name)
         else:
-            if model_name.startswith("Llama3") or model_name.startswith("Mistral-7B"):
-                logger.info(
-                    f"Llama 3 and Mistral 7B models test insensitive to attention precision, using BFP8 attention and kv-cache with FP16 MLP accumulation even in accuracy mode"
-                )
-                inst = cls(
-                    {
-                        "TensorPrecision": {
-                            TensorGroup.WQKV: PrecisionSetting.BFP8,
-                            TensorGroup.KV_CACHE: PrecisionSetting.BFP8,
-                            TensorGroup.WO: PrecisionSetting.BFP8,
-                        },
-                        "OpFidelity": {
-                            OpGroup.LI_FF1_FF3: MathFidelitySetting.HIFI2_FP16,
-                            OpGroup.LI_FF2: MathFidelitySetting.HIFI2_FP16,
-                        },
-                    }
-                )
-            else:
-                inst = cls(
-                    {
-                        "TensorPrecision": {
-                            TensorGroup.WQKV: PrecisionSetting.BF16,
-                            TensorGroup.KV_CACHE: PrecisionSetting.BF16,
-                            TensorGroup.WO: PrecisionSetting.BF16,
-                        },
-                        "OpFidelity": {
-                            OpGroup.LI_QKV_DECODE: MathFidelitySetting.HIFI4,
-                            OpGroup.LI_QKV_PREFILL: MathFidelitySetting.HIFI4,
-                            OpGroup.SDPA_DECODE: MathFidelitySetting.HIFI4,
-                            OpGroup.SDPA_PREFILL: MathFidelitySetting.HIFI4,
-                            OpGroup.LI_O_DECODE: MathFidelitySetting.HIFI4,
-                            OpGroup.LI_O_PREFILL: MathFidelitySetting.HIFI4,
-                        },
-                    }
-                )
+            inst = cls()
         inst.__name__ = "accuracy"
         return inst
 
@@ -135,35 +92,12 @@ class ModelOptimizations:
         """Configuration optimized for performance
         All models use bfp4 in FF1 and FF3 MLPs in this configuration
         """
-        base_model_name = model_name.split("B-")[0] + "B" if "B-" in model_name else model_name
-        if base_model_name == "Qwen2.5-7B":
-            logger.info(
-                f"Model {model_name} is degraded under standard high-performance settings, using BF16 attention and BFP8 MLP"
-            )
-            inst = cls(
-                {
-                    "TensorPrecision": {
-                        TensorGroup.WQKV: PrecisionSetting.BF16,
-                        TensorGroup.KV_CACHE: PrecisionSetting.BF16,
-                        TensorGroup.WO: PrecisionSetting.BF16,
-                    },
-                    "OpFidelity": {
-                        OpGroup.LI_QKV_DECODE: MathFidelitySetting.HIFI4,
-                        OpGroup.LI_QKV_PREFILL: MathFidelitySetting.HIFI4,
-                        OpGroup.SDPA_DECODE: MathFidelitySetting.HIFI4,
-                        OpGroup.SDPA_PREFILL: MathFidelitySetting.HIFI4,
-                        OpGroup.LI_O_DECODE: MathFidelitySetting.HIFI4,
-                        OpGroup.LI_O_PREFILL: MathFidelitySetting.HIFI4,
-                    },
-                }
-            )
-        else:
-            inst = cls(
-                {
-                    "TensorPrecision": {TensorGroup.FF1_FF3: PrecisionSetting.BFP4},
-                    "OpFidelity": {OpGroup.LI_FF1_FF3: MathFidelitySetting.LOFI},
-                }
-            )
+        inst = cls(
+            {
+                "TensorPrecision": {TensorGroup.FF1_FF3: PrecisionSetting.BFP4},
+                "OpFidelity": {OpGroup.LI_FF1_FF3: MathFidelitySetting.LOFI},
+            }
+        )
         inst.__name__ = "performance"
         return inst
 
@@ -216,10 +150,6 @@ class ModelOptimizations:
                     raise ValueError(f"Invalid OpFidelity value: {value}. Must be a MathFidelitySetting enum value")
 
     def _default_settings(self):
-        """Default is BFP8/HIFI2 everywhere, activation follows input type (usually BF16)
-        Only exceptions:
-        - SDPA runs in HIFI4 during prefill (still HIFI2 during decode)
-        """
         return {
             "TensorPrecision": {
                 # MLP
@@ -233,16 +163,16 @@ class ModelOptimizations:
                 TensorGroup.ACTIVATION: None,  # this signals that original dtype should be used
             },
             "OpFidelity": {
-                # MLP linear operators - BFP8 with FP16 accumulation to save L1
+                # MLP linear operators
                 OpGroup.LI_FF1_FF3: MathFidelitySetting.HIFI2_FP16,
                 OpGroup.LI_FF2: MathFidelitySetting.HIFI2_FP16,
                 # Attention operators -- linear and scaled_dot_product_attention, in decode and prefill modes
                 OpGroup.LI_QKV_DECODE: MathFidelitySetting.HIFI2,
-                OpGroup.SDPA_DECODE: MathFidelitySetting.HIFI2,
+                OpGroup.SDPA_DECODE: MathFidelitySetting.HIFI2_NA,
                 OpGroup.LI_O_DECODE: MathFidelitySetting.HIFI2,
                 OpGroup.LI_QKV_PREFILL: MathFidelitySetting.HIFI2,
                 OpGroup.SDPA_PREFILL: MathFidelitySetting.HIFI4,
-                OpGroup.LI_O_PREFILL: MathFidelitySetting.HIFI2,  # FP32 accumulate is important here
+                OpGroup.LI_O_PREFILL: MathFidelitySetting.HIFI2_FP16,
             },
         }
 
@@ -431,35 +361,32 @@ class ModelArgs:
         # TODO the following is parametrized for a vocab size of 128256 (used in LLama3). Should generalize for other models
         self.max_columns_per_device_lm_head = 128256 // 8 if self.arch_name == "blackhole" else 128256 // 4
         self.dummy_weights = dummy_weights
-        self.cached_hf_model = None  # Save any HF model object to avoid loading it multiple times for reference methods
 
         assert not os.getenv(
             "FAKE_DEVICE"
         ), "FAKE_DEVICE has been renamed to MESH_DEVICE for consistency with vLLM, please update your environment variables and run again."
 
-        # Remove trailing slashes so basename gets the right model name
         LLAMA_DIR = os.getenv("LLAMA_DIR")
         HF_MODEL = os.getenv("HF_MODEL")
-        self.CACHE_PATH = os.getenv("TT_CACHE_PATH")
         assert not (LLAMA_DIR and HF_MODEL), "Only one of LLAMA_DIR or HF_MODEL should be set"
         if LLAMA_DIR:
             if any([os.getenv("LLAMA_CKPT_DIR"), os.getenv("LLAMA_TOKENIZER_PATH")]):
                 logger.warning("LLAMA_DIR will override LLAMA_CKPT_DIR and LLAMA_TOKENIZER_PATH")
             self.CKPT_DIR = LLAMA_DIR
             self.TOKENIZER_PATH = LLAMA_DIR
+            self.CACHE_PATH = os.getenv("TT_CACHE_PATH")
             if not self.CACHE_PATH:
                 self.CACHE_PATH = os.path.join(LLAMA_DIR, self.device_name)
-            self.model_name = os.path.basename(LLAMA_DIR.strip("/"))  # May be overridden by config
+            self.model_name = os.path.basename(LLAMA_DIR)  # May be overridden by config
         elif HF_MODEL:
             self.CKPT_DIR = HF_MODEL
             self.TOKENIZER_PATH = HF_MODEL
+            self.CACHE_PATH = os.getenv("TT_CACHE_PATH")
             if not self.CACHE_PATH:
                 self.CACHE_PATH = os.path.join("model_cache", HF_MODEL, self.device_name)
             else:  # For HF models, always append the device name (e.g. N150/N300/T3K/TG) to the cache path
                 self.CACHE_PATH = os.path.join(self.CACHE_PATH, self.device_name)
-            self.model_name = HF_MODEL.strip("/").split("/")[
-                -1
-            ]  # HF model names use / even on windows. May be overridden by config.
+            self.model_name = HF_MODEL  # May be overridden by config
             self.from_hf_url = True
         else:
             assert (
@@ -476,7 +403,6 @@ class ModelArgs:
         logger.info(f"Checkpoint directory: {self.CKPT_DIR}")
         logger.info(f"Tokenizer file: {self.TOKENIZER_PATH + '/tokenizer.model'}")
         logger.info(f"Cache directory: {self.CACHE_PATH}")
-        logger.info(f"Model name: {self.model_name}")
 
         # Some consumers like SentencePiece only accept str not Path for files
         self.model_base_path = Path(self.CKPT_DIR)
@@ -562,11 +488,6 @@ class ModelArgs:
         else:
             self.optimizations = optimizations
 
-        # Configure data precision and math fidelity for tensors and kernels
-        if self.optimizations is None:
-            self.optimizations = DecodersPrecision.accuracy(num_decoders=self.n_layers, model_name=self.model_name)
-
-        self.dummy_weights = dummy_weights
         self.tile_padded_batch_rows = self.tile_size * int(math.ceil(self.max_batch_size / self.tile_size))
 
         # Enable workarounds by default until di/dt issues are fixed
@@ -581,7 +502,6 @@ class ModelArgs:
         self.model_config.update(
             {f"{key}_MEMCFG": DRAM_MEMCFG if "WEIGHTS" in key else L1_MEMCFG for key in self.OP_KEYS}
         )
-        self.model_config["DECODERS_OPTIMIZATIONS"] = self.optimizations
         # Update memory layouts (Tile, except MLP)
         self.model_config.update({f"{key}_TILE": ttnn.TILE_LAYOUT for key in self.OP_KEYS if "LAYOUT" in key})
 
@@ -648,6 +568,11 @@ class ModelArgs:
                 fp32_dest_acc_en=True,
                 packer_l1_acc=False,
             )
+
+            # Configure data precision and math fidelity for tensors and kernels
+            if self.optimizations is None:
+                self.optimizations = DecodersPrecision.accuracy(num_decoders=self.n_layers, model_name=self.model_name)
+            self.model_config["DECODERS_OPTIMIZATIONS"] = self.optimizations
 
             # Create memory config for sharded tensors
             residual_grid = self.dram_shard_core_grid_for_k(self.dim // self.num_devices)
@@ -750,7 +675,7 @@ class ModelArgs:
                 grid_size=mlp2_grid(seq_len),
             )
 
-            k_dim = self.dim // self.cluster_shape[0] if self.is_galaxy else self.dim // self.num_devices
+            k_dim = self.dim // self.cluster_shape[0] if self.is_galaxy else self.dim
             # n_dim = self.dim // self.cluster_shape[1] if self.is_galaxy else self.dim
             n_dim = (
                 self.dim // self.cluster_shape[1]
@@ -761,14 +686,14 @@ class ModelArgs:
                     else self.dim
                 )
             )
-            num_rows = lambda seq_len: min(seq_len, 1024)
+            num_rows = lambda seq_len: min(seq_len, 1024 if self.is_galaxy else 2048)
             self.model_config["WO_PREFILL_PROGCFG"] = lambda seq_len: self.matmul_config(
                 m=num_rows(seq_len),
                 k=k_dim,
                 n=n_dim,
                 grid_size=self.find_prefill_grid(num_rows(seq_len), n_dim // self.tile_size),
-                in0_block_w=1 if self.is_galaxy else None,
-                fuse_batch=seq_len <= 1024,
+                in0_block_w=1 if self.is_galaxy else self.dim // 1024,
+                fuse_batch=seq_len <= 1024,  # if self.is_galaxy else 2048),
             )
 
             # Calculate largest number of lm_head_num_rows such that self.dim % (lm_head_num_rows * lm_head_cores_per_row) == 0
@@ -1353,10 +1278,9 @@ class ModelArgs:
                     full_model_name = normalized_path.split(os.path.sep)[-3]
                     self.model_name = full_model_name.split("--")[-1]
                 else:
-                    self.model_name = os.path.basename(normalized_path)
+                    self.model_name = os.path.basename(params["_name_or_path"])
             else:
                 self.model_name = os.path.basename(params["_name_or_path"])
-            logger.info(f"Model name from params: {self.model_name}")
 
         if self.base_model_name == "Qwen2.5-7B" and self.num_devices not in [0, 2, 4]:
             raise AssertionError(
@@ -1479,12 +1403,13 @@ class ModelArgs:
             from transformers import AutoConfig
 
             if self.dummy_weights:
+                norm_model_name = self.model_name.split("/")[-1]
                 logger.info(
-                    f"Loading state param for dummy {self.model_name} from {self.LOCAL_HF_PARAMS[self.model_name]}"
+                    f"Loading state param for dummy {norm_model_name} from {self.LOCAL_HF_PARAMS[norm_model_name]}"
                 )
-                config = AutoConfig.from_pretrained(self.LOCAL_HF_PARAMS[self.model_name]).to_dict()
+                config = AutoConfig.from_pretrained(self.LOCAL_HF_PARAMS[norm_model_name]).to_dict()
             else:
-                config = AutoConfig.from_pretrained(self.CKPT_DIR).to_dict()
+                config = AutoConfig.from_pretrained(self.model_name).to_dict()
 
         else:
             config_file = os.path.join(checkpoint_dir, "config.json")
@@ -1565,7 +1490,6 @@ class ModelArgs:
                 from transformers import AutoConfig, AutoModelForCausalLM
 
                 model = AutoModelForCausalLM.from_pretrained(self.CKPT_DIR)
-                self.cached_hf_model = model
                 state_dict = model.state_dict()
             else:
                 state_dict = load_hf_state_dict(self.CKPT_DIR)
@@ -1954,11 +1878,7 @@ class ModelArgs:
                 config.num_hidden_layers = self.n_layers
                 model = AutoModelForCausalLM.from_config(config)
             else:
-                if self.cached_hf_model is None:
-                    model = AutoModelForCausalLM.from_pretrained(self.CKPT_DIR)
-                    self.cached_hf_model = model
-                else:
-                    model = self.cached_hf_model
+                model = AutoModelForCausalLM.from_pretrained(self.CKPT_DIR)
                 model.model.layers = model.model.layers[: self.n_layers]
             if wrap:
                 wrapper = HfModelWrapper(model, self.head_dim)
