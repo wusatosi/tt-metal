@@ -161,6 +161,19 @@ std::shared_ptr<tt_metal::Program> create_receiver_program(
 void RunTestLineMcast(
     BaseFabricFixture* fixture, RoutingDirection unicast_dir, const std::vector<McastRoutingInfo>& mcast_routing_info) {
     auto* control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
+    auto user_meshes = control_plane->get_user_physical_mesh_ids();
+    bool system_accomodates_mcast = false;
+    for (const auto& mesh : user_meshes) {
+        auto mesh_shape = control_plane->get_physical_mesh_shape(mesh);
+        // Need at least 8 chips for all mcast tests
+        if (mesh_shape.mesh_size() >= 8) {
+            system_accomodates_mcast = true;
+            break;
+        }
+    }
+    if (!system_accomodates_mcast) {
+        GTEST_SKIP() << "No mesh found for line mcast test";
+    }
     // Setup mcast path
     chip_id_t mcast_start_phys_id;                              // Physical ID for chip starting mcast
     std::pair<mesh_id_t, chip_id_t> mcast_start_id;             // Mesh ID for chip starting mcast
