@@ -96,6 +96,13 @@ CoreCoord logical_core_from_ethernet_core(chip_id_t chip_id, const CoreCoord &et
         chip_id, ethernet_core);
 }
 
+void send_reset_go_signal(chip_id_t chip, const CoreCoord core) {
+    auto go_signal_adrr = device->get_dev_addr(physical_core, HalL1MemAddrType::LAUNCH) +
+                          sizeof(launch_msg_t) * launch_msg_buffer_num_entries;
+    go_msg_t reset_msg;
+    reset_msg.signal = RUN_MSG_RESET_RD_PTR_FROM_HOST;
+}
+
 void write_launch_msg_to_core(chip_id_t chip, const CoreCoord core, launch_msg_t *msg, go_msg_t *go_msg,  uint64_t base_addr, bool send_go) {
 
     msg->kernel_config.mode = DISPATCH_MODE_HOST;
