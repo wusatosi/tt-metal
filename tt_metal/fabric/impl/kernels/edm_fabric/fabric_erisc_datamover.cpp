@@ -451,7 +451,7 @@ template <uint8_t SENDER_NUM_BUFFERS>
 FORCE_INLINE __attribute__((optimize("jump-tables"))) bool can_forward_packet_completely(
     tt_l1_ptr MeshPacketHeader* packet_header,
     std::array<tt::tt_fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>, NUM_USED_RECEIVER_CHANNELS>& downstream_edm_interface,
-    uint8_t port_direction_table[]) {
+    std::array<uint8_t, num_eth_ports>& port_direction_table) {
     if (packet_header->is_mcast_active) {
         // mcast downstream needs to check if downstream has space (lookup from set direction field)
         // forward to local and remote
@@ -610,7 +610,7 @@ FORCE_INLINE __attribute__((optimize("jump-tables"))) void receiver_forward_pack
     std::array<tt::tt_fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>, NUM_USED_RECEIVER_CHANNELS>& downstream_edm_interface,
     uint8_t transaction_id,
     uint8_t rx_channel_id,
-    uint8_t port_direction_table[]) {
+    std::array<uint8_t, num_eth_ports>& port_direction_table) {
     auto dest_mesh_id = packet_start->dst_start_mesh_id;
     auto dest_chip_id = packet_start->dst_start_chip_id;
     auto mcast_active = packet_start->is_mcast_active;
@@ -882,7 +882,7 @@ void run_receiver_channel_step(
     PacketHeaderRecorder& packet_header_recorder,
     WriteTridTracker& receiver_channel_trid_tracker,
     uint8_t rx_channel_id,
-    uint8_t port_direction_table[]) {
+    std::array<uint8_t, num_eth_ports>& port_direction_table) {
     auto& ack_counter = receiver_channel_pointers.ack_counter;
     auto pkts_received_since_last_check = get_ptr_val<to_receiver_pkts_sent_id>();
     if constexpr (enable_first_level_ack) {
@@ -930,6 +930,7 @@ void run_receiver_channel_step(
             //  - Hop command of [0011] instructs fabric router to write the packet locally AND forward East (a line
             //  mcast)
 #if defined(FABRIC_2D) && defined(DYNAMIC_ROUTING_ENABLED)
+            // need this ifdef since the 2D dynamic routing packet header contains unique fields
             can_send_to_all_local_chip_receivers =
                 can_forward_packet_completely(packet_header, downstream_edm_interface, port_direction_table);
 #elif defined(FABRIC_2D)
@@ -1086,7 +1087,7 @@ void run_fabric_edm_main_loop(
     WriteTransactionIdTracker<RECEIVER_NUM_BUFFERS, NUM_TRANSACTION_IDS, 0>& receiver_channel_0_trid_tracker,
     WriteTransactionIdTracker<RECEIVER_NUM_BUFFERS, NUM_TRANSACTION_IDS, NUM_TRANSACTION_IDS>&
         receiver_channel_1_trid_tracker,
-    uint8_t port_direction_table[]) {
+    std::array<uint8_t, num_eth_ports>& port_direction_table) {
     size_t did_nothing_count = 0;
     *termination_signal_ptr = tt::tt_fabric::TerminationSignal::KEEP_RUNNING;
 
@@ -1896,16 +1897,15 @@ void kernel_main() {
             }
         }
     }
-
-    // TODO (AS): Get the port_direction_table size from CTAs
-    uint8_t port_direction_table[16];
+    std::array<uint8_t, num_eth_ports> port_direction_table;
 #if defined(FABRIC_2D) && defined(DYNAMIC_ROUTING_ENABLED)
     volatile tt_l1_ptr fabric_router_l1_config_t* routing_table =
         reinterpret_cast<tt_l1_ptr fabric_router_l1_config_t*>(eth_l1_mem::address_map::FABRIC_ROUTER_CONFIG_BASE);
 
     for (uint32_t i = eth_chan_directions::EAST; i < eth_chan_directions::COUNT; i++) {
         auto forwarding_channel = routing_table->port_direction.directions[i];
-        if (forwarding_channel <= 15) {
+        if (forwarding_channel <= num_eth_ports - 1) {
+            // A valid port/eth channel was found for this direction. Specify the port to direction lookup
             port_direction_table[forwarding_channel] = i;
         }
     }

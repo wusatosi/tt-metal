@@ -436,6 +436,8 @@ std::vector<uint32_t> FabricEriscDatamoverBuilder::get_compile_time_args() const
 
     size_t num_sender_channels = config.num_used_sender_channels;
     size_t num_receiver_channels = config.num_used_receiver_channels;
+    auto& soc_desc = tt::tt_metal::MetalContext::instance().get_cluster().get_soc_desc(this->my_chip_id);
+
     auto ct_args = std::vector<uint32_t>{
         num_sender_channels,
         num_receiver_channels,
@@ -509,6 +511,7 @@ std::vector<uint32_t> FabricEriscDatamoverBuilder::get_compile_time_args() const
         FabricEriscDatamoverConfig::sender_completed_packet_header_cb_size_headers,
         config.topology == Topology::Mesh,
         this->direction,
+        soc_desc.get_num_eth_channels(),
         // Special marker to help with identifying misalignment bugs
         0x00c0ffee};
 
