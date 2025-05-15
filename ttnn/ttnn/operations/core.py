@@ -278,8 +278,7 @@ def from_torch(
         if memory_config.shard_spec is None:
             raise RuntimeError("ttnn.from_torch: Shard spec must not be None for sharded tensors")
 
-        if memory_config.shard_spec.mode == ttnn.ShardMode.LOGICAL:
-            return ttnn.Tensor(tensor, dtype, device, layout, memory_config, tile)
+        return ttnn.Tensor(tensor, dtype, device, layout, memory_config, tile)
 
     logical_shape = None
     padded_shape = None
