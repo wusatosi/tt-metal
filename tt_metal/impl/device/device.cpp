@@ -1097,7 +1097,6 @@ bool Device::close() {
 
     sub_device_manager_tracker_.reset(nullptr);
 
-    DprintServerDetach(this->id());
     watcher_detach(this->id());
 
     // Assert worker cores only for this device
@@ -1132,8 +1131,6 @@ bool Device::close() {
                 tt_cxy_pair(this->id(), virtual_eth_core), reset_val);
         }
     }
-
-    tt::tt_metal::MetalContext::instance().get_cluster().l1_barrier(id_);
 
     this->compute_cores_.clear();
     this->storage_only_cores_.clear();
