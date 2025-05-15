@@ -64,6 +64,27 @@ inline void send_packet(
     connection.send_payload_blocking_from_address((uint32_t)packet_header, sizeof(PACKET_HEADER_TYPE));
 }
 
+void set_mcast_header(
+    volatile tt_l1_ptr PACKET_HEADER_TYPE* packet_header, const eth_chan_directions& direction, uint32_t num_hops) {
+    uint16_t e_num_hops = 0;
+    uint16_t w_num_hops = 0;
+    uint16_t n_num_hops = 0;
+    uint16_t s_num_hops = 0;
+
+    if (direction == eth_chan_directions::EAST) {
+        e_num_hops = num_hops;
+    } else if (direction == eth_chan_directions::WEST) {
+        w_num_hops = num_hops;
+    } else if (direction == eth_chan_directions::NORTH) {
+        n_num_hops = num_hops;
+    } else if (direction == eth_chan_directions::SOUTH) {
+        s_num_hops = num_hops;
+    }
+
+    fabric_set_mcast_route(
+        (LowLatencyMeshPacketHeader*)packet_header, 0, 0, e_num_hops, w_num_hops, n_num_hops, s_num_hops);
+}
+
 inline void teardown_connection(tt::tt_fabric::WorkerToFabricEdmSender& connection) { connection.close(); }
 
 void kernel_main() {
@@ -106,14 +127,8 @@ void kernel_main() {
         zero_l1_buf((uint32_t*)packet_header_buffer_address, sizeof(PACKET_HEADER_TYPE) * 2);
 
         if constexpr (is_2d_fabric) {
-            fabric_set_mcast_route(
-                (LowLatencyMeshPacketHeader*)fwd_packet_header,
-                (eth_chan_directions)fwd_fabric_connection.direction,
-                mcast_fwd_hops);
-            fabric_set_mcast_route(
-                (LowLatencyMeshPacketHeader*)bwd_packet_header,
-                (eth_chan_directions)bwd_fabric_connection.direction,
-                mcast_bwd_hops);
+            set_mcast_header(fwd_packet_header, (eth_chan_directions)fwd_fabric_connection.direction, mcast_fwd_hops);
+            set_mcast_header(bwd_packet_header, (eth_chan_directions)bwd_fabric_connection.direction, mcast_bwd_hops);
         }
 
         setup_connection_and_headers(

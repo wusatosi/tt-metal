@@ -486,9 +486,23 @@ void fabric_set_unicast_route(
     }
 }
 
-// TODO (AS): Make this have same args as 2D Mesh + change invocations
-void fabric_set_mcast_route(LowLatencyMeshPacketHeader* packet_header, eth_chan_directions direction, uint32_t hops) {
-    fabric_set_route<true>(packet_header, (eth_chan_directions)direction, 0, hops);
+void fabric_set_mcast_route(
+    LowLatencyMeshPacketHeader* packet_header,
+    uint16_t dst_dev_id,   // Ignore this, since Low Latency Mesh Fabric does not support arbitrary 2D Mcasts yet
+    uint16_t dst_mesh_id,  // Ignore this, since Low Latency Mesh Fabric is not used for Inter-Mesh Routing
+    uint16_t e_num_hops,
+    uint16_t w_num_hops,
+    uint16_t n_num_hops,
+    uint16_t s_num_hops) {
+    if (e_num_hops) {
+        fabric_set_route<true>(packet_header, eth_chan_directions::EAST, 0, e_num_hops);
+    } else if (w_num_hops) {
+        fabric_set_route<true>(packet_header, eth_chan_directions::WEST, 0, w_num_hops);
+    } else if (n_num_hops) {
+        fabric_set_route<true>(packet_header, eth_chan_directions::NORTH, 0, n_num_hops);
+    } else if (s_num_hops) {
+        fabric_set_route<true>(packet_header, eth_chan_directions::NORTH, 0, s_num_hops);
+    }
 }
 
 inline void fabric_client_connect(
