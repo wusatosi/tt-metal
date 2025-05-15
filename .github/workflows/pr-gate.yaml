@@ -83,6 +83,14 @@ jobs:
           "N300-llmbox",
           "N300-llmbox",
           "N300-llmbox",
+          "N300-llmbox",
+          "N300-llmbox",
+          "N300-llmbox",
+          "N300-llmbox",
+          "N300-llmbox",
+          "N300-llmbox",
+          "N300-llmbox",
+          "N300-llmbox",
         ]
     uses: ./.github/workflows/smoke.yaml
     with:
