@@ -109,3 +109,136 @@ jobs:
           echo "The following workflows have failed:"
           echo '${{ needs.analyze-data.outputs.failed_workflows }}' | jq -r '.[]'
           # Add any additional failure handling steps here
+
+  notify-slack:
+    needs: analyze-data
+    if: ${{ fromJson(needs.analyze-data.outputs.failed_workflows) != '[]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 #@v3
+
+      - name: Get latest workflow run
+        id: latest-run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: runs } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: context.workflow,
+              branch: 'main',
+              per_page: 1
+            });
+            return runs.workflow_runs[0]?.id || 0;
+
+      - name: Restore previous failures cache
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 #@v4
+        with:
+          path: ${{ github.workspace }}/previous-failures.json
+          key: metal-failed-workflows-${{ github.ref }}-${{ steps.latest-run.outputs.result }}
+          restore-keys: |
+            metal-failed-workflows-${{ github.ref }}-
+
+      - name: Compare with previous failures
+        id: compare
+        run: |
+          CURRENT_FAILURES='${{ needs.analyze-data.outputs.failed_workflows }}'
+
+          # Save current failures to file
+          echo "$CURRENT_FAILURES" > current-failures.json
+
+          # Check if we have previous failures
+          if [ -f "previous-failures.json" ]; then
+            # Get lists of workflow names
+            CURRENT_NAMES=$(echo "$CURRENT_FAILURES" | jq -r '.[].name' | sort)
+            PREVIOUS_NAMES=$(jq -r '.[].name' previous-failures.json | sort)
+
+            # Find newly failing and fixed workflows
+            NEW_FAILURES=$(comm -23 <(echo "$CURRENT_NAMES") <(echo "$PREVIOUS_NAMES"))
+            FIXED_WORKFLOWS=$(comm -13 <(echo "$CURRENT_NAMES") <(echo "$PREVIOUS_NAMES"))
+
+            if [ -z "$NEW_FAILURES" ] && [ -z "$FIXED_WORKFLOWS" ]; then
+              echo "No changes in failed workflows since last run"
+              echo "should_notify=false" >> $GITHUB_OUTPUT
+            else
+              echo "Changes detected in failed workflows"
+              echo "should_notify=true" >> $GITHUB_OUTPUT
+              echo "new_failures=$NEW_FAILURES" >> $GITHUB_OUTPUT
+              echo "fixed_workflows=$FIXED_WORKFLOWS" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "No previous failures found, this is the first run"
+            echo "should_notify=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Format Slack message
+        if: steps.compare.outputs.should_notify == 'true'
+        id: format
+        run: |
+          FAILED_WORKFLOWS='${{ needs.analyze-data.outputs.failed_workflows }}'
+          if [ "$FAILED_WORKFLOWS" = "[]" ]; then
+            echo "No failing workflows to report"
+            exit 0
+          fi
+
+          # Create the message header
+          MESSAGE="*Workflow Status Update*\n"
+          MESSAGE+="_$(date '+%Y-%m-%d %H:%M:%S UTC')_\n\n"
+
+          # Add section for newly failing workflows
+          if [ ! -z "${{ steps.compare.outputs.new_failures }}" ]; then
+            MESSAGE+="*🆕 New Failures*\n"
+            echo "$FAILED_WORKFLOWS" | jq -r --arg names "${{ steps.compare.outputs.new_failures }}" '
+              ($names | split("\n")) as $new |
+              .[] | select(.name as $n | $new | index($n)) |
+              "• <\(.runUrl)|\(.name)> (`\(.currentSha)`)"
+            ' >> message.txt
+            MESSAGE+=$(cat message.txt)
+            rm message.txt
+            MESSAGE+="\n\n"
+          fi
+
+          # Add section for still failing workflows
+          if [ -f "previous-failures.json" ]; then
+            MESSAGE+="*⚠️ Still Failing*\n"
+            echo "$FAILED_WORKFLOWS" | jq -r --arg names "${{ steps.compare.outputs.new_failures }}" '
+              ($names | split("\n")) as $new |
+              .[] | select(.name as $n | ($new | index($n) | not)) |
+              "• <\(.runUrl)|\(.name)> (`\(.currentSha)`)"
+            ' >> message.txt
+            MESSAGE+=$(cat message.txt)
+            rm message.txt
+            MESSAGE+="\n\n"
+          fi
+
+          # Add section for fixed workflows
+          if [ ! -z "${{ steps.compare.outputs.fixed_workflows }}" ]; then
+            MESSAGE+="*✅ Fixed*\n"
+            echo "${{ steps.compare.outputs.fixed_workflows }}" | while read -r workflow; do
+              MESSAGE+="• $workflow\n"
+            done
+            MESSAGE+="\n"
+          fi
+
+          # Add link to current workflow run
+          MESSAGE+="_<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View full workflow details>_"
+
+          # Read the message and escape it for JSON
+          MESSAGE_JSON=$(echo "$MESSAGE" | jq -Rs .)
+          echo "message=$MESSAGE_JSON" >> $GITHUB_OUTPUT
+
+      - name: Send to Slack
+        if: steps.compare.outputs.should_notify == 'true'
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          channel-id: 'monitoring'
+          slack-message: ${{ steps.format.outputs.message }}
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      - name: Save current failures for next run
+        if: steps.compare.outputs.should_notify == 'true'
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 #@v4
+        with:
+          path: current-failures.json
+          key: metal-failed-workflows-${{ github.ref }}-${{ github.run_id }}
