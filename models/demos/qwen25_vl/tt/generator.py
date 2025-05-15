@@ -61,20 +61,22 @@ class Generator:
             seq_len = prompt_lens[user_id]
             last_token_idx = seq_len - 1
 
-            prefill_seq_len = get_padded_prefill_len(seq_len)
-            # it doesn't matter which value we pad with, we don't use these parts of the kv-cache or their outputs
-            # For 3D tokens (embeddings) as Qwen2_5_Vision uses 3D token embeddings
-            embed_dim = tokens.shape[-1]
-            prefill_ids = torch.cat(
-                [tokens[user_id : user_id + 1, :seq_len], torch.zeros(1, prefill_seq_len - seq_len, embed_dim)],
-                dim=1,
-            )
+            # # FIXME? does this agree with the prefill_lens from demo.py?
+            # prefill_seq_len = get_padded_prefill_len(seq_len)
+            # # it doesn't matter which value we pad with, we don't use these parts of the kv-cache or their outputs
+            # # For 3D tokens (embeddings) as Qwen2_5_Vision uses 3D token embeddings
+            # embed_dim = tokens.shape[-1]
+            # prefill_ids = torch.cat(
+            #     [tokens[user_id : user_id + 1, :seq_len], torch.zeros(1, prefill_seq_len - seq_len, embed_dim)],
+            #     dim=1,
+            # )
 
             if page_table is not None:
                 page_table_user = self.__get_prefill_user_page_table(page_table, kv_cache, seq_len)
 
             logits = self.__prefill_forward_single_user_text(
-                prefill_ids,
+                # prefill_ids,
+                tokens[user_id : user_id + 1],  # todo)) use this if the above padding is not used
                 page_table=page_table_user if page_table is not None else None,
                 user_id=user_id,
                 last_token_idx=last_token_idx,

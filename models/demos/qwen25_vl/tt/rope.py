@@ -99,11 +99,14 @@ class RotarySetup(LightweightModule):
 
         # [INFO] Qwen2.5 VL produces cos and sin matrices with shape [batch_size, 1, seq_len, head_dim]
         # todo)) { Optimize the slicing work-around below
+        assert len(position_idxs.shape) == 1, "position_idxs must be a [batch] tensor"
         batch_size = position_idxs.shape[0]
         cos, sin = None, None
         for i in range(batch_size):
-            cos_i = ttnn.embedding(position_idxs[i : i + 1, ...], self.cos_matrix[i : i + 1, ...])  # [1, head_dim]
-            sin_i = ttnn.embedding(position_idxs[i : i + 1, ...], self.sin_matrix[i : i + 1, ...])  # [1, head_dim]
+            # [INFO] This is a work-around to avoid the slicing issue in position_idxs[i:i+1]
+            pos_i = ttnn.squeeze(ttnn.reshape(position_idxs, (batch_size, 1))[i : i + 1], dim=-1)
+            cos_i = ttnn.embedding(pos_i, self.cos_matrix[i : i + 1, ...])  # [1, head_dim]
+            sin_i = ttnn.embedding(pos_i, self.sin_matrix[i : i + 1, ...])  # [1, head_dim]
 
             cos = cos_i if cos is None else ttnn.concat([cos, cos_i], dim=0)  # towards [batch_size, head_dim]
             sin = sin_i if sin is None else ttnn.concat([sin, sin_i], dim=0)  # towards [batch_size, head_dim]

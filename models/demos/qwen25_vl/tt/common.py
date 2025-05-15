@@ -39,6 +39,8 @@ def merge_vision_tokens(
 def preprocess_inputs_prefill(
     input_embeds,
     model_args,
+    attention_mask,
+    pad_embedding,
     max_prefill_len=None,
 ):
     """
@@ -63,18 +65,26 @@ def preprocess_inputs_prefill(
 
     # Always prefill the nearest power of 2 for each user. This means that the majority of cases we will prefill more tokens than needed.
     # To avoid issues, we keep track of the decoding position to decode correctly the user's prompt
-    pad_embedding = model_args.tokenizer.encode(model_args.tokenizer.pad_token, add_special_tokens=False)[0]
-    for input_embed in input_embeds:
+    for i, input_embed in enumerate(input_embeds):
+        # Determine the actual length of the prompt using the attention_mask
+        # Assumes attention_mask[i] corresponds to input_embeds[i]
+        # and has 1 for actual tokens, 0 for padding.
+        user_attention_mask = attention_mask[i]
+        actual_prompt_len = int(user_attention_mask.sum().item())
+
         # Prefill size is nearest power of 2 - FIXME: *really*? power of 2? surely we only need it to be a multiple of 1024 or whatever?
         prefill_seq_len = max(2 ** math.ceil(math.log(len(input_embed), 2)), 128)
 
-        # Initial prefill tensors full of pad tokens
-        input_prefill_i = torch.full((prefill_seq_len, input_embeds.shape[-1]), pad_embedding, dtype=input_embeds.dtype)
-        input_prefill_i[: len(input_embed), :] = torch.tensor(input_embed).to(input_prefill_i)
+        # Initialize prefill tensors full of pad tokens
+        input_prefill_i = torch.empty((prefill_seq_len, pad_embedding.shape[-1]), dtype=pad_embedding.dtype)
+        input_prefill_i[:] = pad_embedding
+
+        # Copy only the *actual* tokens, not the processor padding.
+        input_prefill_i[:actual_prompt_len, :] = input_embed[:actual_prompt_len, :]
         input_prefill.append(input_prefill_i)
 
-        # Keep the correct decoding position of each user
-        decoding_pos.append(len(input_embed))
+        # Keep the correct decoding position of each user using actual_prompt_len
+        decoding_pos.append(actual_prompt_len)
         prefill_lens.append(prefill_seq_len)
 
     input_prefill = torch.stack(input_prefill)  # [batch_size, prefill_seq_len, embed_dim]
@@ -90,16 +100,27 @@ def multimodal_rope_from_hf(
     inputs,
     input_embeds,
     reference_model,
-    max_seq_len,
+    model_args,
+    pad_token_id,
 ):
-    # Unlike the reference model, we will precompute cos and sin for the entire sequence length including the generated tokens
-    padded_inputs = torch.nn.functional.pad(inputs.input_ids, (0, max_seq_len - inputs.input_ids.shape[-1]))
-    padded_attention_mask = torch.nn.functional.pad(
-        inputs.attention_mask, (0, max_seq_len - inputs.attention_mask.shape[-1]), value=1.0
+    """
+    Unlike the reference model, we will precompute cos and sin for the entire sequence length including the generated tokens
+    """
+
+    max_seq_len = model_args.max_seq_len
+    padded_inputs = torch.nn.functional.pad(
+        inputs.input_ids, (0, max_seq_len - inputs.input_ids.shape[-1]), value=pad_token_id
+    )  # FIXME?: padding with 0 was done by HF
+
+    # Create a mask that is all 1s for the full max_seq_len, ensuring RoPE calculations cover all positions.
+    # The original inputs.attention_mask might have 0s for padding within its original length,
+    # which we want to ignore for the purpose of RoPE precomputation up to max_seq_len.
+    padded_attention_mask = torch.ones_like(
+        padded_inputs, dtype=inputs.attention_mask.dtype, device=inputs.attention_mask.device
     )
 
     # Qwen2_5_VLForConditionalGeneration.forward:
-    position_ids, rope_deltas = reference_model.get_rope_index(
+    position_ids, rope_deltas = reference_model.model.get_rope_index(
         padded_inputs,
         inputs.image_grid_thw if "image_grid_thw" in inputs else None,
         video_grid_thw=None,
@@ -107,7 +128,7 @@ def multimodal_rope_from_hf(
         attention_mask=padded_attention_mask,
     )
     # Qwen2_5_VLModel.forward:
-    cos, sin = reference_model.model.rotary_emb(input_embeds, position_ids)
+    cos, sin = reference_model.model.language_model.rotary_emb(input_embeds, position_ids)
     # apply_multimodal_rotary_pos_emb:
     mrope_section = reference_model.config.rope_scaling["mrope_section"] * 2
     unsqueeze_dim = 1

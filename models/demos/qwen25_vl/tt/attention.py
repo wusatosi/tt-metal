@@ -621,10 +621,6 @@ class Attention(LightweightModule):
                 num_tiles = int(math.ceil(attn_output_cat.shape[-2] / self.tile_size))
                 dense_out_sharded = dense_out_sharded + self.wo_bias_decode[num_tiles - 1]
 
-            # todo)) why was this needed for Qwen-VL? Ask Mark
-            # commenting this out made multi-chip Qwen-VL work on N300
-            # dense_out_sharded = ttnn.to_memory_config(dense_out_sharded, self.model_config["DECODE_RESIDUAL_MEMCFG"])
-
             # All reduce
             dense_out_reduced = tt_all_reduce(
                 dense_out_sharded,

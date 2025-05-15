@@ -215,6 +215,7 @@ class Generator:
         tt_tokens, tt_current_pos, tt_rot_mats, tt_page_table = self.model.prepare_inputs_decode(
             tokens, current_pos, page_table
         )
+        # todo)) fix this: tt_tokens's batch_size is 1, but tt_current_pos's batch_size is 2
         # tt_tokens.shape, dtype, is_sharded(): (Shape([1, 1, 32, 1024]), <DataType.BFLOAT16: 0>), True
         # tt_current_pos.shape, dtype, is_sharded(): (Shape([1]), <DataType.INT32: 7>), False
         # tt_rot_mats[0].shape, dtype, is_sharded(): (Shape([1, 1, 1, 128]), <DataType.BFLOAT16: 0>), True
@@ -222,6 +223,24 @@ class Generator:
         # tt_page_table.shape, dtype, is_sharded(): (Shape([1, 1024]), <DataType.INT32: 7>), False
         # kv_cache[0][0].shape, dtype, is_sharded(): (Shape([1024, 1, 32, 128]), <DataType.BFLOAT8_B: 3>), False
         # [INFO] len(kv_cache): 36; len(kv_cache[0]): 2
+
+        # gongyu: compared against "/proj_sw/user_dev/gwang/refpt/input_tensors_ci_only_demo_2.pt"
+        input_tensors = {
+            "tt_tokens": ttnn.to_torch(tt_tokens),  # match
+            "tt_current_pos": ttnn.to_torch(tt_current_pos),  # match
+            "tt_rot_mats[0]": ttnn.to_torch(
+                tt_rot_mats[0]
+            ),  # todo)) fix this: somewhat different values from known good
+            "tt_rot_mats[1]": ttnn.to_torch(
+                tt_rot_mats[1]
+            ),  # todo)) fix this: completely different values from known good
+            # "tt_page_table": tt_page_table, # None
+            # "kv_cache": kv_cache, # None
+            # "argmax_on_device": argmax_on_device, # False
+            "k_cache": ttnn.to_torch(self.model.layers[0].attention.layer_past[0]),  # match
+            "v_cache": ttnn.to_torch(self.model.layers[0].attention.layer_past[1]),  # match
+            "transformation_mats": ttnn.to_torch(self.model.layers[0].attention.transformation_mats["decode"]),  # match
+        }
         tt_logits = self.model.ttnn_decode_forward(
             tt_tokens,
             tt_current_pos,

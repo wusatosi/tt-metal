@@ -208,90 +208,106 @@ class DropInVisionTransformer(torch.nn.Module):
         Returns:
             torch.Tensor: Output tensor matching the reference model's output shape [total_seq_len, out_hidden_size].
         """
-        # --- Preprocessing ---
-        # 1. Calculate total unpadded sequence length
-        unpadded_seq_len = (grid_thw[:, 1] * grid_thw[:, 2]).sum().item()
-        # Calculate padded sequence length (divisible by 2048) required by models/tt_transformers/tt/attention.py::forward_prefill
-        seq_len = ((unpadded_seq_len // 2048) + 1) * 2048
+        # process pixel_values for each image/video separately
+        all_pixel_values = pixel_values
+        all_grid_thw = grid_thw
+        final_outputs = []
+        for grid_thw in all_grid_thw:
+            pixel_values = all_pixel_values[: grid_thw.prod(), :]
+            all_pixel_values = all_pixel_values[grid_thw.prod() :, :]
+            # --- Preprocessing ---
+            # 1. Calculate total unpadded sequence length
+            grid_thw = grid_thw.unsqueeze(0)
+            unpadded_seq_len = (grid_thw[:, 1] * grid_thw[:, 2]).sum().item()
+            # Calculate padded sequence length (divisible by 2048) required by models/tt_transformers/tt/attention.py::forward_prefill
+            seq_len = ((unpadded_seq_len // 2048) + 1) * 2048
 
-        # 2. Use preprocessing function from reference/functional to get indices and embeddings
-        cu_seqlens, cu_window_seqlens, position_embeddings, window_index = qwen2_5_vision_transformer_preprocess(
-            seq_len=unpadded_seq_len,
-            grid_thw=grid_thw,
-            head_dim=self.model_args.head_dim,
-            spatial_merge_size=self.model_args.hf_config.vision_config.spatial_merge_size,
-            window_size=self.model_args.hf_config.vision_config.window_size,
-            patch_size=self.model_args.hf_config.vision_config.patch_size,
-        )
+            # 2. Use preprocessing function from reference/functional to get indices and embeddings
+            cu_seqlens, cu_window_seqlens, position_embeddings, window_index = qwen2_5_vision_transformer_preprocess(
+                seq_len=unpadded_seq_len,
+                grid_thw=grid_thw,
+                head_dim=self.model_args.head_dim,
+                spatial_merge_size=self.model_args.hf_config.vision_config.spatial_merge_size,
+                window_size=self.model_args.hf_config.vision_config.window_size,
+                patch_size=self.model_args.hf_config.vision_config.patch_size,
+            )
 
-        # Ensure cu_seqlens and cu_window_seqlens are tensors on the correct device
-        cu_seqlens = cu_seqlens.to(pixel_values.device)
-        cu_window_seqlens = cu_window_seqlens.to(pixel_values.device)
+            # Ensure cu_seqlens and cu_window_seqlens are tensors on the correct device
+            cu_seqlens = cu_seqlens.to(pixel_values.device)
+            cu_window_seqlens = cu_window_seqlens.to(pixel_values.device)
 
-        # 3. Use reference model's patch embedding
-        patch_input = self.reference_model.patch_embed(pixel_values)
+            # 3. Use reference model's patch embedding
+            patch_input = self.reference_model.patch_embed(pixel_values)
 
-        # 4. Prepare rotational embeddings (cos, sin) -> pad -> convert to TT tensors
-        cos_orig, sin_orig = position_embeddings
-        cos_orig, sin_orig = convert_rope_style_hf_to_meta(cos_orig, sin_orig)
-        # pad sequence length with cos = 1, sin = 0 (identity rotation)
-        cos_padded = (
-            torch.nn.functional.pad(cos_orig, (0, 0, 0, seq_len - unpadded_seq_len), value=1).unsqueeze(0).unsqueeze(0)
-        )
-        sin_padded = (
-            torch.nn.functional.pad(sin_orig, (0, 0, 0, seq_len - unpadded_seq_len), value=0).unsqueeze(0).unsqueeze(0)
-        )
-        # Convert to TT tensors on the mesh device
-        cos = ttnn.from_torch(
-            cos_padded,
-            dtype=ttnn.bfloat16,  # Use bfloat16 for RoPE
-            layout=ttnn.TILE_LAYOUT,
-            device=self.model_args.mesh_device,
-            mesh_mapper=ttnn.ReplicateTensorToMesh(self.model_args.mesh_device),
-        )
-        sin = ttnn.from_torch(
-            sin_padded,
-            dtype=ttnn.bfloat16,  # Use bfloat16 for RoPE
-            layout=ttnn.TILE_LAYOUT,
-            device=self.model_args.mesh_device,
-            mesh_mapper=ttnn.ReplicateTensorToMesh(self.model_args.mesh_device),
-        )
-        rot_mats = [cos, sin]
+            # 4. Prepare rotational embeddings (cos, sin) -> pad -> convert to TT tensors
+            cos_orig, sin_orig = position_embeddings
+            cos_orig, sin_orig = convert_rope_style_hf_to_meta(cos_orig, sin_orig)
+            # pad sequence length with cos = 1, sin = 0 (identity rotation)
+            cos_padded = (
+                torch.nn.functional.pad(cos_orig, (0, 0, 0, seq_len - unpadded_seq_len), value=1)
+                .unsqueeze(0)
+                .unsqueeze(0)
+            )
+            sin_padded = (
+                torch.nn.functional.pad(sin_orig, (0, 0, 0, seq_len - unpadded_seq_len), value=0)
+                .unsqueeze(0)
+                .unsqueeze(0)
+            )
+            # Convert to TT tensors on the mesh device
+            cos = ttnn.from_torch(
+                cos_padded,
+                dtype=ttnn.bfloat16,  # Use bfloat16 for RoPE
+                layout=ttnn.TILE_LAYOUT,
+                device=self.model_args.mesh_device,
+                mesh_mapper=ttnn.ReplicateTensorToMesh(self.model_args.mesh_device),
+            )
+            sin = ttnn.from_torch(
+                sin_padded,
+                dtype=ttnn.bfloat16,  # Use bfloat16 for RoPE
+                layout=ttnn.TILE_LAYOUT,
+                device=self.model_args.mesh_device,
+                mesh_mapper=ttnn.ReplicateTensorToMesh(self.model_args.mesh_device),
+            )
+            rot_mats = [cos, sin]
 
-        # 5. Prepare input tensor for the TT model using window_index
-        tt_input = self.tt_model.prepare_input(patch_input, window_index, seq_len)
+            # 5. Prepare input tensor for the TT model using window_index
+            tt_input = self.tt_model.prepare_input(patch_input, window_index, seq_len)
 
-        # --- TT Model Execution ---
-        tt_out = self.tt_model(
-            tt_input,
-            unpadded_seq_len=unpadded_seq_len,
-            cu_seqlens=cu_seqlens,
-            cu_window_seqlens=cu_window_seqlens,
-            rot_mats=rot_mats,  # Use rot_mats generated in this forward pass
-        )
+            # --- TT Model Execution ---
+            tt_out = self.tt_model(
+                tt_input,
+                unpadded_seq_len=unpadded_seq_len,
+                cu_seqlens=cu_seqlens,
+                cu_window_seqlens=cu_window_seqlens,
+                rot_mats=rot_mats,  # Use rot_mats generated in this forward pass
+            )
 
-        # --- Postprocessing ---
-        # 1. Convert TT output back to torch tensor
-        mesh_composer = ttnn.ConcatMesh2dToTensor(
-            self.model_args.mesh_device, dims=(1, 3), mesh_shape=self.model_args.cluster_shape
-        )
-        tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=mesh_composer)
+            # --- Postprocessing ---
+            # 1. Convert TT output back to torch tensor
+            mesh_composer = ttnn.ConcatMesh2dToTensor(
+                self.model_args.mesh_device, dims=(1, 3), mesh_shape=self.model_args.cluster_shape
+            )
+            tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=mesh_composer)
 
-        # 2. Extract the relevant output part and adjust shape (matching test logic)
-        out_hidden_size = self.model_args.hf_config.vision_config.out_hidden_size
-        # Output shape from TT is [1, B=1, S, H_out_padded], slice H and squeeze B, batch dims
-        tt_output_torch = tt_output_torch[:, 0:1, :, :out_hidden_size].squeeze(0).squeeze(0)
+            # 2. Extract the relevant output part and adjust shape (matching test logic)
+            out_hidden_size = self.model_args.hf_config.vision_config.out_hidden_size
+            # Output shape from TT is [1, B=1, S, H_out_padded], slice H and squeeze B, batch dims
+            tt_output_torch = tt_output_torch[:, 0:1, :, :out_hidden_size].squeeze(0).squeeze(0)
 
-        # 3. Apply reverse window indexing to match reference model output order
-        reverse_indices = torch.argsort(window_index)
-        final_output = tt_output_torch[reverse_indices, :]
+            # 3. Apply reverse window indexing to match reference model output order
+            reverse_indices = torch.argsort(window_index)
+            final_output = tt_output_torch[reverse_indices, :]
 
-        if self.debug:
-            logger.info(f"DropInVisionTransformer: Debug enabled, running reference model...")
-            reference_output = self.reference_model.forward(pixel_values, grid_thw)
-            _, pcc = comp_pcc(reference_output, final_output)
-            logger.info(f"DropInVisionTransformer: PCC to reference model: {pcc}")
-        return final_output
+            if self.debug:
+                logger.info(f"DropInVisionTransformer: Debug enabled, running reference model...")
+                reference_output = self.reference_model.forward(pixel_values, grid_thw)
+                _, pcc = comp_pcc(reference_output, final_output)
+                logger.info(f"DropInVisionTransformer: PCC to reference model: {pcc}")
+
+            final_outputs.append(final_output)
+
+        # concatenate all the outputs
+        return torch.cat(final_outputs, dim=0)
 
 
 class Transformer(LightweightModule):
