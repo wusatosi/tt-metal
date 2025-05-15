@@ -44,7 +44,6 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async(
     std::optional<IDevice*> backward_device,
     Tensor& output_tensor,
     const uint32_t dim,
-    const uint32_t num_batches,
     const uint32_t num_links,
     const uint32_t ring_size,
     const uint32_t ring_index,
@@ -61,7 +60,6 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async(
         backward_device,
         output_tensor,
         dim,
-        num_batches,
         num_links,
         ring_size,
         ring_index,
@@ -79,7 +77,6 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async_helpe
     std::optional<IDevice*> backward_device,
     Tensor& output_tensor,
     const uint32_t dim,
-    const uint32_t num_batches,
     const uint32_t num_links,
     const uint32_t ring_size,
     const uint32_t ring_index,
@@ -164,7 +161,8 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async_helpe
     const auto input_tensor_shape = input_tensor.get_padded_shape();
     const auto intermediate_tensor_buffer_type = intermediate_tensor.buffer()->buffer_type();
     const auto input_tensor_num_pages = input_tensor.buffer()->num_pages();
-    const auto slice_num_pages = input_tensor_num_pages / ring_size;
+    const auto num_batches = input_tensor_shape[0];
+    const auto batch_slice_num_pages = input_tensor_num_pages / ring_size / num_batches;
 
     TT_ASSERT(!(input_tensor_shape[3] % tt::constants::TILE_WIDTH));
     uint32_t input_tensor_Wt = input_tensor_shape[3] / tt::constants::TILE_WIDTH;
@@ -182,7 +180,7 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async_helpe
         tile_granularity,                                        // packet_size_in_pages
         op_config.get_page_size(),                               // tensor0_page_size
         input_tensor_Wt,                                         // input_tensor_Wt
-        slice_num_pages,                                         // slice_num_pages
+        batch_slice_num_pages,                                   // batch_slice_num_pages
         ring_size,                                               // ring_size
         num_batches                                              // num_batches
     };
@@ -206,7 +204,7 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async_helpe
         tile_granularity,                                        // packet_size_in_pages
         op_config.get_page_size(),                               // tensor0_page_size
         input_tensor_Wt,                                         // input_tensor_Wt
-        slice_num_pages,                                         // slice_num_pages
+        batch_slice_num_pages,                                   // batch_slice_num_pages
         ring_size,                                               // ring_size
         num_batches                                              // num_batches
     };
@@ -223,7 +221,7 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async_helpe
         input_cb_index,
         intermediate_cb_index,
         compute_output_cb_index,
-        slice_num_pages,
+        batch_slice_num_pages,
         tile_granularity,
         ring_size,
         num_batches,

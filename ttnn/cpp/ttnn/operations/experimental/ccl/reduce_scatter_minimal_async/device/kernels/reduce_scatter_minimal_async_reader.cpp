@@ -25,7 +25,7 @@ constexpr uint32_t cb_reader_output_id = get_compile_time_arg_val(5);
 constexpr uint32_t tile_granularity = get_compile_time_arg_val(6);
 constexpr uint32_t input_tensor_page_size = get_compile_time_arg_val(7);
 constexpr uint32_t input_tensor_Wt = get_compile_time_arg_val(8);
-constexpr uint32_t slice_num_pages = get_compile_time_arg_val(9);
+constexpr uint32_t batch_slice_num_pages = get_compile_time_arg_val(9);
 constexpr uint32_t ring_size = get_compile_time_arg_val(10);
 constexpr uint32_t num_batches = get_compile_time_arg_val(11);
 
@@ -42,11 +42,9 @@ void kernel_main() {
     size_t out_ready_sem_bwd = get_arg_val<uint32_t>(arg_idx++);
     size_t batch_ready_sem = get_arg_val<uint32_t>(arg_idx++);
 
-    constexpr uint32_t batch_slice_num_pages = slice_num_pages / num_batches;
-
     constexpr uint32_t slice_Wt = input_tensor_Wt / ring_size;
 
-    constexpr uint32_t batch_num_pages = slice_num_pages * ring_size / num_batches;
+    constexpr uint32_t batch_num_pages = batch_slice_num_pages * ring_size;
 
     constexpr bool input_tensor_is_dram = input_buffer_type == tt::tt_metal::BufferType::DRAM;
     auto input_tensor_addrgen = InterleavedAddrGenFast<input_tensor_is_dram>{

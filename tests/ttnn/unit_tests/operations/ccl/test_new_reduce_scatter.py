@@ -33,7 +33,6 @@ def run_reduce_scatter_impl(
     mem_config_rs,
     rs_topology,
     use_program_cache,
-    rs_num_batches,
     num_iters=1,
     enable_trace=True,
 ):
@@ -67,6 +66,7 @@ def run_reduce_scatter_impl(
 
     ### Create persistent output buffers
     logger.info("Creating persistent buffers")
+    rs_num_batches = rs_input_shape[0]
     single_batch_input_shape = rs_input_shape[:]
     single_batch_input_shape[2] //= rs_num_batches
     persistent_intermediate_buffers = [
@@ -135,7 +135,6 @@ def run_reduce_scatter_impl(
             persistent_intermediate_buffer=persistent_intermediate_buffers[i],
             persistent_output_buffer=persistent_output_buffers[i],
             dim=dim,
-            num_batches=rs_num_batches,
             multi_device_global_semaphore=ccl_semaphore_handles[i],
             num_links=num_links,
             memory_config=mem_config_rs,
@@ -200,7 +199,7 @@ def run_reduce_scatter_impl(
 # Enumerate the post-commit cases explicitly
 @skip_for_grayskull("Requires eth connected devices to run")
 @pytest.mark.parametrize(
-    "num_devices, num_links, rs_input_shape, dim, layout, rs_input_dtype, rs_num_batches",
+    "num_devices, num_links, rs_input_shape, dim, layout, rs_input_dtype",
     [
         # (
         #     8,
@@ -211,10 +210,10 @@ def run_reduce_scatter_impl(
         #     ttnn.bfloat16,
         #     1,
         # ),  # Full SD3.5 shape, when reduce scatter unfused
-        (8, 1, [1, 1, 4096, 2560], 3, ttnn.TILE_LAYOUT, ttnn.bfloat16, 8),  # use batching when fused
-        (8, 1, [1, 1, 4096, 2560], 3, ttnn.TILE_LAYOUT, ttnn.bfloat16, 4),  # use batching when fused
-        (8, 1, [1, 1, 4096, 2560], 3, ttnn.TILE_LAYOUT, ttnn.bfloat16, 2),  # use batching when fused
-        (8, 1, [1, 1, 4096, 2560], 3, ttnn.TILE_LAYOUT, ttnn.bfloat16, 1),  # use batching when fused
+        (8, 1, [8, 1, 512, 2560], 3, ttnn.TILE_LAYOUT, ttnn.bfloat16),  # use batching when fused
+        (8, 1, [4, 1, 1024, 2560], 3, ttnn.TILE_LAYOUT, ttnn.bfloat16),  # use batching when fused
+        (8, 1, [2, 1, 2048, 2560], 3, ttnn.TILE_LAYOUT, ttnn.bfloat16),  # use batching when fused
+        (8, 1, [1, 1, 4096, 2560], 3, ttnn.TILE_LAYOUT, ttnn.bfloat16),  # use batching when fused
     ],
     ids=["batch_8", "batch_4", "batch_2", "batch_1"],
 )
@@ -261,7 +260,6 @@ def test_reduce_scatter_async(
     num_iters,
     use_program_cache,
     rs_topology,
-    rs_num_batches,
 ):
     run_reduce_scatter_impl(
         t3k_mesh_device,
@@ -277,5 +275,4 @@ def test_reduce_scatter_async(
         rs_topology=rs_topology,
         enable_trace=enable_trace,
         num_iters=num_iters,
-        rs_num_batches=rs_num_batches,
     )

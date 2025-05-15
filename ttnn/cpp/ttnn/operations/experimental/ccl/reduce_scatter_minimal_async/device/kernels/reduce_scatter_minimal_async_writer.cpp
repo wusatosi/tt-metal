@@ -29,11 +29,9 @@ constexpr uint32_t cb_reader_output_id = get_compile_time_arg_val(6);
 constexpr uint32_t tile_granularity = get_compile_time_arg_val(7);
 constexpr uint32_t intermediate_page_size = get_compile_time_arg_val(8);
 constexpr uint32_t input_tensor_Wt = get_compile_time_arg_val(9);
-constexpr uint32_t slice_num_pages = get_compile_time_arg_val(10);
+constexpr uint32_t batch_slice_num_pages = get_compile_time_arg_val(10);
 constexpr uint32_t ring_size = get_compile_time_arg_val(11);
 constexpr uint32_t num_batches = get_compile_time_arg_val(12);
-
-// TODO: calculate half of batch_slice_num_pages
 
 void kernel_main() {
     ///////////////////////////////////////////////////
@@ -73,7 +71,6 @@ void kernel_main() {
         reinterpret_cast<volatile PACKET_HEADER_TYPE*>(packet_header_buffer_addr_backward);
     pkt_hdr_backward->to_chip_unicast(1);
 
-    uint32_t batch_slice_num_pages = slice_num_pages / num_batches;
     uint32_t slice_Wt = input_tensor_Wt / ring_size;
 
     uint32_t contig_pages_advanced = 1;  // always 1 for interleaved

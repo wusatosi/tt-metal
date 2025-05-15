@@ -28,7 +28,6 @@ using ccl::EriscDatamoverBuilder;
 struct ReduceScatterMinimalAsync {
     std::vector<IDevice*> devices;
     const uint32_t dim;
-    const uint32_t num_batches;
     const uint32_t num_links;
     const uint32_t ring_size;
     const MemoryConfig output_mem_config;
@@ -39,7 +38,6 @@ struct ReduceScatterMinimalAsync {
     ReduceScatterMinimalAsync(
         std::vector<IDevice*> devices,
         uint32_t dim,
-        uint32_t num_batches,
         uint32_t num_links,
         uint32_t ring_size,
         MemoryConfig output_mem_config,
@@ -48,7 +46,6 @@ struct ReduceScatterMinimalAsync {
         std::optional<tt::tt_metal::SubDeviceId>& sub_device_id) :
         devices(std::move(devices)),
         dim(dim),
-        num_batches(num_batches),
         num_links(num_links),
         ring_size(ring_size),
         output_mem_config(output_mem_config),
@@ -62,7 +59,6 @@ struct ReduceScatterMinimalAsync {
         std::vector<std::tuple<std::string, Attribute>> attrs;
 
         attrs.emplace_back("dim", dim);
-        attrs.emplace_back("num_batches", num_batches);
         attrs.emplace_back("num_links", num_links);
         attrs.emplace_back("ring_size", ring_size);
         attrs.emplace_back("output_mem_config", output_mem_config);
@@ -96,7 +92,6 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async(
     std::optional<IDevice*> backward_device,
     Tensor& output_tensor,
     const uint32_t dim,
-    const uint32_t num_batches,
     const uint32_t num_links,
     const uint32_t ring_size,
     const uint32_t ring_index,
@@ -113,7 +108,6 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async_helpe
     std::optional<IDevice*> backward_device,
     Tensor& output_tensor,
     const uint32_t dim,
-    const uint32_t num_batches,
     const uint32_t num_links,
     const uint32_t ring_size,
     const uint32_t ring_index,
@@ -132,7 +126,6 @@ Tensor reduce_scatter_minimal_async(
     Tensor& persistent_output_buffer,
     const uint32_t dim,
     const std::vector<GlobalSemaphore>& multi_device_global_semaphore,
-    const uint32_t num_batches = 1,
     const uint32_t num_links = 1,
     const std::optional<MemoryConfig>& memory_config = std::nullopt,
     const ttnn::ccl::Topology topology = ttnn::ccl::Topology::Ring,

@@ -12,12 +12,12 @@ void MAIN {
     constexpr uint32_t input_cb_id = get_compile_time_arg_val(0);
     constexpr uint32_t intermediate_cb = get_compile_time_arg_val(1);
     constexpr uint32_t output_cb = get_compile_time_arg_val(2);
-    constexpr uint32_t slice_num_pages = get_compile_time_arg_val(3);
+    constexpr uint32_t batch_slice_num_pages = get_compile_time_arg_val(3);
     constexpr uint32_t tile_granularity = get_compile_time_arg_val(4);
     constexpr uint32_t ring_size = get_compile_time_arg_val(5);
     constexpr uint32_t num_batches = get_compile_time_arg_val(6);
 
-    const uint32_t num_packets = slice_num_pages / tile_granularity / num_batches;
+    const uint32_t num_packets = batch_slice_num_pages / tile_granularity;
 
     for (uint32_t b = 0; b < num_batches; b++) {
         for (uint32_t i = 0; i < ring_size - 1; i++) {  // Don't reduce on the first slice

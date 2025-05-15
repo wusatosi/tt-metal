@@ -160,7 +160,6 @@ tt::tt_metal::operation::ProgramWithCallbacks ReduceScatterMinimalAsync::create_
         backward_device,
         output_tensors[1],
         this->dim,
-        this->num_batches,
         this->num_links,
         this->ring_size,
         device_index,
@@ -179,7 +178,6 @@ tt::tt_metal::operation::Hash ReduceScatterMinimalAsync::compute_program_hash(
     uint32_t semaphore_address = this->semaphore.at(0).address();
     return tt::tt_metal::operation::hash_operation<ReduceScatterMinimalAsync>(
         this->dim,
-        this->num_batches,
         this->num_links,
         this->ring_size,
         this->output_mem_config,
@@ -202,7 +200,6 @@ Tensor reduce_scatter_minimal_async_impl(
     Tensor& persistent_output_buffer,
     const uint32_t dim,
     const std::vector<GlobalSemaphore>& multi_device_global_semaphore,
-    const uint32_t num_batches,
     const uint32_t num_links,
     const std::optional<MemoryConfig>& memory_config,
     const ttnn::ccl::Topology topology,
@@ -234,7 +231,6 @@ Tensor reduce_scatter_minimal_async_impl(
                ttnn::ReduceScatterMinimalAsync(
                    devices,
                    dim,
-                   num_batches,
                    num_links,
                    num_devices,
                    memory_config.value_or(input_tensor.memory_config()),
@@ -254,7 +250,6 @@ Tensor reduce_scatter_minimal_async(
     Tensor& persistent_output_buffer,
     const uint32_t dim,
     const std::vector<GlobalSemaphore>& multi_device_global_semaphore,
-    const uint32_t num_batches,
     const uint32_t num_links,
     const std::optional<MemoryConfig>& memory_config,
     const ttnn::ccl::Topology topology,
@@ -269,7 +264,6 @@ Tensor reduce_scatter_minimal_async(
         persistent_output_buffer,
         dim,
         multi_device_global_semaphore,
-        num_batches,
         num_links,
         memory_config,
         topology,
