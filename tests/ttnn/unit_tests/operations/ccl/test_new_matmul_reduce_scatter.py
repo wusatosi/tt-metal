@@ -145,15 +145,17 @@ def run_reduce_scatter_impl(
 
     ##### Configs for ttnn.matmul #####
     core_grid = (8, 6)
+    in0_block_w = min(max_in0_block_w, mm_weights_shape[2] // num_devices // 32 // core_grid[0])
+    per_core_M = max(1, math.ceil(rs_input_shape[2] / 32 / core_grid[1]))  # M / TILE_HEIGHT / Grid_Size
+    per_core_N = max(1, math.ceil(rs_input_shape[3] / 32 / core_grid[0]))  # N / TILE_WIDTH / Grid_Size
     program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
         compute_with_storage_grid_size=core_grid,
-        in0_block_w=min(max_in0_block_w, mm_weights_shape[2] // num_devices // 32 // core_grid[0]),
+        in0_block_w=in0_block_w,
         out_subblock_h=1,  # Must be divisible by per_core_M
         out_subblock_w=1,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
-        out_block_h=22,
-        out_block_w=5,
-        per_core_M=22,  # max(1, math.ceil(rs_input_shape[2] * rs_input_shape[0] / 32 / core_grid[1])),  # M / TILE_HEIGHT / Grid_Size
-        per_core_N=10,  # max(1, math.ceil(rs_input_shape[3] / 32 / core_grid[0])),  # N / TILE_WIDTH / Grid_Size
+        per_core_M=per_core_M,
+        per_core_N=per_core_N,
+        out_block_w=per_core_N // 2,
         transpose_mcast=False,
         fused_activation=None,  # ttnn.UnaryOpType.SILU,
         fuse_batch=False,
@@ -319,7 +321,7 @@ def run_reduce_scatter_impl(
             2,
             3,
             ttnn.TILE_LAYOUT,
-            2,
+            5,
             ttnn.bfloat16,
             ttnn.bfloat16,
             True,
@@ -332,7 +334,7 @@ def run_reduce_scatter_impl(
             2,
             3,
             ttnn.TILE_LAYOUT,
-            2,
+            5,
             ttnn.bfloat16,
             ttnn.bfloat16,
             True,
@@ -345,7 +347,7 @@ def run_reduce_scatter_impl(
             2,
             3,
             ttnn.TILE_LAYOUT,
-            2,
+            5,
             ttnn.bfloat16,
             ttnn.bfloat16,
             True,
@@ -358,7 +360,7 @@ def run_reduce_scatter_impl(
             2,
             3,
             ttnn.TILE_LAYOUT,
-            2,
+            5,
             ttnn.bfloat16,
             ttnn.bfloat16,
             True,
