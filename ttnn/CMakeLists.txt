@@ -281,6 +281,14 @@ set(CCL_SRC_EXPERIMENTAL
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/experimental/ccl/all_gather_concat_heads_fused/device/all_gather_concat_program.cpp
 )
 
+set(P2P_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/point_to_point")
+set(P2P_SRC
+    ${P2P_SRC_DIR}/device/host/point_to_point_device_op.cpp
+    ${P2P_SRC_DIR}/device/host/send_program_factory.cpp
+    ${P2P_SRC_DIR}/device/host/receive_program_factory.cpp
+    ${P2P_SRC_DIR}/point_to_point.cpp
+)
+
 set(TTNN_OP_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/core/compute_kernel/compute_kernel_config.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/conv/conv2d/conv2d.cpp
@@ -795,6 +803,7 @@ list(
     ${TENSOR_SRC}
     ${CCL_SRC}
     ${CCL_SRC_EXPERIMENTAL}
+    ${P2P_SRC}
 )
 
 set(TTNN_SUBLIBRARIES
@@ -839,6 +848,7 @@ set(TTNN_SUBLIBRARIES
     ttnn/operations/kv_cache
     ttnn/operations/loss
     ttnn/operations/matmul
+    ttn/operations/point_to_point
     ttnn/operations/prefetcher
     ttnn/operations/moreh
     ttnn/operations/normalization
@@ -1021,6 +1031,8 @@ set(CCL_EXPERIMENTAL_TTNN_SRCS_PYBIND
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/experimental/ccl/llama_reduce_scatter_create_heads/llama_reduce_scatter_create_heads_${PY_BINDING}.cpp
 )
 
+set(TTNN_P2P_PYBIND ${P2P_SRC_DIR}/point_to_point_pybind.cpp)
+
 set(CCL_TTNN_SRCS_PYBIND
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/ccl/ccl_${PY_BINDING}.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/cpp/ttnn/operations/ccl/all_gather/all_gather_${PY_BINDING}.cpp
@@ -1076,6 +1088,7 @@ set(SOURCES_PYBIND
     ${TTNN_SRC_PYBIND}
     ${CCL_TTNN_SRCS_PYBIND}
     ${CCL_EXPERIMENTAL_TTNN_SRCS_PYBIND}
+    ${TTNN_P2P_PYBIND}
     ${Python3_LIBRARY_DIRS}
 )
 

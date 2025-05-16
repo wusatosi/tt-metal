@@ -87,7 +87,11 @@ void append_fabric_connection_rt_args(
         src_chip_id,
         dst_chip_id);
 
-    TT_FATAL(link_idx < candidate_ethernet_cores.value().size(), "link idx out of bounds");
+    TT_FATAL(
+        link_idx < candidate_ethernet_cores.value().size(),
+        "link idx {} out of bounds {}",
+        link_idx,
+        candidate_ethernet_cores.value().size());
 
     auto fabric_router_channel = get_ordered_fabric_eth_chans(src_chip_id, candidate_ethernet_cores.value())[link_idx];
     auto router_direction =
