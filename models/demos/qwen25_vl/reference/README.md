@@ -10,7 +10,7 @@ Install the Qwen2.5-VL model dependencies:
 pip install -r requirements.txt
 ```
 
-Note that this uses the main branch of transformers, not a release. It also requires python 3.9 or higher.
+Note that this uses a recent commit of the main branch of transformers, not a release. It also requires python 3.9 or higher.
 
 ## Overview
 
