@@ -1955,25 +1955,36 @@ profile_a_b_shape_pairs = [
     # [[8192, 8192], [8192, 8192]],
     # [[1, 8192], [8192, 8192]],
     # [[8192, 8192], [1, 8192]],
-    # [[8192, 1], [8192, 8192]],
+    [[1, 8192], [8192, 8192]],
     # [[8192, 8192], [8192, 1]],
     # [[1, 8192], [8192, 1]],
     # [[8192, 1], [1, 8192]],
     # [[1, 1], [8192, 8192]],
-    [[8192, 8192], [1, 1]],
+    # [[8192, 8192], [1, 1]],
 ]
 
 
 @pytest.mark.parametrize(
     "dtype_pt, dtype_tt",
-    ((torch.bfloat16, ttnn.bfloat16),),
+    (
+        (torch.bfloat16, ttnn.bfloat16),
+        # (torch.int32, ttnn.int32),
+        # (torch.float32, ttnn.float32)
+    ),
 )
 @pytest.mark.parametrize(
     "memory_config_input",
     [ttnn.DRAM_MEMORY_CONFIG],
 )
+@pytest.mark.parametrize(
+    "use_legacy",
+    [
+        # True,
+        False,
+    ],
+)
 @pytest.mark.parametrize("a_and_b_shape", profile_a_b_shape_pairs)
-def test_binary_bcast_profile(device, dtype_pt, dtype_tt, a_and_b_shape, memory_config_input):
+def test_binary_bcast_profile(device, dtype_pt, dtype_tt, a_and_b_shape, memory_config_input, use_legacy):
     device.enable_program_cache()
     torch.manual_seed(0)
     a_shape, b_shape = a_and_b_shape
@@ -1994,7 +2005,7 @@ def test_binary_bcast_profile(device, dtype_pt, dtype_tt, a_and_b_shape, memory_
         torch_input_tensor_b, layout=ttnn.TILE_LAYOUT, device=device, memory_config=memory_config_input
     )
     for _ in range(2):
-        output = ttnn.add(input_tensor_a, input_tensor_b, memory_config=memory_config_input, use_legacy=False)
+        output = ttnn.add(input_tensor_a, input_tensor_b, memory_config=memory_config_input, use_legacy=use_legacy)
         output = ttnn.to_torch(output)
 
         assert (
@@ -2121,3 +2132,63 @@ def test_binary_subtile_row_b_col_a_bcast(a_shape, b_shape, device):
 
     assert output_tensor.shape == torch_output_tensor.shape
     assert ttnn.pearson_correlation_coefficient(torch_output_tensor, output_tensor) >= 0.99988
+
+
+binary_fns = {
+    "add",
+    # "mul",
+}
+
+
+@pytest.mark.parametrize(
+    "input_shapes",
+    ((torch.Size([1, 1, 32, 32]), torch.Size([1, 1, 1, 1])),),
+)
+@pytest.mark.parametrize(
+    "ttnn_fn",
+    binary_fns,
+)
+@pytest.mark.parametrize(
+    "use_legacy",
+    [
+        # True,
+        False,
+    ],
+)
+# Typecast on both inputs and output
+def test_binary_typecast_all(input_shapes, device, ttnn_fn, use_legacy):
+    ttnn.enable_program_cache(device)
+    torch.manual_seed(0)
+    a_shape, b_shape = input_shapes
+    ttnn_op = getattr(ttnn, ttnn_fn)
+
+    torch_input_tensor_a = gen_func_with_cast_tt(
+        partial(torch_random, low=-50, high=50, dtype=torch.bfloat16), ttnn.bfloat8_b
+    )(a_shape)
+    torch_input_tensor_b = gen_func_with_cast_tt(
+        partial(torch_random, low=-50, high=50, dtype=torch.bfloat16), ttnn.bfloat8_b
+    )(b_shape)
+
+    input_tensor_a = ttnn.from_torch(
+        torch_input_tensor_a,
+        dtype=ttnn.bfloat8_b,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
+    input_tensor_b = ttnn.from_torch(
+        torch_input_tensor_b,
+        dtype=ttnn.bfloat8_b,
+        device=device,
+        layout=ttnn.TILE_LAYOUT,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
+
+    for _i in range(1):
+        out_tt = ttnn_op(input_tensor_a, input_tensor_b, memory_config=ttnn.DRAM_MEMORY_CONFIG, use_legacy=use_legacy)
+        output_tensor = ttnn.to_torch(out_tt)
+
+        golden_fn = ttnn.get_golden_function(ttnn_op)
+        torch_output_tensor = golden_fn(torch_input_tensor_a, torch_input_tensor_b)
+        status = ttnn.pearson_correlation_coefficient(torch_output_tensor, output_tensor)
+        assert status >= 0.999
