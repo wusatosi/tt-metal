@@ -1276,16 +1276,16 @@ def split_last_dim_two_chunks_tiled(x, *args, **kwargs):
 
 
 def tilize(x, *args, **kwargs):
-    return tilize_util(x)
+    return x
 
 
 def untilize(x, *args, **kwargs):
-    return untilize_util(x)
+    return x
 
 
 def tilize_with_zero_padding(x, *args, **kwargs):
-    return tilize_util(
-        torch.nn.functional.pad(x, (0, nearest_32(x.shape[-1]) - x.shape[-1], 0, nearest_32(x.shape[-2]) - x.shape[-2]))
+    return torch.nn.functional.pad(
+        x, (0, nearest_32(x.shape[-1]) - x.shape[-1], 0, nearest_32(x.shape[-2]) - x.shape[-2])
     )
 
 
@@ -1295,12 +1295,12 @@ def tilize_with_val_padding(x, output_tensor_shape, pad_value, *args, **kwargs):
         tuple(j for i in reversed(range(len(x.shape))) for j in (0, output_tensor_shape[i] - x.shape[i])),
         value=pad_value,
     )
-    tilized = tilize_util(pad)
+    tilized = pad
     return tilized
 
 
 def untilize_with_unpadding(x, output_tensor_end, *args, **kwargs):
-    untilized = untilize_util(x)
+    untilized = x
     unpad = untilized[
         : output_tensor_end[0] + 1,
         : output_tensor_end[1] + 1,

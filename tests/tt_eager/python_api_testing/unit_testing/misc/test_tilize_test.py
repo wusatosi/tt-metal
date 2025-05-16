@@ -39,7 +39,7 @@ def test_run_tilize_test(nb, nc, nh, nw, multicore, device):
     b = ttnn.tilize(a, use_multicore=multicore)
     c = b.cpu().to_torch()
 
-    tilized_inp = tilize(inp)
+    tilized_inp = inp
     passing = torch.equal(tilized_inp, c)
     assert passing
 
