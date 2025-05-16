@@ -564,7 +564,11 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core(
         aligned_input_nstick_nbytes = tt::round_up(out_stick_nbytes, input_tensor.buffer()->alignment());
     }
 
-    // printf("num_active_cores = %d\n", num_active_cores);
+    // create the NC/BR sync CBs
+    int32_t sync_cb_id1 = cb_indices.get_next_cb_id();
+    auto sync_cb1 = create_circular_buffer(program, all_cores, sync_cb_id1, tt::DataFormat::UInt16, 1, 2);
+    int32_t sync_cb_id2 = cb_indices.get_next_cb_id();
+    auto sync_cb2 = create_circular_buffer(program, all_cores, sync_cb_id2, tt::DataFormat::UInt16, 1, 2);
 
     // reader kernel
     std::vector<uint32_t> reader_ct_args = {
@@ -598,7 +602,9 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core(
         temp_cb_id,
         ntiles_per_block,
         input_nblocks_per_core,
-        half_max_bandwidth_stick_size};
+        half_max_bandwidth_stick_size,
+        sync_cb_id1,
+        sync_cb_id2};
 
     reader_ct_args[0] = 0;
     reader_ct_args[1] = cb_indices.local_config_cb_id;
@@ -612,7 +618,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core(
             .processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_0_default, .compile_args = reader_ct_args});
 
     reader_ct_args[0] = cb_indices.padding_config_cb_id;
-    reader_ct_args[1] = 0;
+    reader_ct_args[1] = cb_indices.local_config_cb_id;
     reader_ct_args[2] = 0;
     reader_ct_args[3] = 0;
     KernelHandle reader_kernel_id1 = CreateKernel(

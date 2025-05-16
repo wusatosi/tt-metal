@@ -150,7 +150,13 @@ void copy_sticks_async_from_temp(
     }
 }
 
-template <uint32_t stick_nbytes, uint32_t input_aligned_page_size, uint32_t half_max_bandwidth_stick_size>
+template <
+    uint32_t stick_nbytes,
+    uint32_t input_aligned_page_size,
+    uint32_t half_max_bandwidth_stick_size,
+    uint32_t NCBR,
+    uint32_t sync_cb_id1,
+    uint32_t sync_cb_id2>
 void copy_sticks_async_local(
     const tt_l1_ptr uint16_t* config_data,
     const uint16_t my_noc_x,
@@ -181,39 +187,53 @@ void copy_sticks_async_local(
             uint64_t temp_addr = base_addr_temp;
             uint32_t src_addr = in_base_l1_addr + src_offset;
 
+            uint32_t half_size = size / 2;
+
             int dst_relative_src = src_local_idx + in_out_buffer_start_delta;
             bool is_not_overlap_copy =
                 dst_local_idx + nsticks < dst_relative_src || dst_relative_src + nsticks < dst_local_idx;
             if (is_not_overlap_copy) {
-                noc_async_write(src_addr, dst_addr, size);
-                // DPRINT << "LOCAL copy, size: " << size << ENDL();
-            } else {  // dst and src data overlaps, stick by stick copy is necessary
-                if constexpr (stick_nbytes <= half_max_bandwidth_stick_size) {  // noc transfers with larger page sizes
-                                                                                // are faster, with a page
-                    // size of 256 bytes on WH the transfer rate is half of the maximum
-                    // thus, for stick sizes smaller that this it is faster to do a
-                    // double copy, doubling the total amount of data being copied but
-                    // avoiding the slow stick by stick copy, however with larger
-                    // stick sizes the stick by stick transfer is fast enough that it
-                    // is more efficient than the double copy.
-                    noc_async_write(src_addr, temp_addr, size);
-                    noc_async_write(temp_base_l1_addr_read, dst_addr, size);
-                    // DPRINT << "LOCAL copy, size: " << size << " x 2" << ENDL();
+                if constexpr (NCBR) {
+                    cb_reserve_back(sync_cb_id1, 1);
+                    noc_async_write(src_addr, dst_addr, half_size);
+                    cb_push_back(sync_cb_id1, 1);
+                    cb_wait_front(sync_cb_id2, 1);
+                    cb_pop_front(sync_cb_id2, 1);
                 } else {
-                    bool is_forward_copy = dst_local_idx > dst_relative_src;
-                    if (is_forward_copy) {  // dst data is being moved "in front" of the source data, reverse
-                                            // ordering of stick by stick copy is necessary
-                        for (int16_t k = nsticks - 1; k >= 0; k--) {
-                            noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
-                        }
-                        // DPRINT << "LOCAL copy, size: " << stick_nbytes << " x " << nsticks << ENDL();
-                    } else {
-                        for (uint16_t k = 0; k < nsticks; k++) {
-                            noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
-                        }
-                        // DPRINT << "LOCAL copy, size: " << stick_nbytes << " x " << nsticks << ENDL();
-                    }
+                    cb_reserve_back(sync_cb_id2, 1);
+                    noc_async_write(src_addr + half_size, dst_addr + half_size, half_size);
+                    cb_push_back(sync_cb_id2, 1);
+                    cb_wait_front(sync_cb_id1, 1);
+                    cb_pop_front(sync_cb_id1, 1);
                 }
+            } else {  // dst and src data overlaps, stick by stick copy is necessary
+                // if constexpr (stick_nbytes <= half_max_bandwidth_stick_size) {  // noc transfers with larger page
+                // sizes
+                //                                                                 // are faster, with a page
+                //     // size of 256 bytes on WH the transfer rate is half of the maximum
+                //     // thus, for stick sizes smaller that this it is faster to do a
+                //     // double copy, doubling the total amount of data being copied but
+                //     // avoiding the slow stick by stick copy, however with larger
+                //     // stick sizes the stick by stick transfer is fast enough that it
+                //     // is more efficient than the double copy.
+                //     noc_async_write(src_addr, temp_addr, size);
+                //     noc_async_write(temp_base_l1_addr_read, dst_addr, size);
+                //     // DPRINT << "LOCAL copy, size: " << size << " x 2" << ENDL();
+                // } else {
+                //     bool is_forward_copy = dst_local_idx > dst_relative_src;
+                //     if (is_forward_copy) {  // dst data is being moved "in front" of the source data, reverse
+                //                             // ordering of stick by stick copy is necessary
+                //         for (int16_t k = nsticks - 1; k >= 0; k--) {
+                //             noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
+                //         }
+                //         // DPRINT << "LOCAL copy, size: " << stick_nbytes << " x " << nsticks << ENDL();
+                //     } else {
+                //         for (uint16_t k = 0; k < nsticks; k++) {
+                //             noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
+                //         }
+                //         // DPRINT << "LOCAL copy, size: " << stick_nbytes << " x " << nsticks << ENDL();
+                //     }
+                // }
             }
         }
 
@@ -270,6 +290,8 @@ void kernel_main() {
     constexpr uint32_t tile_cols = get_compile_time_arg_val(28);
     constexpr uint32_t tile_rows = get_compile_time_arg_val(29);
     constexpr uint32_t half_max_bandwidth_stick_size = get_compile_time_arg_val(30);
+    constexpr uint32_t sync_cb_id1 = get_compile_time_arg_val(31);
+    constexpr uint32_t sync_cb_id2 = get_compile_time_arg_val(32);
 
     constexpr uint32_t elem_nbytes = sizeof(uint16_t);
     constexpr uint16_t pad_core_id = 0xFFFF;
@@ -290,14 +312,14 @@ void kernel_main() {
     // DPRINT << "in_base_l1_addr: " << in_base_l1_addr << ", out_base_l1_addr: " << out_base_l1_addr
     //        << ", untilize_temp_l1_addr: " << untilize_temp_l1_addr << ENDL();
 
-    if constexpr (local_config_cb_id) {
+    if constexpr (remote_config_cb_id) {
         cb_reserve_back(src_cb_id, in_npages);
         cb_push_back(src_cb_id, in_npages);
     }
 
     // make sure untilized data is available
     // for wide tensors a temp CB must be used due to implementation of the untilize LLK function vs pack_untilize
-    if (untilize_temp_cb_id && local_config_cb_id) {
+    if (untilize_temp_cb_id && remote_config_cb_id) {
         for (uint32_t i = 0; i < tile_rows; ++i) {
             cb_wait_front(untilize_temp_cb_id, tile_cols);
             cb_reserve_back(in_cb_id, tile_cols);
@@ -312,13 +334,10 @@ void kernel_main() {
         }
     }
     cb_wait_front(in_cb_id, in_npages);
-    // DPRINT << "untilize done" << ENDL();
 
     // copy remote sticks to temp buffer or their final destinations
     if constexpr (remote_config_cb_id) {
         // tt::data_movement::common::print_bf16_pages(in_base_l1_addr, 32, 224);
-
-        // DPRINT << "REMOTE TO TEMP" << ENDL();
 
         const uint32_t temp_base_l1_addr = get_write_ptr(remote_temp_cb_id);
         // DPRINT << "temp_base_l1_addr: " << temp_base_l1_addr << ENDL();
@@ -330,30 +349,39 @@ void kernel_main() {
             is_block_sharded,
             is_width_sharded,
             is_col_major>(config_data, my_noc_x, my_noc_y, in_base_l1_addr, temp_base_l1_addr, out_base_l1_addr);
+
+        noc_async_read_barrier();
+        noc_async_write_barrier();
+
+        cb_push_back(sync_cb_id1, 1);  // 1
     }
 
-    noc_async_read_barrier();
-    noc_async_write_barrier();
+    cb_wait_front(sync_cb_id1, 1);  // 1
+
+    if (remote_temp_cb_id) {
+        cb_pop_front(sync_cb_id1, 1);  // 0
+    }
 
     // move local sticks
-    if constexpr (local_config_cb_id) {
-        // DPRINT << "LOCAL" << ENDL();
-
-        const uint32_t temp_base_l1_addr_write = get_write_ptr(local_temp_cb_id);
-        const uint32_t temp_base_l1_addr_read = get_read_ptr(local_temp_cb_id);
-
-        uint32_t config_data_l1_addr = get_read_ptr(local_config_cb_id);
-        const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
-        copy_sticks_async_local<stick_nbytes, input_aligned_page_size, half_max_bandwidth_stick_size>(
-            config_data,
-            my_noc_x,
-            my_noc_y,
-            in_base_l1_addr,
-            temp_base_l1_addr_write,
-            temp_base_l1_addr_read,
-            out_base_l1_addr,
-            in_out_buffer_start_delta);
-    }
+    const uint32_t temp_base_l1_addr_write = get_write_ptr(local_temp_cb_id);
+    const uint32_t temp_base_l1_addr_read = get_read_ptr(local_temp_cb_id);
+    uint32_t config_data_l1_addr = get_read_ptr(local_config_cb_id);
+    const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
+    copy_sticks_async_local<
+        stick_nbytes,
+        input_aligned_page_size,
+        half_max_bandwidth_stick_size,
+        remote_config_cb_id,
+        sync_cb_id1,
+        sync_cb_id2>(
+        config_data,
+        my_noc_x,
+        my_noc_y,
+        in_base_l1_addr,
+        temp_base_l1_addr_write,
+        temp_base_l1_addr_read,
+        out_base_l1_addr,
+        in_out_buffer_start_delta);
 
     noc_async_read_barrier();
     noc_async_write_barrier();

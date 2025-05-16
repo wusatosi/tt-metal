@@ -910,6 +910,8 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
         // printf("---LOCAL CONFIG---\n");
         int core = 0;
         int max_local_size = 0;
+        int total_local_count = 0;
+        int total_local_sticks = 0;
         for (const auto& [key, data] : config) {
             // printf("    core: %d\n", core);
             auto [nocx, nocy, len] = key;
@@ -955,6 +957,8 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
                     flat_data[0][idx1++] = length;
                     flat_data[0][idx1++] = 1;  // default no_wait to 1
                     flat_data[0][2] += 4;
+                    total_local_count++;
+                    total_local_sticks += length;
 
                     max_local_size = std::max(max_local_size, (int)length);
                 }
@@ -972,6 +976,8 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
                     flat_data[0][idx1++] = length;
                     flat_data[0][idx1++] = 1;  // default no_wait to 1
                     flat_data[0][2] += 4;
+                    total_local_count++;
+                    total_local_sticks += length;
 
                     max_local_size = std::max(max_local_size, (int)length);
                 }
@@ -981,6 +987,9 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
             flattened_config[0].emplace_back(std::move(flat_data[0]));
             flattened_config[1].emplace_back(std::move(flat_data[1]));
         }
+
+        printf("    total_local_count: %d\n", total_local_count);
+        printf("    total_local_sticks: %d\n", total_local_sticks);
 
         return std::make_tuple(flattened_config, max_local_size);
     };
@@ -1010,6 +1019,10 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
         int num_cores = num_cores_x * num_cores_y;
         CoreCoord noc_00 = core_id_to_noc_coords(0);
         int core = 0;
+        int total_remote_count = 0;
+        int total_remote_sticks = 0;
+        int total_remote_no_wait_count = 0;
+        int total_remote_no_wait_sticks = 0;
         std::vector<int> remote_ref_low_bounds(num_cores, INT_MAX);
         std::vector<int> remote_ref_high_bounds(num_cores, -INT_MAX);
         for (const auto& core_config : config) {
@@ -1144,9 +1157,13 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
                         idx1 += 3;
                         auto [src_start, dst_start, length] = subdata[i];
                         bool no_wait = flattened_config[0][core][idx1];
-                        if (!no_wait) {
-                            ref_size += length;
-                        }
+                        total_remote_count++;
+                        total_remote_sticks += length;
+                        // if (!no_wait) {
+                        total_remote_no_wait_count++;
+                        total_remote_no_wait_sticks += length;
+                        ref_size += length;
+                        //}
                         idx1++;
                         idx1 = flattened_config[0][core][len_idx1] ? idx1 : idx1 - 4;
                     }
@@ -1163,6 +1180,11 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
         //     }
         //     printf("\n");
         // }
+
+        printf("    total_remote_count: %d\n", total_remote_count);
+        printf("    total_remote_sticks: %d\n", total_remote_sticks);
+        printf("    total_remote_no_wait_count: %d\n", total_remote_no_wait_count);
+        printf("    total_remote_no_wait_sticks: %d\n", total_remote_no_wait_sticks);
 
         return std::make_tuple(flattened_config, max_ref_size);
     };
