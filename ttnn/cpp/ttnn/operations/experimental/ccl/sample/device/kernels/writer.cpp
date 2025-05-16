@@ -120,12 +120,12 @@ void kernel_main() {
         uint32_t bwd_prev_device = (((bwd_device_to_process + 1) % 8) + 8) % 8;
 
         uint32_t fwd_start_tile = 0;
-        uint32_t fwd_end_tile = input_num_tiles;
+        uint32_t fwd_end_tile = input_num_tiles / 2;
         uint32_t tiles_in_iter = std::min(fwd_end_tile - fwd_start_tile, max_tiles_per_dst);
         uint32_t fwd_iter_start_tile = fwd_start_tile;
         uint32_t fwd_iter_end_tile = fwd_iter_start_tile + tiles_in_iter;
 
-        uint32_t bwd_start_tile = 0;
+        uint32_t bwd_start_tile = input_num_tiles / 2;
         uint32_t bwd_end_tile = input_num_tiles;
         uint32_t bwd_iter_start_tile = bwd_start_tile;
         uint32_t bwd_iter_end_tile = bwd_iter_start_tile + tiles_in_iter;
@@ -235,6 +235,7 @@ void kernel_main() {
 
             // Recieved fwd direction
             uint32_t read_ptr = get_write_ptr(dst_fwd_cb_index);
+            DPRINT << "WRITER: FWD ITER START " << fwd_iter_start_tile << " and END " << fwd_iter_end_tile << "\n";
             for (uint32_t i = fwd_iter_start_tile; i < fwd_iter_end_tile; i++) {
                 uint64_t dest_addr = out_tensor_addrgen.get_noc_addr(fwd_prev_device * input_num_tiles + i);
                 noc_async_write(read_ptr, dest_addr, input_tensor_page_size);
@@ -243,6 +244,7 @@ void kernel_main() {
 
             // Recieved bwd direction
             read_ptr = get_write_ptr(dst_bwd_cb_index);
+            DPRINT << "WRITER: BWD ITER START " << bwd_iter_start_tile << " and END " << bwd_iter_end_tile << "\n";
             for (uint32_t i = bwd_iter_start_tile; i < bwd_iter_end_tile; i++) {
                 uint64_t dest_addr = out_tensor_addrgen.get_noc_addr(bwd_prev_device * input_num_tiles + i);
                 noc_async_write(read_ptr, dest_addr, input_tensor_page_size);

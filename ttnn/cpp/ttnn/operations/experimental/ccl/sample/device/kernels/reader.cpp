@@ -36,9 +36,6 @@ void kernel_main() {
     volatile tt_l1_ptr uint32_t* signal_semaphore_addr_ptr =
         reinterpret_cast<volatile tt_l1_ptr uint32_t*>(local_semaphore);
 
-    uint32_t start_tile = 0;
-    uint32_t end_tile = input_num_tiles;
-
     auto tensor0_addrgen = InterleavedAddrGenFast<true>{
         .bank_base_address = input_tensor_address,
         .page_size = input_tensor_page_size,
@@ -50,7 +47,7 @@ void kernel_main() {
         .data_format = get_dataformat(in_fwd_cb_index)};
 
     uint32_t tile_id = 0;
-    for (tile_id = start_tile; tile_id < end_tile; tile_id++) {
+    for (tile_id = 0; tile_id < input_num_tiles; tile_id++) {
         cb_reserve_back(in_fwd_cb_index, 1);
         auto tensor_tile_addr = tensor0_addrgen.get_noc_addr(tile_id);
         noc_async_read(tensor_tile_addr, get_write_ptr(in_fwd_cb_index), input_tensor_page_size);
@@ -63,11 +60,11 @@ void kernel_main() {
     uint32_t fwd_start_tile = 0;
     uint32_t fwd_iter_start_tile = 0;
 
-    uint32_t fwd_end_tile = input_num_tiles;
+    uint32_t fwd_end_tile = input_num_tiles / 2;
     uint32_t tiles_in_iter = std::min(fwd_end_tile - fwd_start_tile, max_tiles_per_dst);
     uint32_t fwd_iter_end_tile = fwd_iter_start_tile + tiles_in_iter;
 
-    uint32_t bwd_start_tile = 0;
+    uint32_t bwd_start_tile = input_num_tiles / 2;
     uint32_t bwd_iter_start_tile = bwd_start_tile;
     uint32_t bwd_end_tile = input_num_tiles;
     uint32_t bwd_iter_end_tile = bwd_iter_start_tile + tiles_in_iter;
@@ -75,15 +72,30 @@ void kernel_main() {
     uint32_t iter_totals = std::ceil(input_num_tiles * 1.0 / max_tiles_per_dst);
 
     DPRINT << "iter_totals: " << iter_totals << "\n";
+    DPRINT << "fwd_start_tile: " << fwd_start_tile << "\n";
+    DPRINT << "fwd_iter_start_tile: " << fwd_iter_start_tile << "\n";
+    DPRINT << "fwd_iter_end_tile: " << fwd_iter_end_tile << "\n";
+    DPRINT << "bwd_start_tile: " << bwd_start_tile << "\n";
+    DPRINT << "bwd_iter_start_tile: " << bwd_iter_start_tile << "\n";
+    DPRINT << "bwd_iter_end_tile: " << bwd_iter_end_tile << "\n";
 
     // For each device, read the output tensor from previous device into cb for forwarding
     for (int device_iter = 0; device_iter < 7; device_iter++) {
         uint32_t fwd_device_to_process = (((device_order - device_iter) % 8) + 8) % 8;
         uint32_t bwd_device_to_process = (((device_order + device_iter) % 8) + 8) % 8;
 
+        fwd_iter_start_tile = 0;
+        fwd_iter_end_tile = fwd_iter_start_tile + tiles_in_iter;
+        bwd_iter_start_tile = input_num_tiles / 2;
+        bwd_iter_end_tile = bwd_iter_start_tile + tiles_in_iter;
+
         for (uint32_t iter = 0; iter < iter_totals; iter++) {
             for (tile_id = fwd_iter_start_tile; tile_id < fwd_iter_end_tile; tile_id++) {
                 cb_reserve_back(in_fwd_cb_index, 1);
+                DPRINT << "READER FWD: " << device_order << " Get NOC addr for tile "
+                       << fwd_device_to_process * input_num_tiles + tile_id << "\t";
+                DPRINT << "Get NOC addr PARTS for tile " << fwd_device_to_process << " " << input_num_tiles << " "
+                       << tile_id << "\n";
                 uint64_t tile_addr =
                     output_tensor_addrgen.get_noc_addr(fwd_device_to_process * input_num_tiles + tile_id);
                 noc_async_read(tile_addr, get_write_ptr(in_fwd_cb_index), input_tensor_page_size);
@@ -93,6 +105,8 @@ void kernel_main() {
 
             for (tile_id = bwd_iter_start_tile; tile_id < bwd_iter_end_tile; tile_id++) {
                 cb_reserve_back(in_bwd_cb_index, 1);
+                DPRINT << "READER BWD: " << device_order << " Get NOC addr for tile "
+                       << bwd_device_to_process * input_num_tiles + tile_id << "\n";
                 uint64_t tile_addr =
                     output_tensor_addrgen.get_noc_addr(bwd_device_to_process * input_num_tiles + tile_id);
                 noc_async_read(tile_addr, get_write_ptr(in_bwd_cb_index), input_tensor_page_size);
