@@ -339,8 +339,8 @@ LlamaPrefillReduceScatterDeviceOperation::LlamaPrefillReduceScatterAdd::create_a
     // uint32_t input_shard_cores_per_device = ncores_input / num_devices;
     // uint32_t output_cores_per_device = ncores_output;
 
-    // auto input_tensor_buffer = input_tensor.buffer();
-    // auto output_tensor_buffer = output_tensor.buffer();
+    auto input_tensor_buffer = input_tensor.buffer();
+    auto output_tensor_buffer = output_tensor.buffer();
     // auto packet_buffer = tensor_args.intermediate_packet_buffer.buffer();
     tt::DataFormat cb_data_format = tt::tt_metal::datatype_to_dataformat_converter(input_tensor.get_dtype());
 
@@ -422,14 +422,14 @@ LlamaPrefillReduceScatterDeviceOperation::LlamaPrefillReduceScatterAdd::create_a
     tt::tt_metal::CircularBufferConfig cb_input_tensor_config =
         tt::tt_metal::CircularBufferConfig(tile_num_magic_num * input_page_size, {{input_tensor_cb_id, cb_data_format}})
             .set_page_size(input_tensor_cb_id, input_page_size);
-    //         .set_globally_allocated_address(*input_tensor_buffer);
+    // .set_globally_allocated_address(*input_tensor_buffer);
 
     // CB to represent the output sharded buffer
     tt::tt_metal::CircularBufferConfig cb_output_tensor_config =
         tt::tt_metal::CircularBufferConfig(
             tile_num_magic_num * output_page_size, {{output_tensor_cb_id, cb_data_format}})
             .set_page_size(output_tensor_cb_id, output_page_size);
-    //         .set_globally_allocated_address(*output_tensor_buffer);
+    // .set_globally_allocated_address(*output_tensor_buffer);
 
     constexpr uint32_t buffering_factor = 2;
     // // Allocate space for the client interface
@@ -604,7 +604,7 @@ LlamaPrefillReduceScatterDeviceOperation::LlamaPrefillReduceScatterAdd::create_a
     uint32_t local_page = 0;
 
     std::vector<uint32_t> reader_runtime_args = {
-        cross_device_semaphore->address(), local_semaphore, false, false, 0, false, 0, 0, 0};
+        cross_device_semaphore->address(), input_tensor.buffer()->address(), false, false, 0, false, 0, 0, 0};
     uint32_t is_reader_sender_core_idx = 2;
     uint32_t is_reader_worker_core_idx = 3;
     uint32_t is_linear_input_packet_start_idx = 4;
@@ -636,7 +636,7 @@ LlamaPrefillReduceScatterDeviceOperation::LlamaPrefillReduceScatterAdd::create_a
 
     for (auto core : all_cores) {
         std::vector<uint32_t> writer_runtime_args = {
-            cross_device_semaphore->address(), local_semaphore, false, false, 0, 0, 0, 0};
+            cross_device_semaphore->address(), output_tensor.buffer()->address(), false, false, 0, 0, 0, 0};
 
         // uint32_t num_shards_to_read_per_worker = schedule[sender_core_idx].size();
         uint32_t num_shards_to_read_per_worker = tile_num_magic_num;

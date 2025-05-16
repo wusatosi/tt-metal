@@ -71,7 +71,8 @@ void kernel_main() {
 
     // Runtime arguments
     uint32_t receiver_semaphore_address = get_arg_val<uint32_t>(rt_arg_idx++);
-    uint32_t local_semaphore_address = get_semaphore(get_arg_val<uint32_t>(rt_arg_idx++));
+    // uint32_t local_semaphore_address = get_semaphore(get_arg_val<uint32_t>(rt_arg_idx++));
+    uint32_t output_tensor_address = get_arg_val<uint32_t>(rt_arg_idx++);
     bool sender_core = (bool)get_arg_val<uint32_t>(rt_arg_idx++);
     bool worker_core = (bool)get_arg_val<uint32_t>(rt_arg_idx++);
     uint32_t linear_output_page_start_idx = get_arg_val<uint32_t>(rt_arg_idx++);
@@ -80,25 +81,15 @@ void kernel_main() {
     uint32_t sender_total_num_pages = get_arg_val<uint32_t>(rt_arg_idx++);
 
     if (sender_core) {
-        DPRINT << "i am sender core: " << chip_id << ENDL();
         auto fabric_connection =
             FabricConnectionManager::build_from_args<FabricConnectionManager::BUILD_AND_OPEN_CONNECTION_START_ONLY>(
                 rt_arg_idx);
 
-        cb_reserve_back(packet_header_cb_id, 1);
-        // auto packet_header_buffer_addr_forward = get_write_ptr(packet_header_cb_id);
-        cb_push_back(packet_header_cb_id, 1);
-
-        // volatile PACKET_HEADER_TYPE* pkt_hdr_fwd = reinterpret_cast<volatile
-        // PACKET_HEADER_TYPE*>(packet_header_buffer_addr_forward);
-
-        // pkt_hdr_fwd->to_chip_multicast(UNICAST_HDR);
-        // pkt_hdr_bwd->to_chip_multicast(UNICAST_HDR);
-
-        // // Set up packet headers once
-        // constexpr uint8_t device_order[other_devices] =
-        //     DEVICE_ORDER;  // this is code gen'd in the program factory using the defines
+        //      // Set up packet headers once
+        //         constexpr uint8_t device_order[other_devices] =
+        //             DEVICE_ORDER;  // this is code gen'd in the program factory using the defines
         // constexpr uint8_t packet_worker_cores[num_packet_worker_cores][2] = PACKET_WORKER_CORES;
+
         const auto packet_header_buffer_addr = get_read_ptr(packet_header_cb_id);
         auto* unicast_packet_header = reinterpret_cast<volatile PACKET_HEADER_TYPE*>(packet_header_buffer_addr);
         auto* sem_inc_packet_header =
@@ -112,93 +103,74 @@ void kernel_main() {
 
         const uint32_t base_receiver_l1_addr = get_read_ptr(fabric_receiver_cb_id);
 
-        // // Precompute the packet offset once
-        // const uint32_t packet_offset = base_receiver_l1_addr + chip_id_offset;
+        // Precompute the packet offset once
+        const uint32_t packet_offset = base_receiver_l1_addr;  //+ chip_id_offset;
 
         if (fabric_connection.is_logically_connected()) {
             fabric_connection.open_finish();
         }
         // for (uint32_t target_device_id : device_order) {
-        //     // Calculate device-specific constants once per device
-        // const uint32_t num_hops = std::abs(int(target_device_id) - int(chip_id));
-        const uint32_t num_hops = 1;
+        // Calculate device-specific constants once per device
+        const uint32_t num_hops = 1;  // std::abs(int(target_device_id) - int(chip_id));
         unicast_packet_header->to_chip_unicast(static_cast<uint8_t>(num_hops));
-        //     auto& fabric_conn = target_device_id > chip_id ? fabric_connection.get_forward_connection()
-        //                                                    : fabric_connection.get_backward_connection();
+        auto& fabric_conn =
+            fabric_connection
+                .get_forward_connection();  // target_device_id > chip_id ? fabric_connection.get_forward_connection()
+                                            //: fabric_connection.get_backward_connection();
 
-        auto& fabric_conn = fabric_connection.get_forward_connection();
-        // auto& bwd_conn = fabric_connection.get_backward_connection();
+        uint32_t num_pages_sent = 0;
+        sender_total_num_pages = 1;
+        uint32_t packet = sender_packet_start;
+        while (num_pages_sent < sender_total_num_pages) {
+            // Determine packet size based on whether it's the last packet
+            auto num_pages_left = sender_total_num_pages - num_pages_sent;
+            const uint32_t curr_packet_num_pages = 1;  // std::min(num_pages_per_packet, num_pages_left);
+            const uint32_t curr_packet_size_bytes = curr_packet_num_pages * page_size_bytes;
 
-        // constexpr uint32_t start_tile = 0;
-        // constexpr uint32_t end_tile = 2;
+            const uint32_t receiver_core_x = packet_receiver_core_x;  // packet_worker_cores[packet][x_index];
+            const uint32_t receiver_core_y = packet_receiver_core_y;  // packet_worker_cores[packet][y_index];
+            const uint64_t noc0_dest_noc_addr = get_noc_addr(receiver_core_x, receiver_core_y, packet_offset);
 
-        // Sync up, let next device know we can receive data
-        // pkt_hdr_bwd->to_chip_multicast(UNICAST_HDR);
-        // pkt_hdr_bwd->to_noc_unicast_atomic_inc(INC_HDR(sem_noc_addr, true));
-        // bwd_conn.wait_for_empty_write_slot();
-        // bwd_conn.send_payload_flush_non_blocking_from_address(
-        //     reinterpret_cast<uint32_t>(sem_inc_packet_header), sizeof(PACKET_HEADER_TYPE));
+            cb_wait_front(fabric_sender_cb_id, curr_packet_num_pages);
+            const auto sender_l1_addr = get_read_ptr(fabric_sender_cb_id);
 
-        // while (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(sem_noc_addr) != (1));
+            const uint64_t sem_noc_addr = get_noc_addr(receiver_core_x, receiver_core_y, receiver_semaphore_address);
+            unicast_packet_header->to_noc_fused_unicast_write_atomic_inc(
+                tt::tt_fabric::NocUnicastAtomicIncFusedCommandHeader(noc0_dest_noc_addr, sem_noc_addr, 1, 32, flush),
+                curr_packet_size_bytes);
 
-        cb_wait_front(fabric_sender_cb_id, 1);
-        const auto sender_l1_addr = get_read_ptr(fabric_sender_cb_id);
+            fabric_conn.wait_for_empty_write_slot();
 
-        const uint64_t noc0_dest_noc_addr =
-            get_noc_addr(packet_receiver_core_x, packet_receiver_core_x, base_receiver_l1_addr);
-        unicast_packet_header->to_noc_fused_unicast_write_atomic_inc(
-            tt::tt_fabric::NocUnicastAtomicIncFusedCommandHeader(noc0_dest_noc_addr, sem_noc_addr, 1, 32, flush),
-            page_size_bytes);
+            fabric_conn.send_payload_without_header_non_blocking_from_address(sender_l1_addr, curr_packet_size_bytes);
 
-        fabric_conn.wait_for_empty_write_slot();
-        fabric_conn.send_payload_without_header_non_blocking_from_address(sender_l1_addr, page_size_bytes);
-        fabric_conn.send_payload_flush_blocking_from_address((uint32_t)unicast_packet_header, packet_header_size);
-        cb_pop_front(fabric_sender_cb_id, 1);
-        DPRINT << "fabric sender 1 tile sent" << ENDL();
+            fabric_conn.send_payload_flush_blocking_from_address((uint32_t)unicast_packet_header, packet_header_size);
 
-        // uint32_t num_pages_sent = 0;
-        // uint32_t packet = sender_packet_start;
-        //     while (num_pages_sent < sender_total_num_pages) {
-        //         // Determine packet size based on whether it's the last packet
-        //         auto num_pages_left = sender_total_num_pages - num_pages_sent;
-        //         const uint32_t curr_packet_num_pages = std::min(num_pages_per_packet, num_pages_left);
-        //         const uint32_t curr_packet_size_bytes = curr_packet_num_pages * page_size_bytes;
+            cb_pop_front(fabric_sender_cb_id, curr_packet_num_pages);
 
-        //         const uint32_t receiver_core_x = packet_worker_cores[packet][x_index];
-        //         const uint32_t receiver_core_y = packet_worker_cores[packet][y_index];
-        //         const uint64_t noc0_dest_noc_addr = get_noc_addr(receiver_core_x, receiver_core_y, packet_offset);
-
-        //         cb_wait_front(fabric_sender_cb_id, curr_packet_num_pages);
-        //         const auto sender_l1_addr = get_read_ptr(fabric_sender_cb_id);
-
-        //         const uint64_t sem_noc_addr =
-        //             get_noc_addr(receiver_core_x, receiver_core_y, receiver_semaphore_address);
-        //         unicast_packet_header->to_noc_fused_unicast_write_atomic_inc(
-        //             tt::tt_fabric::NocUnicastAtomicIncFusedCommandHeader(
-        //                 noc0_dest_noc_addr, sem_noc_addr, 1, 32, flush),
-        //             curr_packet_size_bytes);
-
-        //         fabric_conn.wait_for_empty_write_slot();
-
-        //         fabric_conn.send_payload_without_header_non_blocking_from_address(
-        //             sender_l1_addr, curr_packet_size_bytes);
-
-        //         fabric_conn.send_payload_flush_blocking_from_address(
-        //             (uint32_t)unicast_packet_header, packet_header_size);
-
-        //         cb_pop_front(fabric_sender_cb_id, curr_packet_num_pages);
-
-        //         num_pages_sent += curr_packet_num_pages;
-        //         packet++;
-        //     }
-        // }
-
+            num_pages_sent += curr_packet_num_pages;
+            packet++;
+        }
+        DPRINT << "PACKET SENT" << ENDL();
         if (fabric_connection.is_logically_connected()) {
             fabric_connection.close();
         }
     } else if (worker_core) {
 #ifndef SKIP_WRITE_BACK
-        DPRINT << "i am worker core: " << chip_id << ENDL();
+
+        noc_semaphore_wait((uint32_t*)receiver_semaphore_address, 1);
+
+        // uint32_t output_tensor_address = get_write_ptr(output_tensor_cb_id);
+        auto output_tensor_addrgen = InterleavedAddrGenFast<true>{
+            .bank_base_address = output_tensor_address,
+            .page_size = page_size_bytes,
+            .data_format = get_dataformat(input_tensor_cb_id)};
+
+        const uint32_t base_receiver_l1_addr = get_read_ptr(fabric_receiver_cb_id);
+
+        uint64_t dest_addr = output_tensor_addrgen.get_noc_addr(0);
+        noc_async_write(base_receiver_l1_addr, dest_addr, page_size_bytes);
+        noc_async_write_barrier();
+        DPRINT << "data received on fabric_receiver written to output tensor" << ENDL();
         // constexpr uint8_t output_core_xy[output_cores_per_device][2] = OUTPUT_CORE_XY;
         // uint64_t noc_addresses[num_pages_per_packet];
         // uint32_t accumulator_l1_addresses[num_pages_per_packet];

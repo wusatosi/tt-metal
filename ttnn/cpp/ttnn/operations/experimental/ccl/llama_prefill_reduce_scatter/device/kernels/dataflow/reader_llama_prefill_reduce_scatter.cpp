@@ -72,7 +72,8 @@ void kernel_main() {
 
     // // Runtime arguments
     uint32_t receiver_semaphore_address = get_arg_val<uint32_t>(rt_arg_idx++);
-    uint32_t local_semaphore_address = get_semaphore(get_arg_val<uint32_t>(rt_arg_idx++));
+    // uint32_t local_semaphore_address = get_semaphore(get_arg_val<uint32_t>(rt_arg_idx++));
+    uint32_t input_tensor_address = get_arg_val<uint32_t>(rt_arg_idx++);
     bool sender_core = (bool)get_arg_val<uint32_t>(rt_arg_idx++);
     bool worker_core = (bool)get_arg_val<uint32_t>(rt_arg_idx++);
     uint32_t linear_input_packet_start_idx = get_arg_val<uint32_t>(rt_arg_idx++);
@@ -83,11 +84,10 @@ void kernel_main() {
 
     // // Bank base addresses (compute once)
     // const uint32_t bank_base_address = get_write_ptr(input_tensor_cb_id);
-    uint32_t input_tensor_address = get_write_ptr(input_tensor_cb_id);
-    uint32_t output_tensor_address = get_write_ptr(output_tensor_cb_id);
+    // uint32_t input_tensor_address = get_write_ptr(input_tensor_cb_id);
 
-    volatile tt_l1_ptr uint32_t* signal_semaphore_addr_ptr =
-        reinterpret_cast<volatile tt_l1_ptr uint32_t*>(local_semaphore_address);
+    // volatile tt_l1_ptr uint32_t* signal_semaphore_addr_ptr =
+    //     reinterpret_cast<volatile tt_l1_ptr uint32_t*>(local_semaphore_address);
 
     constexpr uint32_t start_tile = 0;
     constexpr uint32_t end_tile = 1;
@@ -95,8 +95,6 @@ void kernel_main() {
 
     uint32_t sender_read_addr = get_write_ptr(fabric_sender_cb_id);
     if (sender_core) {
-        DPRINT << "i am reader sender core: " << chip_id << ENDL();
-
         auto tensor0_addrgen = InterleavedAddrGenFast<true>{
             .bank_base_address = input_tensor_address,
             .page_size = page_size_bytes,
@@ -108,11 +106,11 @@ void kernel_main() {
         for (; tile_id < input_num_tiles; tile_id++) {
             cb_reserve_back(fabric_sender_cb_id, 1);
             auto tensor_tile_addr = tensor0_addrgen.get_noc_addr(tile_id);
-            noc_async_read(tensor_tile_addr, get_write_ptr(input_tensor_cb_id), page_size_bytes);
+            noc_async_read(tensor_tile_addr, sender_read_addr, page_size_bytes);
             noc_async_read_barrier();
             cb_push_back(fabric_sender_cb_id, 1);
         }
-        DPRINT << "DONE READER SENDER" << ENDL();
+        DPRINT << "fabric_sender_cb ready" << ENDL();
     }
 
     // for (uint32_t target_device_id : device_order) {
@@ -152,28 +150,31 @@ void kernel_main() {
     // }
     // }
     else if (worker_core) {
-        DPRINT << "i am reader worker core: " << chip_id << ENDL();
+        noc_semaphore_wait((uint32_t*)receiver_semaphore_address, 1);
+        DPRINT << "data received on fabric_receiver: " << get_read_ptr(fabric_receiver_cb_id) << "\n";
 
-        auto output_tensor_addrgen = InterleavedAddrGenFast<true>{
-            .bank_base_address = output_tensor_address,
-            .page_size = page_size_bytes,
-            .data_format = get_dataformat(input_tensor_cb_id)};
+        // DPRINT << "i am reader worker core: " << chip_id << ENDL();
 
-        uint32_t tile_id = 0;
+        // auto output_tensor_addrgen = InterleavedAddrGenFast<true>{
+        //     .bank_base_address = output_tensor_address,
+        //     .page_size = page_size_bytes,
+        //     .data_format = get_dataformat(input_tensor_cb_id)};
 
-        // wait semaphore before reading ??
-        noc_semaphore_wait(signal_semaphore_addr_ptr, 1);
+        // uint32_t tile_id = 0;
 
-        for (tile_id = start_tile; tile_id < end_tile; tile_id++) {
-            cb_reserve_back(fabric_receiver_cb_id, 1);
-            uint64_t tile_addr = output_tensor_address + tile_id * page_size_bytes;
-            noc_async_read(tile_addr, get_write_ptr(fabric_sender_cb_id), page_size_bytes);
-            noc_async_read_barrier();
-            cb_push_back(fabric_receiver_cb_id, 1);
-        }
+        // // wait semaphore before reading ??
+        // // noc_semaphore_wait(signal_semaphore_addr_ptr, 1);
 
-        DPRINT << "READER: FINAL semaphore value: "
-               << *reinterpret_cast<volatile tt_l1_ptr uint32_t*>(signal_semaphore_addr_ptr) << "\n";
+        // for (tile_id = start_tile; tile_id < end_tile; tile_id++) {
+        //     cb_reserve_back(fabric_receiver_cb_id, 1);
+        //     uint64_t tile_addr = output_tensor_address + tile_id * page_size_bytes;
+        //     noc_async_read(tile_addr, get_write_ptr(fabric_sender_cb_id), page_size_bytes);
+        //     noc_async_read_barrier();
+        //     cb_push_back(fabric_receiver_cb_id, 1);
+        // }
+
+        // DPRINT << "READER: FINAL semaphore value: "
+        //        << *reinterpret_cast<volatile tt_l1_ptr uint32_t*>(signal_semaphore_addr_ptr) << "\n";
 
         DPRINT << "DONE WORKER READER\n";
 

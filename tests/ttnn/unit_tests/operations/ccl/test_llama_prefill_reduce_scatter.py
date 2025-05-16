@@ -372,5 +372,11 @@ def test_reduce_scatter_on_T3K(mesh_device):
     # take 1/8 of this
     tt_output_tensor = tt_output_tensor[:, : torch_tensor.shape[1]]
 
-    print(torch_tensor.shape, tt_output_tensor.shape, tt_output_tensor)
+    print("RESULTS:\n", "----------------------\n", torch_tensor.shape, tt_output_tensor.shape, tt_output_tensor)
+    # print(tt_output_tensor)
+
+    for i in range(16):
+        j = i * 32
+        print("DEBUG_ROW", i, output_tensor[0, j : j + 32])
+    print(output_tensor)
     # assert torch.allclose(torch_tensor, tt_output_tensor, atol=0.1), "Tensor comparison failed"
