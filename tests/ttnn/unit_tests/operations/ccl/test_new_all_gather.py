@@ -611,7 +611,9 @@ def test_line_all_gather_async_on_T3K_cols_persistent_fabric_post_commit(
 @pytest.mark.parametrize("mesh_device", [pytest.param((1, 8), id="1x8_grid")], indirect=True)
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_all_gather_ring_async_on_T3K(mesh_device):
-    num_tiles = 2
+    import tracy
+
+    num_tiles = 7
     num_devices = 8
     torch_tensor = torch.rand((32, 32 * num_tiles * num_devices), dtype=torch.bfloat16)
     for i in range(num_tiles * num_devices):
@@ -632,7 +634,9 @@ def test_all_gather_ring_async_on_T3K(mesh_device):
     # Execute Line All-Gather on the tensor
     print(mesh_tensor)
 
+    tracy.signpost("Performance pass")
     output_tensor = ttnn.experimental.sample(mesh_tensor, semaphores)
+    tracy.signpost("Post pass")
 
     # ttnn.set_printoptions(profile="full")
 

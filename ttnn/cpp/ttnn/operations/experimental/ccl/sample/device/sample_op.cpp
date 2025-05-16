@@ -74,7 +74,9 @@ void createReader(
     auto reader_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
     reader_kernel_config.compile_args = {tt::CB::c_in0, tt::CB::c_in1};
 
-    uint32_t tile_size = 1088;
+    constexpr static uint32_t tile_size = 1088;
+
+    constexpr static uint32_t num_tiles_per_buffer = 100;
 
     uint32_t num_tiles = input_tensor.padded_shape().volume() / tt::constants::TILE_HW;
 
@@ -89,6 +91,7 @@ void createReader(
         input_tensor.buffer()->address(),   // tensor_address0
         output_tensor.buffer()->address(),  // tensor_address1
         num_tiles,
+        num_tiles_per_buffer,
         device->id(),
         device_order,
         tile_size,
@@ -118,30 +121,30 @@ void createWriter(
     uint32_t header_cb_index = tt::CB::c_in4;
     uint32_t num_pages_per_packet = 1;
     uint32_t num_tiles = input_tensor.padded_shape().volume() / tt::constants::TILE_HW;
-    std::cout << "Number of tiles: " << num_tiles << std::endl;
 
-    uint32_t tile_size = 1088;
+    constexpr static uint32_t tile_size = 1088;
 
     static constexpr auto num_packet_headers_storable = 8;
     static constexpr auto packet_header_size_bytes = sizeof(tt::tt_fabric::PacketHeader);
+    static constexpr auto num_tiles_per_buffer = 120;
 
     tt::tt_metal::CircularBufferConfig cb_src0_config =
-        tt::tt_metal::CircularBufferConfig(16 * tile_size, {{src0_cb_index, data_format}})
+        tt::tt_metal::CircularBufferConfig(num_tiles_per_buffer * tile_size, {{src0_cb_index, data_format}})
             .set_page_size(src0_cb_index, tile_size);
     tt::tt_metal::CBHandle cb_src0_workers = tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_src0_config);
 
     tt::tt_metal::CircularBufferConfig cb_src1_config =
-        tt::tt_metal::CircularBufferConfig(16 * tile_size, {{src1_cb_index, data_format}})
+        tt::tt_metal::CircularBufferConfig(num_tiles_per_buffer * tile_size, {{src1_cb_index, data_format}})
             .set_page_size(src1_cb_index, tile_size);
     tt::tt_metal::CBHandle cb_src1_workers = tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_src1_config);
 
     tt::tt_metal::CircularBufferConfig cb_dst0_config =
-        tt::tt_metal::CircularBufferConfig(16 * tile_size, {{dst0_cb_index, data_format}})
+        tt::tt_metal::CircularBufferConfig(num_tiles_per_buffer * tile_size, {{dst0_cb_index, data_format}})
             .set_page_size(dst0_cb_index, tile_size);
     tt::tt_metal::CBHandle cb_dst0_workers = tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_dst0_config);
 
     tt::tt_metal::CircularBufferConfig cb_dst1_config =
-        tt::tt_metal::CircularBufferConfig(16 * tile_size, {{dst1_cb_index, data_format}})
+        tt::tt_metal::CircularBufferConfig(num_tiles_per_buffer * tile_size, {{dst1_cb_index, data_format}})
             .set_page_size(dst1_cb_index, tile_size);
     tt::tt_metal::CBHandle cb_dst1_workers = tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_dst1_config);
 
@@ -175,6 +178,7 @@ void createWriter(
         device->id(),
         device_order,
         num_tiles,
+        num_tiles_per_buffer,
         tile_size,
         local_semaphore_id,
     };
@@ -201,7 +205,6 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
     tt::tt_metal::Program program{};
     std::optional<tt::tt_metal::operation::OverrideRuntimeArgumentsCallback<std::vector<Tensor>>>
         override_runtime_arguments_callback = std::nullopt;
-    std::cout << "DEBUG: sample program created" << std::endl;
 
     auto input_tensor = input_tensors[0];
     auto output_tensor = output_tensors[0];
@@ -209,8 +212,6 @@ tt::tt_metal::operation::ProgramWithCallbacks sample(
 
     CoreCoord core_coord = CoreCoord(0, 0);
     CoreCoord fwd_drain_sync_core = device->worker_core_from_logical_core(core_coord);
-    std::cout << "Forward core: " << core_coord.str() << "\n";
-    std::cout << "Forward drain sync core: " << fwd_drain_sync_core.str() << "\n";
 
     // Forward
     // Reader
@@ -255,13 +256,9 @@ tt::tt_metal::operation::ProgramWithCallbacks Sample::create_program_at(
     const std::vector<ttnn::GlobalSemaphore>& semaphores) const {
     const auto& mesh_view = input_tensors[0].mesh_device()->get_view();
     auto devices = mesh_view.get_devices();
-    // print each device id
 
     auto current_device = devices[(coord[0] * 4) + coord[1]];
 
-    for (auto device : devices) {
-        std::cout << "Device id: " << device->id() << std::endl;
-    }
     IDevice* forward_device = nullptr;
     IDevice* backward_device = nullptr;
     for (uint32_t i = 0; i < 8; ++i) {
@@ -273,11 +270,6 @@ tt::tt_metal::operation::ProgramWithCallbacks Sample::create_program_at(
         break;
     }
 
-    std::cout << "Coords: " << coord[0] << ", " << coord[1] << std::endl;
-    std::cout << "calc idx: " << (coord[0] * 4) + coord[1] << std::endl;
-    std::cout << "Current device id: " << current_device->id() << std::endl;
-    std::cout << "Fwd device id: " << forward_device->id() << std::endl;
-    std::cout << "Bwd device id: " << backward_device->id() << std::endl;
     auto device_order = device_id_order_map.at(current_device->id());
     return sample(
         input_tensors, output_tensors, current_device, forward_device, backward_device, semaphores, device_order);
