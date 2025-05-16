@@ -69,10 +69,23 @@ void copy_sticks_async_to_temp_or_final(
             if constexpr (stick_nbytes == input_aligned_page_size) {
                 if (no_wait) {  // no wait sticks are written directly to their final destinations
                     // DPRINT << "dsst_addr_final: " << (uint32_t)dst_addr_final << ENDL();
-                    noc_async_write(src_addr, dst_addr_final, size);
+                    uint32_t packet_offset = 0;
+                    while (packet_offset < size) {
+                        int packet_size =
+                            size - packet_offset < NOC_MAX_BURST_SIZE ? size - packet_offset : NOC_MAX_BURST_SIZE;
+                        noc_async_write_one_packet_with_trid(
+                            src_addr + packet_offset, dst_addr_final + packet_offset, packet_size, 0);
+                        packet_offset += packet_size;
+                    }
                 } else {  // wait sticks are written to the temp buffer
-                    noc_async_write(src_addr, dst_addr_temp, size);
-                    // DPRINT << "        dst_addr_temp: " << dst_addr_temp - base_addr_temp << ENDL();
+                    uint32_t packet_offset = 0;
+                    while (packet_offset < size) {
+                        int packet_size =
+                            size - packet_offset < NOC_MAX_BURST_SIZE ? size - packet_offset : NOC_MAX_BURST_SIZE;
+                        noc_async_write_one_packet_with_trid(
+                            src_addr + packet_offset, dst_addr_temp + packet_offset, packet_size, 1);
+                        packet_offset += packet_size;
+                    }
                     dst_addr_temp +=
                         size;  // remote sticks from each config entry are written contiguously into the temp buffer
                 }
@@ -337,8 +350,7 @@ void kernel_main() {
             is_col_major>(config_data, my_noc_x, my_noc_y, in_base_l1_addr, temp_base_l1_addr, out_base_l1_addr);
     }
 
-    noc_async_read_barrier();
-    noc_async_write_barrier();
+    noc_async_writes_flushed();
 
     // move local sticks
     if constexpr (local_config_cb_id) {
@@ -360,8 +372,7 @@ void kernel_main() {
             in_out_buffer_start_delta);
     }
 
-    noc_async_read_barrier();
-    noc_async_write_barrier();
+    noc_async_writes_flushed();
 
     // incremement the semaphore
     uint32_t semaphore_addr = get_semaphore(semaphore_id);
@@ -412,6 +423,7 @@ void kernel_main() {
 
     // copy remote sticks from temp buffer to final destinations
     if constexpr (remote_config_cb_id && remote_temp_cb_id) {
+        noc_async_write_barrier_with_trid(1);
         const uint32_t temp_base_l1_addr = get_read_ptr(remote_temp_cb_id);
         // DPRINT << "temp_base_l1_addr: " << temp_base_l1_addr << ENDL();
         uint32_t config_data_l1_addr = get_read_ptr(remote_config_cb_id);

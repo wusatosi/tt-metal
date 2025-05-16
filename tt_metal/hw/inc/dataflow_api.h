@@ -1807,3 +1807,13 @@ void noc_async_write_barrier_with_trid(uint32_t trid, uint8_t noc = noc_index) {
     invalidate_l1_cache();
     WAYPOINT("NWTD");
 }
+
+FORCE_INLINE
+void noc_async_write_flushed_with_trid(uint32_t trid, uint8_t noc = noc_index) {
+    WAYPOINT("NWTW");
+#ifndef ARCH_GRAYSKULL
+    while (!ncrisc_noc_nonposted_write_with_transaction_id_sent(noc, trid));
+#endif
+    invalidate_l1_cache();
+    WAYPOINT("NWTD");
+}
