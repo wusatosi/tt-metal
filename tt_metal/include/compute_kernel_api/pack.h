@@ -45,6 +45,15 @@ ALWI void pack_tile(uint32_t ifrom_dst, uint32_t icb, std::uint32_t output_tile_
     PACK((llk_pack<out_of_order_output, false, DST_ACCUM_MODE>(ifrom_dst, icb, output_tile_index)));
 }
 
+template <uint32_t block_ct_dim = 1>
+ALWI void pack_tile_last() {
+    PACK((llk_pack_last<block_ct_dim>()));
+}
+
+ALWI void pack_init_compact(uint32_t ifrom_dst, uint32_t icb, std::uint32_t output_tile_index = 0) {
+    PACK((llk_pack_init_compact(ifrom_dst, icb, output_tile_index)));
+}
+
 // clang-format off
 /**
  * Copies a block of tiles from the DST register buffer at a start index to a

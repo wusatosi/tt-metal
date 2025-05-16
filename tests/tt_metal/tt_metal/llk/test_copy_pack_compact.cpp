@@ -228,6 +228,27 @@ TEST_F(DeviceFixture, CopyPackCompact_8) {
     }
 }
 
+TEST_F(DeviceFixture, CopyPackCompact_16) {
+    for (bool fp32_dest_acc_en : {false}) {
+        // FP32 dest acc not possible for GS
+        if ((fp32_dest_acc_en) && (this->arch_ == tt::ARCH::GRAYSKULL)) {
+            continue;
+        }
+        for (bool dst_full_sync_en : {false}) {
+            log_info(LogTest, "FP32DestAcc = {}, DstSyncFull = {}", fp32_dest_acc_en, dst_full_sync_en);
+            unit_tests::compute::pack_compact::CopyBlockMatmulPartialsConfig test_config = {
+                .num_tiles = 16,
+                .reader_ublock = 16,
+                .writer_ublock = 16,
+                .compute_ublock = 16,
+                .fp32_dest_acc_en = fp32_dest_acc_en,
+                .dst_full_sync_en = dst_full_sync_en};
+            unit_tests::compute::pack_compact::run_single_core_copy_block_matmul_partials(
+                this->devices_.at(0), test_config);
+        }
+    }
+}
+
 TEST_F(DeviceFixture, CopyPackCompact_1) {
     for (bool fp32_dest_acc_en : {false}) {
         // FP32 dest acc not possible for GS
@@ -241,6 +262,27 @@ TEST_F(DeviceFixture, CopyPackCompact_1) {
                 .reader_ublock = 1,
                 .writer_ublock = 1,
                 .compute_ublock = 1,
+                .fp32_dest_acc_en = fp32_dest_acc_en,
+                .dst_full_sync_en = dst_full_sync_en};
+            unit_tests::compute::pack_compact::run_single_core_copy_block_matmul_partials(
+                this->devices_.at(0), test_config);
+        }
+    }
+}
+
+TEST_F(DeviceFixture, CopyPackCompact_2) {
+    for (bool fp32_dest_acc_en : {false}) {
+        // FP32 dest acc not possible for GS
+        if ((fp32_dest_acc_en) && (this->arch_ == tt::ARCH::GRAYSKULL)) {
+            continue;
+        }
+        for (bool dst_full_sync_en : {false}) {
+            log_info(LogTest, "FP32DestAcc = {}, DstSyncFull = {}", fp32_dest_acc_en, dst_full_sync_en);
+            unit_tests::compute::pack_compact::CopyBlockMatmulPartialsConfig test_config = {
+                .num_tiles = 2,
+                .reader_ublock = 2,
+                .writer_ublock = 2,
+                .compute_ublock = 2,
                 .fp32_dest_acc_en = fp32_dest_acc_en,
                 .dst_full_sync_en = dst_full_sync_en};
             unit_tests::compute::pack_compact::run_single_core_copy_block_matmul_partials(
