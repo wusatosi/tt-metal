@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: © 2024 Tenstorrent Inc.
 
 # SPDX-License-Identifier: Apache-2.0
+import math
 
 import ttnn
 import torch
@@ -38,7 +39,7 @@ def get_padded_prefill_len(seq_len):
         return 1024
     else:
         # return next power of 2 greater than seq_len
-        return 2 ** (seq_len - 1).bit_length()
+        return 2 ** math.ceil(math.log2(x))
 
 
 class Generator:
