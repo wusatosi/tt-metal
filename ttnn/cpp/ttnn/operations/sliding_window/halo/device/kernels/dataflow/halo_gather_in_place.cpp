@@ -40,17 +40,19 @@ void copy_sticks_async_to_temp_or_final(
     int i = 0;
     int length = config_data[2];
 
+    constexpr bool noc_orient_x = ((is_block_sharded && !is_col_major) || is_width_sharded);
+    constexpr bool noc_orient_y = ((is_block_sharded && is_col_major) || is_width_sharded);
+
     const uint64_t base_addr_temp = get_noc_addr(my_noc_x, my_noc_y, temp_base_l1_addr);
     uint64_t dst_addr_temp = base_addr_temp;
-
     while (length) {
-        uint16_t noc_x = ((is_block_sharded && !is_col_major) || is_width_sharded) ? my_noc_x : config_data[i + 0];
-        uint16_t noc_y = ((is_block_sharded && is_col_major) || is_width_sharded) ? my_noc_y : config_data[i + 1];
+        uint16_t noc_x = noc_orient_x ? my_noc_x : config_data[i + 0];
+        uint16_t noc_y = noc_orient_y ? my_noc_y : config_data[i + 1];
+        const uint64_t base_addr_final = get_noc_addr(noc_x, noc_y, out_base_l1_addr);
         length = config_data[i + 2];
         // DPRINT << "core: " << (noc_y - 18) * 8 + noc_x - 18 << "(" << noc_x << ", " << noc_y << ")"
         //        << ", length: " << length << ENDL();
         i += 3;
-        const uint64_t base_addr_final = get_noc_addr(noc_x, noc_y, out_base_l1_addr);
         for (uint16_t j = 0; j < length; j += 4) {
             uint16_t src_local_idx = config_data[i + j + 0];
             uint16_t dst_local_idx = config_data[i + j + 1];
@@ -112,14 +114,17 @@ void copy_sticks_async_from_temp(
 
     uint64_t src_addr = temp_base_l1_addr;
 
+    constexpr bool noc_orient_x = ((is_block_sharded && !is_col_major) || is_width_sharded);
+    constexpr bool noc_orient_y = ((is_block_sharded && is_col_major) || is_width_sharded);
+
     while (length) {
-        uint16_t noc_x = ((is_block_sharded && !is_col_major) || is_width_sharded) ? my_noc_x : config_data[i + 0];
-        uint16_t noc_y = ((is_block_sharded && is_col_major) || is_width_sharded) ? my_noc_y : config_data[i + 1];
+        uint16_t noc_x = noc_orient_x ? my_noc_x : config_data[i + 0];
+        uint16_t noc_y = noc_orient_y ? my_noc_y : config_data[i + 1];
+        const uint64_t base_addr = get_noc_addr(noc_x, noc_y, out_base_l1_addr);
         length = config_data[i + 2];
         i += 3;
         // DPRINT << "core: " << (noc_y - 18) * 8 + noc_x - 18 << "(" << noc_x << ", " << noc_y << ")"
         //        << ", length: " << length << ENDL();
-        const uint64_t base_addr = get_noc_addr(noc_x, noc_y, out_base_l1_addr);
         for (uint16_t j = 0; j < length; j += 4) {
             uint16_t no_wait = config_data[i + j + 3];
             if (no_wait) {  // no wait sticks were already copied to their final destinations
@@ -163,11 +168,11 @@ void copy_sticks_async_local(
     int i = 0;
     int length = config_data[2];
 
+    const uint64_t base_addr = get_noc_addr(my_noc_x, my_noc_y, out_base_l1_addr);
+    const uint64_t base_addr_temp = get_noc_addr(my_noc_x, my_noc_y, temp_base_l1_addr_write);
     while (length) {
         length = config_data[i + 2];
         i += 3;
-        const uint64_t base_addr = get_noc_addr(my_noc_x, my_noc_y, out_base_l1_addr);
-        const uint64_t base_addr_temp = get_noc_addr(my_noc_x, my_noc_y, temp_base_l1_addr_write);
         for (uint16_t j = 0; j < length; j += 4) {
             uint16_t src_local_idx = config_data[i + j + 0];
             uint16_t dst_local_idx = config_data[i + j + 1];
@@ -181,7 +186,7 @@ void copy_sticks_async_local(
             uint64_t temp_addr = base_addr_temp;
             uint32_t src_addr = in_base_l1_addr + src_offset;
 
-            int dst_relative_src = src_local_idx + in_out_buffer_start_delta;
+            uint32_t dst_relative_src = src_local_idx + in_out_buffer_start_delta;
             bool is_not_overlap_copy =
                 dst_local_idx + nsticks < dst_relative_src || dst_relative_src + nsticks < dst_local_idx;
             if (is_not_overlap_copy) {
