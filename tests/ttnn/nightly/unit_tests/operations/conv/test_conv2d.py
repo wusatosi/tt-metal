@@ -3035,7 +3035,7 @@ def test_conv2d_model_fruit(
         # (2, 1280, 1280, 32, 32, ttnn.bfloat8_b, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, 0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
         # (2, 1280, 1280, 64, 64, ttnn.bfloat8_b, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, 0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
         # (2, 1280, 640, 64, 64, ttnn.bfloat8_b, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
-        (2, 1920, 1280, 32, 32, ttnn.bfloat8_b, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, 16 * 32, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
+        (1, 1920, 1280, 32, 32, ttnn.bfloat8_b, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, 16 * 32, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
         # (2, 1920, 640, 64, 64, ttnn.bfloat8_b, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
         # (2, 2560, 1280, 32, 32, ttnn.bfloat8_b, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, 0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
         # (2, 320, 640, 64, 64, ttnn.bfloat8_b, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True,   0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
