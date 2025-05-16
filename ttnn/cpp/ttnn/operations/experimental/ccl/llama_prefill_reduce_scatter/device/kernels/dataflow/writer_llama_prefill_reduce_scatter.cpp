@@ -45,7 +45,7 @@ void kernel_main() {
     constexpr uint32_t chip_id = get_compile_time_arg_val(6);
     // constexpr uint32_t tiles_per_core_width = get_compile_time_arg_val(7);
     // constexpr uint32_t tiles_per_core_width_output = get_compile_time_arg_val(8);
-    // constexpr uint32_t num_pages_per_packet = get_compile_time_arg_val(9);
+    constexpr uint32_t num_pages_per_packet = 1;  // get_compile_time_arg_val(9);
     // constexpr uint32_t input_shard_cores_per_device = get_compile_time_arg_val(10);
     constexpr uint32_t num_devices = get_compile_time_arg_val(7);
     constexpr uint32_t page_size_bytes = get_compile_time_arg_val(8);
@@ -157,27 +157,17 @@ void kernel_main() {
     } else if (worker_core) {
 #ifndef SKIP_WRITE_BACK
 
-        noc_semaphore_wait((uint32_t*)receiver_semaphore_address, 1);
+        // noc_semaphore_wait((uint32_t*)receiver_semaphore_address, 1);
 
         // uint32_t output_tensor_address = get_write_ptr(output_tensor_cb_id);
-        auto output_tensor_addrgen = InterleavedAddrGenFast<true>{
-            .bank_base_address = output_tensor_address,
-            .page_size = page_size_bytes,
-            .data_format = get_dataformat(input_tensor_cb_id)};
 
-        const uint32_t base_receiver_l1_addr = get_read_ptr(fabric_receiver_cb_id);
-
-        uint64_t dest_addr = output_tensor_addrgen.get_noc_addr(0);
-        noc_async_write(base_receiver_l1_addr, dest_addr, page_size_bytes);
-        noc_async_write_barrier();
-        DPRINT << "data received on fabric_receiver written to output tensor" << ENDL();
         // constexpr uint8_t output_core_xy[output_cores_per_device][2] = OUTPUT_CORE_XY;
         // uint64_t noc_addresses[num_pages_per_packet];
         // uint32_t accumulator_l1_addresses[num_pages_per_packet];
         // uint32_t output_tensor_base_addr = get_read_ptr(output_tensor_cb_id);
         // auto accumulator_l1_addr = get_read_ptr(accumulator_cb_id);
 
-        // uint32_t num_packets = num_pages_per_packet;
+        uint32_t num_packets = num_pages_per_packet;
         // for (uint32_t i = 0; i < num_pages_per_packet; i++) {
         //     uint32_t rem = linear_output_page_start_idx + i;
         //     uint32_t linear_output_core_idcs = rem / tiles_per_core_width_output;
@@ -193,14 +183,25 @@ void kernel_main() {
         //     accumulator_l1_addresses[i] = accumulator_l1_addr + i * page_size_bytes;
         // }
 
-        // cb_wait_front(accumulator_cb_id, num_pages_per_packet);
+        cb_wait_front(accumulator_cb_id, num_pages_per_packet);
 
         // // Process all tiles
         // for (uint32_t tile = 0; tile < num_packets; tile++) {
         //     noc_async_write(accumulator_l1_addresses[tile], noc_addresses[tile], page_size_bytes);
         // }
-        // noc_async_write_barrier();
-        // cb_pop_front(accumulator_cb_id, num_pages_per_packet);
+
+        auto output_tensor_addrgen = InterleavedAddrGenFast<true>{
+            .bank_base_address = output_tensor_address,
+            .page_size = page_size_bytes,
+            .data_format = get_dataformat(input_tensor_cb_id)};
+
+        const uint32_t base_acc_l1_addr = get_read_ptr(accumulator_cb_id);
+
+        uint64_t dest_addr = output_tensor_addrgen.get_noc_addr(0);
+        noc_async_write(base_acc_l1_addr, dest_addr, page_size_bytes);
+        noc_async_write_barrier();
+        DPRINT << "data received on fabric_receiver written to output tensor" << ENDL();
+        cb_pop_front(accumulator_cb_id, num_pages_per_packet);
 #else
         cb_wait_front(output_tensor_cb_id, num_pages_per_packet);
 #endif

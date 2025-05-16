@@ -358,8 +358,11 @@ LlamaPrefillReduceScatterDeviceOperation::LlamaPrefillReduceScatterAdd::create_a
     // auto input_grid = input_shard_spec.grid;
     // auto output_grid = output_shard_spec.grid;
 
-    auto sub_device_cores = mesh_device->worker_cores(
-        tt::tt_metal::HalProgrammableCoreType::TENSIX, mesh_device->get_sub_device_ids().at(0));
+    // auto sub_device_cores = mesh_device->worker_cores(
+    //     tt::tt_metal::HalProgrammableCoreType::TENSIX, mesh_device->get_sub_device_ids().at(0)); // TODO : fix this
+    //     for t3k
+    // std::cerr << sub_device_cores.num_cores() << std::endl;
+    CoreRangeSet sub_device_cores = CoreRangeSet(CoreRange(CoreCoord(0, 0), CoreCoord(1, 0)));
 
     tt::tt_metal::Program program{};
 
@@ -587,18 +590,23 @@ LlamaPrefillReduceScatterDeviceOperation::LlamaPrefillReduceScatterAdd::create_a
             // .defines = writer_defines
         });
 
-    // auto output_cb_index = skip_write_back ? output_tensor_cb_id : accumulator_cb_index;
-    // const std::vector<uint32_t> compute_compile_time_args = {
-    //     fabric_receiver_cb_index, output_cb_index, num_devices, output_tiles_per_core_width, num_pages_per_packet};
+    auto output_cb_index = accumulator_cb_index;  // skip_write_back ? output_tensor_cb_id : accumulator_cb_index;
+    const std::vector<uint32_t> compute_compile_time_args = {
+        input_tensor_cb_id,
+        fabric_receiver_cb_index,
+        output_cb_index,
+        num_devices,
+        //  output_tiles_per_core_width,
+        num_pages_per_packet};
 
-    // bool fp32_dest_acc_en = cb_data_format == tt::DataFormat::Float32;
-    // const auto compute_kernel_file =
-    //     "ttnn/cpp/ttnn/operations/experimental/ccl/llama_prefill_reduce_scatter/device/kernels/compute/reduction.cpp";
-    // const auto compute_kernel_id = tt_metal::CreateKernel(
-    //     program,
-    //     compute_kernel_file,
-    //     packet_worker_cores_grid,
-    //     tt_metal::ComputeConfig{.fp32_dest_acc_en = fp32_dest_acc_en, .compile_args = compute_compile_time_args});
+    bool fp32_dest_acc_en = cb_data_format == tt::DataFormat::Float32;
+    const auto compute_kernel_file =
+        "ttnn/cpp/ttnn/operations/experimental/ccl/llama_prefill_reduce_scatter/device/kernels/compute/reduction.cpp";
+    const auto compute_kernel_id = tt_metal::CreateKernel(
+        program,
+        compute_kernel_file,
+        packet_receiver_core,
+        tt_metal::ComputeConfig{.fp32_dest_acc_en = fp32_dest_acc_en, .compile_args = compute_compile_time_args});
 
     // uint32_t offset_for_input = chip_id * input_shard_cores_per_device * input_tiles_per_core_width;
     uint32_t local_page = 0;
@@ -708,7 +716,7 @@ LlamaPrefillReduceScatterDeviceOperation::LlamaPrefillReduceScatterAdd::create_a
         std::move(program),
         {.unary_reader_kernel_id = unary_reader_kernel_id,
          .unary_writer_kernel_id = unary_writer_kernel_id,
-         //  .compute_kernel_id = compute_kernel_id,
+         .compute_kernel_id = compute_kernel_id,
          .cb_handles = {cb_input_tensor_handle, cb_output_tensor_handle, cb_fabric_receiver_handle},
          .core_range = all_cores_grid}};
 }

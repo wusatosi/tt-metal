@@ -150,8 +150,31 @@ void kernel_main() {
     // }
     // }
     else if (worker_core) {
-        noc_semaphore_wait((uint32_t*)receiver_semaphore_address, 1);
-        DPRINT << "data received on fabric_receiver: " << get_read_ptr(fabric_receiver_cb_id) << "\n";
+        // noc_semaphore_wait((uint32_t*)receiver_semaphore_address, 1);
+        // DPRINT << "data received on fabric_receiver: " << get_read_ptr(fabric_receiver_cb_id) << "\n";
+        auto tensor0_addrgen = InterleavedAddrGenFast<true>{
+            .bank_base_address = input_tensor_address,
+            .page_size = page_size_bytes,
+            .data_format = get_dataformat(input_tensor_cb_id)};
+
+        // read from input tensor to input tensor??
+        // noc_semaphore_wait((uint32_t*)receiver_semaphore_address, 1);
+        noc_semaphore_wait(
+            (uint32_t*)receiver_semaphore_address, input_num_tiles);  // TODO: should and must be changed!
+        for (uint32_t tile_id = 0; tile_id < input_num_tiles; tile_id++) {
+            cb_reserve_back(input_tensor_cb_id, 1);
+            auto tensor_tile_addr = tensor0_addrgen.get_noc_addr(tile_id);
+            noc_async_read(tensor_tile_addr, get_write_ptr(input_tensor_cb_id), page_size_bytes);
+            noc_async_read_barrier();
+            cb_push_back(input_tensor_cb_id, 1);
+        }
+        DPRINT << "input_tensor_cb ready" << ENDL();
+
+        // noc_semaphore_wait((uint32_t*)receiver_semaphore_address, input_num_tiles);
+        // for (uint32_t tile_id = 0; tile_id < input_num_tiles; tile_id++) {
+        //     cb_reserve_back(fabric_receiver_cb_id, 1);
+        //     cb_push_back(fabric_receiver_cb_id, 1);
+        // }
 
         // DPRINT << "i am reader worker core: " << chip_id << ENDL();
 
