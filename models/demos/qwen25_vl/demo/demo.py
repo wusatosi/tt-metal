@@ -106,7 +106,7 @@ def create_tt_model(
             "models/demos/qwen25_vl/demo/sample_prompts/demo.json",  # single qwen demo prompt
             True,  # instruct mode
             1,  # repeat_batches to simulate multiple users (batch_size=1) with the same prompt
-            12288,  # max_seq_len, allow for image tokens
+            4096,  # max_seq_len, allow for image tokens
             1,  # batch_size -- samples to load from the prompt JSON
             200,  # max_generated_tokens
             True,  # paged_attention
@@ -119,8 +119,8 @@ def create_tt_model(
             "models/demos/qwen25_vl/demo/sample_prompts/multi_prompts.json",  # real multi-user prompts
             True,  # instruct mode
             1,  # repeat_batches to simulate multiple users with the same prompt
-            12288,  # max_seq_len, allow for image tokens
-            2,  # batch_size -- samples to load from the prompt JSON
+            4096,  # max_seq_len, allow for image tokens
+            4,  # batch_size -- samples to load from the prompt JSON
             200,  # max_generated_tokens
             True,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params
@@ -128,18 +128,18 @@ def create_tt_model(
             True,  # stop_at_eos
             False,  # ci_only
         ),
-        (  # Batch-1 run with single decoder layer (CI only) - single user, small prompt
-            "models/demos/qwen25_vl/demo/sample_prompts/demo.json",  # single qwen demo prompt
+        (
+            "models/demos/qwen25_vl/demo/sample_prompts/multi_prompts_32.json",  # real multi-user prompts
             True,  # instruct mode
-            1,  # repeat_batches to simulate multiple users (batch_size=1) with the same prompt
+            1,  # repeat_batches to simulate multiple users with the same prompt
             4096,  # max_seq_len, allow for image tokens
-            1,  # batch_size -- samples to load from the prompt JSON
+            32,  # batch_size -- samples to load from the prompt JSON
             200,  # max_generated_tokens
             True,  # paged_attention
-            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params
+            {"page_block_size": 32, "page_max_num_blocks": 4096},  # page_params
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
-            False,  # stop_at_eos
-            True,  # ci_only
+            True,  # stop_at_eos
+            False,  # ci_only
         ),
         (  # Batch-2 run with single decoder layer (CI only) - two users
             "models/demos/qwen25_vl/demo/sample_prompts/multi_prompts.json",  # real multi-user prompts
@@ -148,34 +148,8 @@ def create_tt_model(
             4096,  # max_seq_len, allow for image tokens
             2,  # batch_size -- samples to load from the prompt JSON
             200,  # max_generated_tokens
-            False,  # paged_attention
-            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params
-            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
-            False,  # stop_at_eos
-            True,  # ci_only
-        ),
-        (  # Batch-1 run with single decoder layer (CI only) - single user, small prompt
-            "models/demos/qwen25_vl/demo/sample_prompts/demo_1.json",  # single qwen demo prompt
-            True,  # instruct mode
-            1,  # repeat_batches to simulate multiple users (batch_size=1) with the same prompt
-            4096,  # max_seq_len, allow for image tokens
-            1,  # batch_size -- samples to load from the prompt JSON
-            200,  # max_generated_tokens
-            False,  # paged_attention
-            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params
-            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
-            False,  # stop_at_eos
-            True,  # ci_only
-        ),
-        (  # Batch-1 run with single decoder layer (CI only) - single user, small prompt
-            "models/demos/qwen25_vl/demo/sample_prompts/demo_2.json",  # single qwen demo prompt
-            True,  # instruct mode
-            1,  # repeat_batches to simulate multiple users (batch_size=1) with the same prompt
-            4096,  # max_seq_len, allow for image tokens
-            1,  # batch_size -- samples to load from the prompt JSON
-            200,  # max_generated_tokens
-            False,  # paged_attention
-            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params
+            True,  # paged_attention
+            {"page_block_size": 32, "page_max_num_blocks": 4096},  # page_params
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
             False,  # stop_at_eos
             True,  # ci_only
@@ -183,11 +157,9 @@ def create_tt_model(
     ],
     ids=[
         "batch-1",  # latency
-        "batch-2",  # multi-user
-        "ci-only-1",  # ci_only batch-1
-        "ci-only-2",  # ci_only batch-2
-        "ci-only-demo-1",  # ci_only demo-1
-        "ci-only-demo-2",  # ci_only demo-2
+        "batch-4",  # multi-user
+        "batch-32",  # 32 users (special because it fills tile size)
+        "ci-only",  # ci_only batch-2 for faster testing coverage in CI pipelines
     ],
 )
 @pytest.mark.parametrize(
@@ -242,7 +214,7 @@ def test_demo(
     mesh_device.enable_async(True)
     logger.info(f"mesh_device: {mesh_device}")
     use_tt_vision = True
-    enable_trace = False  # Use tracing for better perf
+    enable_trace = True  # Use tracing for better perf
     print_to_file = False  # Enable this flag to print the output of all users to a file
 
     # Override parameters from command line if they are provided
@@ -285,6 +257,12 @@ def test_demo(
     profiler.start("loading_inputs")
     input_prompts = load_inputs(input_prompts, batch_size)
     profiler.end("loading_inputs")
+    assert (
+        len(input_prompts) >= batch_size
+    ), f"Loaded {len(input_prompts)} input prompts, expected at least {batch_size}"
+    if len(input_prompts) > batch_size:
+        input_prompts = input_prompts[:batch_size]
+    logger.info(f"Loaded {batch_size} input prompts")
 
     # To simulate a deployment environment, the demo supports repeating batched prompts.
     # This loop will rotate the prompts between the users for each batch, to simulate users sending different requests
