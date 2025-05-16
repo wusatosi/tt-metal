@@ -57,6 +57,8 @@ def test_llama_tg_ops_perf_device(op_name, expected_kernel_duration_us, perf_mar
     )
     expected_results = check_device_perf(post_processed_results, perf_margin, expected_perf_cols, assert_on_fail=True)
 
+    assert False
+
     prep_device_perf_report(
         model_name=f"llama-tg-{op_name}",
         batch_size=batch,
