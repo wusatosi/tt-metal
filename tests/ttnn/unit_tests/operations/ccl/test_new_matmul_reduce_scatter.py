@@ -113,12 +113,8 @@ def run_reduce_scatter_impl(
     logger.info("Done creating persistent buffers")
 
     ##### Matmul weight setup #####
-    if use_bias:
-        weights_tensor = torch.randn([mm_weights_shape[2], mm_weights_shape[3]]).bfloat16()
-        weights_tensor_padded = weights_tensor.unsqueeze(0).unsqueeze(0)
-    else:
-        weights_tensor = torch.randn(mm_weights_shape).bfloat16()
-        weights_tensor_padded = weights_tensor
+    weights_tensor = torch.randn(mm_weights_shape).bfloat16()
+    weights_tensor_padded = weights_tensor
     weight_tt = ttnn.from_torch(
         weights_tensor_padded,
         dtype=matmul_weights_dtype,
@@ -129,15 +125,15 @@ def run_reduce_scatter_impl(
     )
 
     if use_bias:
-        bias_tensor = torch.randn([1, rs_input_shape[3]]).float()
-        bias_tensor_padded = bias_tensor.unsqueeze(0).unsqueeze(0)
+        bias_tensor_padded = torch.randn([1, 1, 1, rs_input_shape[3]]).bfloat16()
+        bias_tensor_scaled = bias_tensor_padded * (1 / 8.0)
         bias_tt = ttnn.from_torch(
-            bias_tensor_padded,
+            bias_tensor_scaled,
             dtype=matmul_weights_dtype,
             layout=layout,
             device=t3k_mesh_device,
             memory_config=mem_config_weights,
-            mesh_mapper=ShardTensorToMesh(t3k_mesh_device, dim=mm_shard_dim),
+            mesh_mapper=ttnn.ReplicateTensorToMesh(t3k_mesh_device),
             tile=ttnn.Tile(tile),
         )
     else:
@@ -192,7 +188,7 @@ def run_reduce_scatter_impl(
     for i in range(num_iters):
         matmul_input = torch.cat(torch_input_tensor_list[i], dim=3)
         if use_bias:
-            matmul_output = torch.nn.functional.linear(matmul_input, weights_tensor.T.contiguous(), bias_tensor)
+            matmul_output = torch.matmul(matmul_input, weights_tensor) + bias_tensor_padded
         else:
             matmul_output = torch.matmul(matmul_input, weights_tensor)
         scatter_output = torch.chunk(matmul_output, num_devices, rs_scatter_dim)
@@ -213,7 +209,6 @@ def run_reduce_scatter_impl(
                 program_config=program_config,
                 compute_kernel_config=compute_kernel_config,
             )
-
             tt_reduce_scatter_output_tensor = ttnn.experimental.reduce_scatter_minimal_async(
                 tt_matmul_out_tensor,
                 persistent_intermediate_buffer=persistent_intermediate_buffers[i],
@@ -289,7 +284,6 @@ def run_reduce_scatter_impl(
         eq, output = comp_pcc(tt_mm_out, torch_mm_out_tensor)
         logger.info(f"{output}, iteration {i}")
         assert eq, f"{i} FAILED mm: {output}"
-
         tt_rs_out_tensor = tt_reduce_scatter_output_list[i]
         torch_rs_out_tensor = torch_reduce_scatter_output_list[i]
 
@@ -389,12 +383,7 @@ def run_reduce_scatter_impl(
 @pytest.mark.parametrize(
     "device_params, rs_topology",
     [
-        ({"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING, "trace_region_size": 90112}, ttnn.Topology.Ring),
-        # ({"fabric_config": ttnn.FabricConfig.FABRIC_1D, "trace_region_size": 90112}, ttnn.Topology.Linear),
-        # (
-        #    {"trace_region_size": 90112},
-        #    ttnn.Topology.Ring,
-        # ),
+        ({"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING, "trace_region_size": 266240}, ttnn.Topology.Ring),
     ],
     indirect=["device_params"],
 )
