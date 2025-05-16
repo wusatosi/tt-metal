@@ -45,9 +45,14 @@ void kernel_main() {
     uint32_t device_id = get_arg_val<uint32_t>(arg_idx++);
     uint32_t device_order = get_arg_val<uint32_t>(arg_idx++);
     uint32_t input_num_tiles = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t tiles_per_row = get_arg_val<uint32_t>(arg_idx++);
+    uint32_t tiles_per_col = get_arg_val<uint32_t>(arg_idx++);
     uint32_t num_tiles_per_buffer = get_arg_val<uint32_t>(arg_idx++);
     uint32_t input_tensor_page_size = get_arg_val<uint32_t>(arg_idx++);
     uint32_t local_semaphore = get_semaphore(get_arg_val<uint32_t>(arg_idx++));
+
+    DPRINT << "input_num_tiles: " << input_num_tiles << ", tiles_per_row: " << tiles_per_row
+           << ", tiles_per_col: " << tiles_per_col << "\n";
 
     volatile tt_l1_ptr uint32_t* local_sem_addr_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(local_semaphore);
 
@@ -101,7 +106,9 @@ void kernel_main() {
     // Copy all tiles from cb to output tensor (local data)
     for (uint32_t i = 0; i < input_num_tiles; i++) {
         cb_wait_front(in_fwd_cb_index, 1);
-        uint64_t dest_addr = out_tensor_addrgen.get_noc_addr(device_order * input_num_tiles + i);
+        uint32_t offset = (i / tiles_per_col) * (8 * tiles_per_col);
+        uint32_t target_tile_id = offset + device_order * tiles_per_col + i % tiles_per_col;
+        uint64_t dest_addr = out_tensor_addrgen.get_noc_addr(target_tile_id);
         noc_async_write(get_read_ptr(in_fwd_cb_index), dest_addr, input_tensor_page_size);
         noc_async_write_barrier();
         cb_pop_front(in_fwd_cb_index, 1);
@@ -239,7 +246,14 @@ void kernel_main() {
             uint32_t read_ptr = get_write_ptr(dst_fwd_cb_index);
             // DPRINT << "WRITER: FWD ITER START " << fwd_iter_start_tile << " and END " << fwd_iter_end_tile << "\n";
             for (uint32_t i = fwd_iter_start_tile; i < fwd_iter_end_tile; i++) {
-                uint64_t dest_addr = out_tensor_addrgen.get_noc_addr(fwd_prev_device * input_num_tiles + i);
+                uint32_t offset = (i / tiles_per_col) * (8 * tiles_per_col);
+                uint32_t target_tile_id = offset + fwd_prev_device * tiles_per_col + i % tiles_per_col;
+                // DPRINT << "WRITER FWD: " << device_order << " maps " << fwd_prev_device << " order " << i << " to "
+                // << target_tile_id << "\t" << " using offset " << offset << " and prev device offset " <<
+                // fwd_prev_device*tiles_per_col << " and mod " << i % tiles_per_col << " and sum " << offset +
+                // fwd_prev_device*tiles_per_col + i % tiles_per_col << "\n";
+
+                uint64_t dest_addr = out_tensor_addrgen.get_noc_addr(target_tile_id);
                 noc_async_write(read_ptr, dest_addr, input_tensor_page_size);
                 read_ptr += input_tensor_page_size;
             }
@@ -248,7 +262,12 @@ void kernel_main() {
             read_ptr = get_write_ptr(dst_bwd_cb_index);
             // DPRINT << "WRITER: BWD ITER START " << bwd_iter_start_tile << " and END " << bwd_iter_end_tile << "\n";
             for (uint32_t i = bwd_iter_start_tile; i < bwd_iter_end_tile; i++) {
-                uint64_t dest_addr = out_tensor_addrgen.get_noc_addr(bwd_prev_device * input_num_tiles + i);
+                uint32_t offset = (i / tiles_per_col) * (8 * tiles_per_col);
+                uint32_t target_tile_id = offset + tiles_per_col * bwd_prev_device + i % tiles_per_col;
+                // DPRINT << "WRITER BWD: " << device_order << " maps " << bwd_prev_device << " order " << i << " to "
+                // << target_tile_id << "\t" << " using offset " << offset << " and prev device offset " <<
+                // bwd_prev_device*tiles_per_col << " and mod " << i % tiles_per_col << "\n";
+                uint64_t dest_addr = out_tensor_addrgen.get_noc_addr(target_tile_id);
                 noc_async_write(read_ptr, dest_addr, input_tensor_page_size);
                 read_ptr += input_tensor_page_size;
             }

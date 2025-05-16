@@ -613,11 +613,13 @@ def test_line_all_gather_async_on_T3K_cols_persistent_fabric_post_commit(
 def test_all_gather_ring_async_on_T3K(mesh_device):
     import tracy
 
-    num_tiles = 7
+    num_tiles = 2
     num_devices = 8
-    torch_tensor = torch.rand((32, 32 * num_tiles * num_devices), dtype=torch.bfloat16)
+    height = 64
+    torch_tensor = torch.rand((height, 32 * num_tiles * num_devices), dtype=torch.bfloat16)
     for i in range(num_tiles * num_devices):
-        torch_tensor[:, i * 32 : (i + 1) * 32] = i
+        for j in range(height // 32):
+            torch_tensor[j * 32 : (j + 1) * 32, i * 32 : (i + 1) * 32] = i + j * (num_tiles * num_devices)
     # Convert to ttnn.Tensor, tilize and move onto devices across mesh DRAM
     mesh_tensor = ttnn.from_torch(
         torch_tensor,
@@ -641,7 +643,14 @@ def test_all_gather_ring_async_on_T3K(mesh_device):
     # ttnn.set_printoptions(profile="full")
 
     for i in range(num_tiles * num_devices):
-        print("DEBUG_ROW", i, output_tensor[0, i * 32 : (i + 1) * 32])
+        for j in range(height // 32):
+            print(
+                "DEBUG_ROW",
+                i,
+                j,
+                output_tensor[j * 32, i * 32 : (i + 1) * 32],
+                torch_tensor[j * 32, i * 32 : (i + 1) * 32],
+            )
     print(output_tensor)
 
     mesh_composer = ttnn.ConcatMesh2dToTensor(mesh_device, mesh_shape=(1, 8), dims=[0, 1])

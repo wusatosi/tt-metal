@@ -79,6 +79,8 @@ void createReader(
     constexpr static uint32_t num_tiles_per_buffer = 100;
 
     uint32_t num_tiles = input_tensor.padded_shape().volume() / tt::constants::TILE_HW;
+    uint32_t tiles_per_row = input_tensor.padded_shape()[0] / tt::constants::TILE_HEIGHT;
+    uint32_t tiles_per_col = input_tensor.padded_shape()[1] / tt::constants::TILE_WIDTH;
 
     auto reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
@@ -91,6 +93,8 @@ void createReader(
         input_tensor.buffer()->address(),   // tensor_address0
         output_tensor.buffer()->address(),  // tensor_address1
         num_tiles,
+        tiles_per_row,
+        tiles_per_col,
         num_tiles_per_buffer,
         device->id(),
         device_order,
@@ -121,6 +125,8 @@ void createWriter(
     uint32_t header_cb_index = tt::CB::c_in4;
     uint32_t num_pages_per_packet = 1;
     uint32_t num_tiles = input_tensor.padded_shape().volume() / tt::constants::TILE_HW;
+    uint32_t tiles_per_row = input_tensor.padded_shape()[0] / tt::constants::TILE_HEIGHT;
+    uint32_t tiles_per_col = input_tensor.padded_shape()[1] / tt::constants::TILE_WIDTH;
 
     constexpr static uint32_t tile_size = 1088;
 
@@ -178,6 +184,8 @@ void createWriter(
         device->id(),
         device_order,
         num_tiles,
+        tiles_per_row,
+        tiles_per_col,
         num_tiles_per_buffer,
         tile_size,
         local_semaphore_id,
