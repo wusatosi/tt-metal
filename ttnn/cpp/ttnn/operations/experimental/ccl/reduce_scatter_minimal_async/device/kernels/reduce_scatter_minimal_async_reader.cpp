@@ -28,6 +28,7 @@ constexpr uint32_t input_tensor_Wt = get_compile_time_arg_val(8);
 constexpr uint32_t batch_slice_num_pages = get_compile_time_arg_val(9);
 constexpr uint32_t ring_size = get_compile_time_arg_val(10);
 constexpr uint32_t num_batches = get_compile_time_arg_val(11);
+constexpr uint32_t fuse_op = get_compile_time_arg_val(12);
 
 void kernel_main() {
     ///////////////////////////////////////////////////
@@ -41,6 +42,11 @@ void kernel_main() {
     size_t out_ready_sem_fwd = get_arg_val<uint32_t>(arg_idx++);
     size_t out_ready_sem_bwd = get_arg_val<uint32_t>(arg_idx++);
     size_t batch_ready_sem = get_arg_val<uint32_t>(arg_idx++);
+
+    ReduceScatterOpReceiver matmul_receiver;
+    if constexpr (fuse_op) {
+        matmul_receiver = ReduceScatterOpReceiver(arg_idx);
+    }
 
     constexpr uint32_t slice_Wt = input_tensor_Wt / ring_size;
 
@@ -58,6 +64,9 @@ void kernel_main() {
         .data_format = get_dataformat(cb_input_id)};
 
     for (uint32_t b = 0; b < num_batches; b++) {
+        if (fuse_op) {
+            matmul_receiver.wait_for_matmul_batch(b);
+        }
         int fwd_slice_idx = my_chip_id - 1;
         int bwd_slice_idx = my_chip_id + 1;
         uint32_t batch_offset = batch_num_pages * b;

@@ -51,6 +51,7 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async(
     const std::vector<GlobalSemaphore>& semaphore,
     const std::optional<tt::tt_metal::SubDeviceId>& sub_device_id) {
     tt::tt_metal::Program program{};
+    std::optional<experimental::ccl::ReduceScatterFusedOpSignaler> empty_fused_op_signaler;
     return reduce_scatter_minimal_async_helper(
         program,
         input_tensor,
@@ -65,7 +66,8 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async(
         ring_index,
         topology,
         semaphore,
-        sub_device_id);
+        sub_device_id,
+        empty_fused_op_signaler);
 }
 
 tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async_helper(
@@ -83,6 +85,7 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async_helpe
     ccl::Topology topology,
     const std::vector<GlobalSemaphore>& semaphore,
     const std::optional<tt::tt_metal::SubDeviceId>& sub_device_id,
+    std::optional<experimental::ccl::ReduceScatterFusedOpSignaler>& fused_op_signaler,
     const CoreCoord core_grid_offset) {
     auto mesh_device = input_tensor.mesh_device();
     const bool enable_async_output_tensor = false;
@@ -96,6 +99,8 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async_helpe
         input_tensor.device()->id(),
         is_first_chip,
         is_last_chip);
+
+    bool fuse_op = fused_op_signaler.has_value();
 
     // Get OP Config, topology config
     std::vector<Tensor> input_tensors = {input_tensor};
@@ -182,7 +187,8 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async_helpe
         input_tensor_Wt,                                         // input_tensor_Wt
         batch_slice_num_pages,                                   // batch_slice_num_pages
         ring_size,                                               // ring_size
-        num_batches                                              // num_batches
+        num_batches,                                             // num_batches
+        fuse_op,                                                 // fused op
     };
     auto worker_sender_reader_kernel_id = tt::tt_metal::CreateKernel(
         program,
@@ -244,6 +250,11 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async_helpe
             drain_sync_core = mesh_device->worker_core_from_logical_core(core);
         }
 
+        if (fuse_op) {
+            auto sender_workers = corerange_to_cores(sender_worker_core_range, std::nullopt, true);
+            fused_op_signaler->init_reduce_scatter(program, mesh_device, sender_worker_core_range);
+        }
+
         std::vector<uint32_t> reader_rt_args = {
             input_tensor.buffer()->address(),         // input_tensor_address
             intermediate_tensor.buffer()->address(),  // intermediate_tensor_address
@@ -251,6 +262,9 @@ tt::tt_metal::operation::ProgramWithCallbacks reduce_scatter_minimal_async_helpe
             semaphore.at(1).address(),                // out_ready_bwd_semaphore
             semaphore.at(2).address(),                // batch_ready_semaphore
         };
+        if (fuse_op) {
+            fused_op_signaler->push_reduce_scatter_fused_op_rt_args(reader_rt_args);
+        }
         tt::tt_metal::SetRuntimeArgs(program, worker_sender_reader_kernel_id, {core}, reader_rt_args);
 
         std::vector<uint32_t> writer_rt_args = {
