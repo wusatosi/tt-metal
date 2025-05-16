@@ -613,13 +613,11 @@ def test_line_all_gather_async_on_T3K_cols_persistent_fabric_post_commit(
 def test_all_gather_ring_async_on_T3K(mesh_device):
     import tracy
 
-    num_tiles = 2
+    num_tiles = 18
     num_devices = 8
-    height = 64
+    height = 512
     torch_tensor = torch.rand((height, 32 * num_tiles * num_devices), dtype=torch.bfloat16)
-    for i in range(num_tiles * num_devices):
-        for j in range(height // 32):
-            torch_tensor[j * 32 : (j + 1) * 32, i * 32 : (i + 1) * 32] = i + j * (num_tiles * num_devices)
+
     # Convert to ttnn.Tensor, tilize and move onto devices across mesh DRAM
     mesh_tensor = ttnn.from_torch(
         torch_tensor,
@@ -638,12 +636,13 @@ def test_all_gather_ring_async_on_T3K(mesh_device):
 
     tracy.signpost("Performance pass")
     output_tensor = ttnn.experimental.sample(mesh_tensor, semaphores)
+    print("done...")
     tracy.signpost("Post pass")
 
     # ttnn.set_printoptions(profile="full")
 
-    for i in range(num_tiles * num_devices):
-        for j in range(height // 32):
+    for i in range(num_tiles * num_devices - 5, num_tiles * num_devices):
+        for j in range(min(height // 32, 2)):
             print(
                 "DEBUG_ROW",
                 i,

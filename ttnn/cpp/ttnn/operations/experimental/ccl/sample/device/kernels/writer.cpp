@@ -139,6 +139,14 @@ void kernel_main() {
         uint32_t bwd_iter_start_tile = bwd_start_tile;
         uint32_t bwd_iter_end_tile = bwd_iter_start_tile + bwd_tiles_in_iter;
 
+        // show all important variables
+        DPRINT << "max_tiles_per_dst: " << max_tiles_per_dst << "\n";
+        DPRINT << "iter_totals: " << iter_totals << "\n";
+        DPRINT << "fwd_iter_start_tile: " << fwd_iter_start_tile << "\n";
+        DPRINT << "fwd_iter_end_tile: " << fwd_iter_end_tile << "\n";
+        DPRINT << "bwd_iter_start_tile: " << bwd_iter_start_tile << "\n";
+        DPRINT << "bwd_iter_end_tile: " << bwd_iter_end_tile << "\n";
+
         // DPRINT << "ITER TOTALS " << iter_totals << " and tiles in iter " << tiles_in_iter << "\n";
         for (uint32_t iter = 0; iter < iter_totals; iter++) {
             // DPRINT << "SYNC UP " << device_iter << "\n";
@@ -164,13 +172,15 @@ void kernel_main() {
 
             //////// Sending the data
 
-            // DPRINT << "Sending data\n";
+            DPRINT << "Sending data\n";
 
             // Send to forward direction
             uint32_t l1_fwd_dst_addr = get_write_ptr(dst_fwd_cb_index);
-            // DPRINT << "DST CB L1 ADDR: " << l1_fwd_dst_addr << "\n";
+            DPRINT << "DST CB L1 ADDR: " << l1_fwd_dst_addr << "\n";
 
             // Send all eth packets from CB
+            DPRINT << "Expecting total of " << fwd_iter_end_tile - fwd_iter_start_tile
+                   << " tiles in forward direction\n";
             for (uint32_t i = fwd_iter_start_tile; i < fwd_iter_end_tile; i++) {
                 cb_wait_front(in_fwd_cb_index, 1);
                 uint32_t l1_read_addr = get_read_ptr(in_fwd_cb_index);
@@ -189,7 +199,7 @@ void kernel_main() {
                 cb_pop_front(in_fwd_cb_index, 1);
             }
 
-            // DPRINT << "Sending data to backward direction\n";
+            DPRINT << "Sending data to backward direction\n";
 
             // Increase global semaphore of next device, let next device know it can read data
             pkt_hdr_fwd->to_chip_multicast(UNICAST_HDR);
@@ -203,7 +213,6 @@ void kernel_main() {
 
             // Send all eth packets from CB
             for (uint32_t i = bwd_iter_start_tile; i < bwd_iter_end_tile; i++) {
-                // DPRINT << "Waiting for backward cb " << i << "\n";
                 cb_wait_front(in_bwd_cb_index, 1);
                 // DPRINT << "Got backward cb " << i << "\n";
                 uint32_t l1_read_addr = get_read_ptr(in_bwd_cb_index);
@@ -222,7 +231,7 @@ void kernel_main() {
                 cb_pop_front(in_bwd_cb_index, 1);
             }
 
-            // DPRINT << "Sending data to forward direction\n";
+            DPRINT << "Sending data to forward direction\n";
 
             // Increase global semaphore of next device, let next device know it can read data
             pkt_hdr_bwd->to_chip_multicast(UNICAST_HDR);
@@ -234,13 +243,13 @@ void kernel_main() {
             noc_async_writes_flushed();
 
             //////// Recieving data
-            // DPRINT << "Recieving data\n";
+            DPRINT << "Recieving data\n";
 
             // Wait to recieve the data
             while (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(global_sem_addr_sent_ptr) !=
                    2 * ((device_iter)*iter_totals + iter + 1));
 
-            // DPRINT << "!!! GOT SEMAPHORE !!!\n";
+            DPRINT << "!!! GOT SEMAPHORE !!!\n";
 
             // Recieved fwd direction
             uint32_t read_ptr = get_write_ptr(dst_fwd_cb_index);

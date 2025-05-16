@@ -132,7 +132,7 @@ void createWriter(
 
     static constexpr auto num_packet_headers_storable = 8;
     static constexpr auto packet_header_size_bytes = sizeof(tt::tt_fabric::PacketHeader);
-    static constexpr auto num_tiles_per_buffer = 120;
+    static constexpr auto num_tiles_per_buffer = 100;
 
     tt::tt_metal::CircularBufferConfig cb_src0_config =
         tt::tt_metal::CircularBufferConfig(num_tiles_per_buffer * tile_size, {{src0_cb_index, data_format}})

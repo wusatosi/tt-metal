@@ -93,7 +93,15 @@ void kernel_main() {
         bwd_iter_start_tile = input_num_tiles / 2;
         bwd_iter_end_tile = bwd_iter_start_tile + bwd_tiles_in_iter;
 
+        DPRINT << "max_tiles_per_dst: " << max_tiles_per_dst << "\n";
+        DPRINT << "iter_totals: " << iter_totals << "\n";
+        DPRINT << "fwd_iter_start_tile: " << fwd_iter_start_tile << "\n";
+        DPRINT << "fwd_iter_end_tile: " << fwd_iter_end_tile << "\n";
+        DPRINT << "bwd_iter_start_tile: " << bwd_iter_start_tile << "\n";
+        DPRINT << "bwd_iter_end_tile: " << bwd_iter_end_tile << "\n";
+
         for (uint32_t iter = 0; iter < iter_totals; iter++) {
+            DPRINT << "Writing total of " << fwd_iter_end_tile - fwd_iter_start_tile << " tiles in fwd cb\n";
             for (tile_id = fwd_iter_start_tile; tile_id < fwd_iter_end_tile; tile_id++) {
                 cb_reserve_back(in_fwd_cb_index, 1);
                 // DPRINT << "READER FWD: " << device_order << " Get NOC addr for tile "
@@ -127,7 +135,6 @@ void kernel_main() {
                 noc_async_read_barrier();
                 cb_push_back(in_bwd_cb_index, 1);
             }
-
             // DPRINT << "READER: Waiting for semaphore value: " << (device_iter)*iter_totals + iter + 1
             //        << " that is in device iter " << device_iter << " and iter " << iter << " and got "
             //        << *reinterpret_cast<volatile tt_l1_ptr uint32_t*>(signal_semaphore_addr_ptr) << "\n";
