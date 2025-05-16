@@ -134,8 +134,8 @@ struct MatmulFusedOpSignaler {
     void init_fused_op(
         tt::tt_metal::Program& program,
         const tt::tt_metal::IDevice* device,
-        const CoreRangeSet& matmul_workers,
-        std::vector<CoreCoord>& matmul_worker_cores);
+        const CoreRange& matmul_workers,
+        const std::vector<CoreCoord>& matmul_worker_cores);
 
     void init_fused_op(
         tt::tt_metal::Program& program,

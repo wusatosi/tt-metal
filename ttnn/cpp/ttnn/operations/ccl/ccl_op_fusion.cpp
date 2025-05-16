@@ -162,8 +162,8 @@ void MatmulFusedOpSignaler::init_reduce_scatter(
 void MatmulFusedOpSignaler::init_fused_op(
     Program& program,
     const IDevice* device,
-    const CoreRangeSet& matmul_workers,
-    std::vector<CoreCoord>& matmul_worker_cores) {
+    const CoreRange& matmul_workers,
+    const std::vector<CoreCoord>& matmul_worker_cores) {
     // Create the sync semaphore for the matmul workers
     if (matmul_worker_cores.size() > 1) {
         this->matmul_worker_sync_semaphore = CreateSemaphore(program, matmul_workers, 0);

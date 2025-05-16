@@ -592,12 +592,7 @@ tt::tt_metal::operation::ProgramWithCallbacks create_program_mcast_in0_in1(
                 // Create semaphores
                 fused_op_signaler->init_fused_op(program, device, in0_sender_interleaved);
             } else if (fused_op_signaler->is_reduce_scatter()) {
-                std::set<CoreRange> in1_writer_set = in1_receiver_set;
-                in1_writer_set.insert(in1_sender);
-                CoreRangeSet in1_writer(in1_writer_set);
-                auto in1_writer_workers = corerange_to_cores(in1_writer, std::nullopt, true);
-
-                fused_op_signaler->init_fused_op(program, device, in1_writer, in1_writer_workers);
+                fused_op_signaler->init_fused_op(program, device, all_cores, cores);
             }
         }
 

@@ -4,8 +4,6 @@
 
 #include <cstdint>
 #include "compute_kernel_api/eltwise_binary.h"
-#include "debug/dprint.h"
-// #include "debug/dprint_pages.h"
 namespace NAMESPACE {
 void MAIN {
     // Define all compile-time arguments at the beginning
