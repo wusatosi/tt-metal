@@ -33,11 +33,12 @@ def test_llama_tg_ops_perf_device(op_name, expected_kernel_duration_us, perf_mar
     command = f"pytest models/demos/llama3_subdevices/tests/unit_tests/test_llama_ops.py::test_llama_tg_{op_name}"
     cols = ["DEVICE KERNEL"]
     inference_time_key = "DEVICE KERNEL DURATION [ns]"
+    other_cols = ["DEVICE KERNEL FIRST TO LAST START [ns]", "OP TO OP LATENCY [ns]"]
     expected_perf_cols = {f"AVG {inference_time_key}": expected_kernel_duration_us * 1e3}
 
     profiler.start("run")
     profiler.start(step_name)
-    post_processed_results = run_device_perf(command, subdir, num_iterations, cols, batch, op_name, has_signposts=False)
+    post_processed_results = run_device_perf(command, subdir, num_iterations, cols, batch, op_name, has_signposts=False, other_cols=other_cols)
     profiler.end(step_name)
     profiler.end("run")
 

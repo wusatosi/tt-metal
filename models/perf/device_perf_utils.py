@@ -19,8 +19,8 @@ from tt_metal.tools.profiler.process_model_log import (
 )
 
 
-def run_device_perf(command, subdir, num_iterations, cols, batch_size, op_name="", has_signposts=False):
-    duration_cols = [col + " DURATION [ns]" for col in cols]
+def run_device_perf(command, subdir, num_iterations, cols, batch_size, op_name="", has_signposts=False, other_cols=None):
+    duration_cols = [col + " DURATION [ns]" for col in cols] + other_cols
     samples_cols = [col + " SAMPLES/S" for col in cols]
 
     clear_profiler_runtime_artifacts()
