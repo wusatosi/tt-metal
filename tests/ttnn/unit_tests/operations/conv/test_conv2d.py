@@ -178,3 +178,83 @@ def test_conv_dram(
             num_slices=num_slices,
         ),
     )
+
+
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16384}], indirect=True)
+@pytest.mark.parametrize(
+    "batch_size, output_channels, input_channels, input_height, input_width, filter_height, filter_width, stride_h, stride_w, pad_h, pad_w, shard_layout, config_override, activation",
+    (
+        (1, 64, 3, 256, 256, 7, 7, 2, 2, 3, 3, HS, None, "relu"),
+        (1, 64, 2, 256, 256, 7, 7, 2, 2, 3, 3, HS, None, "relu"),
+        (1, 64, 64, 64, 64, 3, 3, 1, 1, 1, 1, ttnn.TensorMemoryLayout.BLOCK_SHARDED, None, "relu"),
+        (1, 128, 64, 64, 64, 3, 3, 2, 2, 1, 1, ttnn.TensorMemoryLayout.BLOCK_SHARDED, None, "relu"),
+        (1, 128, 128, 32, 32, 3, 3, 1, 1, 1, 1, ttnn.TensorMemoryLayout.BLOCK_SHARDED, None, ""),
+        (1, 128, 64, 64, 64, 1, 1, 2, 2, 0, 0, ttnn.TensorMemoryLayout.BLOCK_SHARDED, None, "relu"),
+        (1, 128, 128, 32, 32, 3, 3, 1, 1, 1, 1, ttnn.TensorMemoryLayout.BLOCK_SHARDED, None, "relu"),
+        (1, 256, 128, 32, 32, 3, 3, 2, 2, 1, 1, ttnn.TensorMemoryLayout.BLOCK_SHARDED, None, "relu"),
+        (1, 256, 256, 16, 16, 3, 3, 1, 1, 1, 1, ttnn.TensorMemoryLayout.BLOCK_SHARDED, None, ""),
+        (1, 256, 128, 32, 32, 1, 1, 2, 2, 0, 0, ttnn.TensorMemoryLayout.BLOCK_SHARDED, None, "relu"),
+        (1, 256, 256, 16, 16, 3, 3, 1, 1, 1, 1, ttnn.TensorMemoryLayout.BLOCK_SHARDED, None, "relu"),
+        (1, 512, 256, 16, 16, 3, 3, 2, 2, 1, 1, ttnn.TensorMemoryLayout.BLOCK_SHARDED, None, "relu"),
+        (1, 512, 512, 8, 8, 3, 3, 1, 1, 1, 1, ttnn.TensorMemoryLayout.BLOCK_SHARDED, None, "relu"),
+        (1, 512, 256, 16, 16, 1, 1, 2, 2, 0, 0, ttnn.TensorMemoryLayout.BLOCK_SHARDED, None, ""),
+        (1, 512, 256, 16, 16, 1, 1, 2, 2, 0, 0, ttnn.TensorMemoryLayout.BLOCK_SHARDED, None, "relu"),
+        (1, 64, 512, 8, 8, 1, 1, 1, 1, 0, 0, HS, None, "relu"),
+        (1, 64, 64, 16, 16, 1, 1, 1, 1, 0, 0, HS, None, "relu"),
+        (1, 64, 64, 32, 32, 1, 1, 1, 1, 0, 0, HS, None, "relu"),
+        (1, 64, 64, 64, 64, 1, 1, 1, 1, 0, 0, HS, None, "relu"),
+        (1, 64, 64, 64, 64, 3, 3, 1, 1, 1, 1, ttnn.TensorMemoryLayout.BLOCK_SHARDED, None, "relu"),
+        (1, 1, 64, 64, 64, 1, 1, 1, 1, 0, 0, HS, None, ""),
+        (1, 2, 64, 64, 64, 1, 1, 1, 1, 0, 0, HS, None, ""),
+        (1, 12, 64, 64, 64, 1, 1, 1, 1, 0, 0, HS, None, ""),
+    ),
+)
+@pytest.mark.parametrize("memory_config", [ttnn.L1_MEMORY_CONFIG])
+def test_conv_transfuser_l1(
+    device,
+    torch_tensor_map,
+    use_program_cache,
+    batch_size,
+    output_channels,
+    input_channels,
+    input_height,
+    input_width,
+    filter_height,
+    filter_width,
+    stride_h,
+    stride_w,
+    pad_h,
+    pad_w,
+    shard_layout,
+    config_override,
+    memory_config,
+    activation,
+):
+    if device.core_grid.y == 7:
+        pytest.skip("Issue #6992: Statically allocated circular buffers in program clash with L1 buffers on core range")
+
+    run_conv(
+        device,
+        torch_tensor_map,
+        ttnn.MathFidelity.LoFi,
+        ttnn.bfloat8_b,
+        ttnn.bfloat8_b,
+        batch_size,
+        output_channels,
+        input_channels,
+        input_height,
+        input_width,
+        filter_height,
+        filter_width,
+        stride_h,
+        stride_w,
+        (pad_h, pad_w),
+        shard_layout=shard_layout,
+        config_override=config_override,
+        packer_l1_acc=True,
+        fp32_accum=False,
+        has_bias=True,
+        auto_shard=False,
+        memory_config=memory_config,
+        activation=activation,
+    )
