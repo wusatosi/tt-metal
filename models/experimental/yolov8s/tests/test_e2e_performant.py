@@ -8,10 +8,8 @@ import torch
 from loguru import logger
 import ttnn
 from models.experimental.yolov8s.tests.yolov8s_e2e_performant import Yolov8sTrace2CQ
-from models.utility_functions import run_for_wormhole_b0
 
 
-@run_for_wormhole_b0()
 @pytest.mark.models_performance_bare_metal
 @pytest.mark.models_performance_virtual_machine
 @pytest.mark.parametrize(
