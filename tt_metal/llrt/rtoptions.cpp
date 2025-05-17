@@ -37,6 +37,7 @@ static const char* TT_METAL_CACHE_ENV_VAR = "TT_METAL_CACHE";
 // Used for demonstration purposes and will be removed in the future.
 static const char* TT_METAL_FD_FABRIC_DEMO = "TT_METAL_FD_FABRIC";
 static const char* TT_METAL_VISIBLE_DEVICE_ENV_VAR = "TT_METAL_VISIBLE_DEVICE";
+static const char* TT_METAL_VISIBLE_DEVICES_ENV_VAR = "TT_METAL_VISIBLE_DEVICES";
 
 RunTimeOptions::RunTimeOptions() {
     const char* root_dir_str = std::getenv(TT_METAL_HOME_ENV_VAR);
@@ -205,6 +206,32 @@ RunTimeOptions::RunTimeOptions() {
     const char* arc_debug_enabled_str = std::getenv("TT_METAL_ARC_DEBUG_BUFFER_SIZE");
     if (arc_debug_enabled_str != nullptr) {
         sscanf(arc_debug_enabled_str, "%u", &arc_debug_buffer_size);
+    }
+
+    // Parse visible devices from TT_METAL_VISIBLE_DEVICES environment variable
+    const char* visible_devices_str = std::getenv(TT_METAL_VISIBLE_DEVICES_ENV_VAR);
+    if (visible_devices_str != nullptr) {
+        target_chip_ids.clear();
+
+        const char* token = visible_devices_str;
+        while (*token != '\0') {
+            // Parse the device id (integer)
+            int device_id;
+            if (sscanf(token, "%d", &device_id) != 1) {
+                // Skip invalid entries
+                token = strchr(token, ',');
+                if (token != nullptr) token++;
+                continue;
+            }
+
+            // Add the device id to the set
+            target_chip_ids.insert(device_id);
+
+            // Move to the next token after comma
+            token = strchr(token, ',');
+            if (token == nullptr) break;
+            token++;  // Skip the comma
+        }
     }
 }
 

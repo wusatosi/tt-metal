@@ -308,6 +308,14 @@ public:
     // Returns vector of unique tunnels originating from mmio device.
     // Each vector entry is another vector of remote devices on that tunnel.
     std::vector<std::vector<chip_id_t>> get_tunnels_from_mmio_device(chip_id_t mmio_chip_id) const {
+        for (auto& tunnel : this->tunnels_from_mmio_device.at(mmio_chip_id)) {
+            std::cout << "Tunnel from MMIO device " << mmio_chip_id << ": ";
+            for (auto& remote_device : tunnel) {
+                std::cout << remote_device << " ";
+            }
+            std::cout << std::endl;
+        }
+
         return this->tunnels_from_mmio_device.at(mmio_chip_id);
     }
 

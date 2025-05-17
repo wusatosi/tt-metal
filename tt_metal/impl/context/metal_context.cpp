@@ -18,6 +18,18 @@
 
 namespace tt::tt_metal {
 
+void initialize_distributed_context(int argc, char** argv) {
+    std::cout << "Initializing distributed context." << std::endl;
+    MetalContext::instance().initialize_distributed_context(argc, argv);
+}
+
+std::shared_ptr<distributed::multihost::DistributedContext> MetalContext::get_distributed_context() const {
+    if (!distributed_context_) {
+        TT_THROW("Distributed context not initialized.");
+    }
+    return distributed_context_;
+}
+
 void MetalContext::initialize(
     const DispatchCoreConfig& dispatch_core_config, uint8_t num_hw_cqs, const BankMapping& l1_bank_remap) {
     // Settings that affect FW build can also trigger a re-initialization
@@ -50,7 +62,7 @@ void MetalContext::initialize(
         std::make_unique<DispatchMemMap>(CoreType::ETH, num_hw_cqs);
 
     // TODO: Move FW, fabric, dispatch init here
-    auto all_devices = cluster_->all_chip_ids();
+    auto all_devices = cluster_->user_exposed_chip_ids();
     for (chip_id_t device_id : all_devices) {
         // Clear L1/DRAM if requested
         if (rtoptions_.get_clear_l1()) {
@@ -84,7 +96,20 @@ void MetalContext::initialize(
         std::atexit([]() { MetalContext::instance().teardown(); });
         teardown_registered_ = true;
     }
+    if (distributed_context_) {
+        std::cout << "Distributed context initialized." << std::endl;
+        distributed_context_->barrier();
+    }
 }
+
+void MetalContext::initialize_distributed_context(int argc, char** argv) {
+    if (distributed_context_) {
+        TT_THROW("Distributed context already initialized.");
+    }
+    distributed::multihost::DistributedContext::create(argc, argv);
+    distributed_context_ = distributed::multihost::DistributedContext::get_current_world();
+}
+
 
 void MetalContext::teardown() {
     initialized_ = false;

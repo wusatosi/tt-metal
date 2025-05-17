@@ -16,6 +16,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <unordered_set>
 
 #include "core_coord.hpp"
 #include "dispatch_core_common.hpp"  // For DispatchCoreConfig
@@ -382,6 +383,8 @@ public:
     inline uint32_t get_arc_debug_buffer_size() { return arc_debug_buffer_size; }
     inline void set_arc_debug_buffer_size(uint32_t size) { arc_debug_buffer_size = size; }
 
+    inline void set_target_chip_ids(const std::unordered_set<int>& chip_ids) { target_chip_ids = chip_ids; }
+    inline const std::unordered_set<int>& get_target_chip_ids() const { return target_chip_ids; }
 private:
     // Helper functions to parse feature-specific environment vaiables.
     void ParseFeatureEnv(RunTimeDebugFeatures feature);
@@ -408,6 +411,7 @@ private:
     bool watcher_feature_disabled(const std::string& name) const {
         return watcher_disabled_features.find(name) != watcher_disabled_features.end();
     }
+    std::unordered_set<int> target_chip_ids;
 };
 
 }  // namespace llrt

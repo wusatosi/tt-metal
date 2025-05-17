@@ -307,38 +307,25 @@ const std::unordered_map<CoreCoord, int32_t>& Cluster::get_virtual_routing_to_pr
 void Cluster::open_driver(const bool &skip_driver_allocs) {
     std::unique_ptr<tt::umd::Cluster> device_driver;
     if (this->target_type_ == TargetDevice::Silicon) {
-        std::unordered_set<chip_id_t> chips_set;
-        // generate the cluster desc and pull chip ids from there
-        auto temp_cluster_desc = tt::umd::Cluster::create_cluster_descriptor();
-        if (rtoptions_.is_visible_device_specified()) {
-            int desired_logical_id = -1;
-            for (auto& [logical_id, pci_id] : temp_cluster_desc->get_chips_with_mmio()) {
-                if (pci_id == rtoptions_.get_visible_device()) {
-                    desired_logical_id = logical_id;
-                    break;
-                }
-            }
-            TT_ASSERT(desired_logical_id != -1, "Visible device not found in cluster descriptor");
-            for (auto& chip_id : temp_cluster_desc->get_chips_grouped_by_closest_mmio().at(desired_logical_id)) {
-                chips_set.emplace(chip_id);
-            }
-        } else {
-            std::unordered_set<chip_id_t> all_chips = temp_cluster_desc->get_all_chips();
-            chips_set.insert(all_chips.begin(), all_chips.end());
-        }
-        // Adding this check is a workaround for current UMD bug that only uses this getter to populate private metadata
-        // that is later expected to be populated by unrelated APIs
-        // TT_FATAL(device_driver->get_target_mmio_device_ids().size() == 1, "Only one target mmio device id allowed.");
         // This is the target/desired number of mem channels per arch/device.
         // Silicon driver will attempt to open this many hugepages as channels per mmio chip,
         // and assert if workload uses more than available.
-        uint32_t num_devices = tt::umd::Cluster::create_cluster_descriptor()->get_all_chips().size();
-        uint32_t num_host_mem_ch_per_mmio_device = std::min(HOST_MEM_CHANNELS, num_devices);
-        device_driver = std::make_unique<tt::umd::Cluster>(tt::umd::ClusterOptions{
-            .num_host_mem_ch_per_mmio_device = num_host_mem_ch_per_mmio_device,
-            .sdesc_path = get_soc_description_file(this->arch_, this->target_type_),
-            .target_devices = chips_set,
-        });
+        const auto& target_chip_ids = rtoptions_.get_target_chip_ids();
+        if (not target_chip_ids.empty()) {
+            uint32_t num_host_mem_ch_per_mmio_device = std::min(HOST_MEM_CHANNELS, uint32_t(target_chip_ids.size()));
+            device_driver = std::make_unique<tt::umd::Cluster>(tt::umd::ClusterOptions{
+                .num_host_mem_ch_per_mmio_device = num_host_mem_ch_per_mmio_device,
+                .sdesc_path = get_soc_description_file(this->arch_, this->target_type_),
+                .target_devices = target_chip_ids,
+            });
+        } else {
+            uint32_t num_devices = tt::umd::Cluster::create_cluster_descriptor()->get_all_chips().size();
+            uint32_t num_host_mem_ch_per_mmio_device = std::min(HOST_MEM_CHANNELS, num_devices);
+            device_driver = std::make_unique<tt::umd::Cluster>(tt::umd::ClusterOptions{
+                .num_host_mem_ch_per_mmio_device = num_host_mem_ch_per_mmio_device,
+                .sdesc_path = get_soc_description_file(this->arch_, this->target_type_),
+            });
+        }
     } else if (this->target_type_ == TargetDevice::Simulator) {
         device_driver = std::make_unique<tt::umd::Cluster>(tt::umd::ClusterOptions{
             .chip_type = tt::umd::ChipType::SIMULATION,
