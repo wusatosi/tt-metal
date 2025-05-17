@@ -125,7 +125,7 @@ def run_reduce_scatter_impl(
     )
 
     if use_bias:
-        bias_tensor_padded = torch.randn([1, 1, 1, rs_input_shape[3]]).bfloat16()
+        bias_tensor_padded = torch.randn([1, 1, 1, rs_input_shape[3]]).float()
         bias_tensor_scaled = bias_tensor_padded * (1 / 8.0)
         bias_tt = ttnn.from_torch(
             bias_tensor_scaled,
