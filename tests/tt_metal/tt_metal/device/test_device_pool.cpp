@@ -21,6 +21,11 @@ using namespace tt;
 TEST(DevicePool, DevicePoolOpenClose) {
     std::vector<chip_id_t> device_ids{
         *tt::tt_metal::MetalContext::instance().get_cluster().user_exposed_chip_ids().begin()};
+    std::cout << "Device IDs: ";
+    for (const auto& dev : device_ids) {
+        std::cout << dev << " ";
+    }
+    std::cout << std::endl;
     int num_hw_cqs = 1;
     int l1_small_size = 1024;
     const auto& dispatch_core_config = tt_metal::MetalContext::instance().rtoptions().get_dispatch_core_config();
