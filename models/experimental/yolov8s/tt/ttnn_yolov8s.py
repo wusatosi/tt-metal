@@ -281,7 +281,7 @@ class TtBottleneck:
                 x, ttnn.TILE_LAYOUT, device=self.device, memory_config=ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b
             )
 
-        return ttnn.add(x, cv2, memory_config=ttnn.L1_MEMORY_CONFIGf) if self.shortcut else cv2
+        return ttnn.add(x, cv2, memory_config=ttnn.L1_MEMORY_CONFIG) if self.shortcut else cv2
 
 
 class TtC2f:
