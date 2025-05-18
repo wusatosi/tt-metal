@@ -174,10 +174,10 @@ class TtConv:
 
         if self.width_shard:
             conv_config.shard_layout = ttnn.TensorMemoryLayout.WIDTH_SHARDED
-            conv_config.dtype = ttnn.bfloat8_b
 
         if self.bfloat8:
             conv_config.weights_dtype = ttnn.bfloat8_b
+            # conv_config.dtype = ttnn.bfloat8_b
 
         return conv_config
 
@@ -557,7 +557,8 @@ class TtDetectionModel:
             parameters,
             "model.0",
             input_params=conv_config["input_params"][0],
-            act_block_h=True,
+            act_block_h=False,
+            enable_split_reader=True,
             deallocate_activation=True,
         )
         self.conv_1 = TtConv(
@@ -565,7 +566,8 @@ class TtDetectionModel:
             parameters,
             "model.1",
             input_params=conv_config["input_params"][1],
-            act_block_h=True,
+            act_block_h=False,
+            enable_split_reader=True,
             block_shard=True,
         )
         self.c2f_2 = TtC2f(
