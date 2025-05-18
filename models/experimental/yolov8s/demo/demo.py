@@ -173,23 +173,12 @@ def test_demo(device, source, model_type, res, use_weights_from_ultralytics):
         paths, im0s, s = batch
 
         im = preprocess(im0s, res=res)
-
-        """
-        # pad input channels to 16 to avoid slow interleaved2sharded codepath for 3/8 channels
-        ttnn_input = torch.nn.functional.pad(im, (0, 0, 0, 0, 0, 13, 0, 0), value=0)
-        ttnn_input = ttnn_input.permute((0, 2, 3, 1))
-        ttnn_input = ttnn_input.reshape(
-            1, 1, ttnn_input.shape[0] * ttnn_input.shape[1] * ttnn_input.shape[2], ttnn_input.shape[3]
-        )
-        ttnn_input = ttnn.from_torch(im, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT, device=device)
-        """
-
         n, c, h, w = im.shape
         if c == 3:
-            c = 16
+            c = 8
         input_mem_config = ttnn.create_sharded_memory_config(
             [n, c, h, w],
-            ttnn.CoreGrid(x=8, y=8),
+            ttnn.CoreGrid(x=10, y=8),
             ttnn.ShardStrategy.HEIGHT,
         )
         ttnn_input = ttnn.from_torch(im, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)

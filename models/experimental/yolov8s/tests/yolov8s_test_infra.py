@@ -50,24 +50,23 @@ class Yolov8TestInfra:
         self.torch_output_tensor = torch_model(self.torch_input_tensor)[0]
 
     def run(self):
-        # input_tensor = ttnn.to_device(self.input_tensor, device=device, memory_config=ttnn.L1_MEMORY_CONFIG)
         self.output_tensor = self.ttnn_yolov8_model(self.input_tensor)[0]
 
     def setup_l1_sharded_input(self, device, torch_input_tensor=None):
         if is_wormhole_b0():
             core_grid = ttnn.CoreGrid(y=8, x=8)
         else:  # BH
-            core_grid = ttnn.CoreGrid(y=12, x=10)
+            core_grid = ttnn.CoreGrid(y=8, x=10)
             # exit("Unsupported device")
         # torch tensor
         torch_input_tensor = self.torch_input_tensor if torch_input_tensor is None else torch_input_tensor
 
         n, c, h, w = torch_input_tensor.shape
         if c == 3:
-            c = 16
+            c = 8
         input_mem_config = ttnn.create_sharded_memory_config(
             [n, c, h, w],
-            ttnn.CoreGrid(x=8, y=8),
+            ttnn.CoreGrid(x=10, y=8),
             ttnn.ShardStrategy.HEIGHT,
         )
 
@@ -98,7 +97,7 @@ class Yolov8TestInfra:
         output_tensor = self.output_tensor if output_tensor is None else output_tensor
         output_tensor = ttnn.to_torch(self.output_tensor)
 
-        valid_pcc = 0.978
+        valid_pcc = 0.99
         self.pcc_passed, self.pcc_message = assert_with_pcc(self.torch_output_tensor, output_tensor, pcc=valid_pcc)
 
         logger.info(f"Yolov8s batch_size={self.batch_size}, PCC={self.pcc_message}")
