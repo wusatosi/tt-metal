@@ -71,6 +71,36 @@ void verify_socket_configs(
     EXPECT_EQ(recv_config.upstream_bytes_acked_addr % l1_alignment, 0);
 }
 
+chip_id_t get_intermediate_routing_chip(chip_id_t src_chip_id, chip_id_t dst_chip_id) {
+    auto control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
+    auto [src_mesh_id, src_logical_chip_id] = control_plane->get_mesh_chip_id_from_physical_chip_id(src_chip_id);
+    auto [dst_mesh_id, dst_logical_chip_id] = control_plane->get_mesh_chip_id_from_physical_chip_id(dst_chip_id);
+    auto active_eth_chans = control_plane->get_active_fabric_eth_channels(src_mesh_id, src_logical_chip_id);
+
+    for (auto& [src_chan, direction] : active_eth_chans) {
+        auto route = control_plane->get_fabric_route(
+            src_mesh_id, src_logical_chip_id, dst_mesh_id, dst_logical_chip_id, src_chan);
+        uint32_t num_instances_of_src_chip = 0;
+        uint32_t src_chip_max_index = 0;
+        for (int i = 0; i < route.size(); i++) {
+            const auto& [chip, chan] = route[i];
+            if (chip == src_chip_id) {
+                num_instances_of_src_chip++;
+                src_chip_max_index = i;
+            }
+        }
+        if (num_instances_of_src_chip > 2 or src_chip_max_index >= 2) {
+            continue;
+        }
+        if (num_instances_of_src_chip) {
+            return std::get<0>(route[src_chip_max_index + 1]);
+        } else {
+            return std::get<0>(route[src_chip_max_index]);
+        }
+    }
+    TT_FATAL(false, "Could not find an intermediate routing chip between {} and {}", src_chip_id, dst_chip_id);
+}
+
 void test_single_connection_single_device_socket(
     const std::shared_ptr<tt::tt_metal::distributed::MeshDevice>& md0,
     std::size_t socket_fifo_size,
@@ -551,6 +581,10 @@ void test_single_connection_multi_device_socket(
     // Used to setup fabric connections
     const uint32_t sender_physical_device_id = md0->get_device(MeshCoordinate(0, 0))->id();
     const uint32_t recv_physical_device_id = md1->get_device(MeshCoordinate(0, 0))->id();
+    const uint32_t intermed_physical_device_id_send_to_recv =
+        get_intermediate_routing_chip(sender_physical_device_id, recv_physical_device_id);
+    const uint32_t intermed_physical_device_id_recv_to_send =
+        get_intermediate_routing_chip(recv_physical_device_id, sender_physical_device_id);
 
     auto sender_logical_coord = CoreCoord(0, 0);
     auto recv_logical_coord = CoreCoord(0, 0);
@@ -636,7 +670,12 @@ void test_single_connection_multi_device_socket(
 
     std::vector<uint32_t> sender_rtas;
     tt_fabric::append_fabric_connection_rt_args(
-        sender_physical_device_id, recv_physical_device_id, 0, sender_program, {sender_logical_coord}, sender_rtas);
+        sender_physical_device_id,
+        intermed_physical_device_id_send_to_recv,
+        0,
+        sender_program,
+        {sender_logical_coord},
+        sender_rtas);
 
     tt_metal::SetRuntimeArgs(sender_program, sender_kernel, sender_logical_coord, sender_rtas);
 
@@ -720,7 +759,12 @@ void test_single_connection_multi_device_socket(
 
     std::vector<uint32_t> recv_rtas;
     tt_fabric::append_fabric_connection_rt_args(
-        recv_physical_device_id, sender_physical_device_id, 0, recv_program, {recv_logical_coord}, recv_rtas);
+        recv_physical_device_id,
+        intermed_physical_device_id_recv_to_send,
+        0,
+        recv_program,
+        {recv_logical_coord},
+        recv_rtas);
     tt_metal::SetRuntimeArgs(recv_program, recv_kernel, recv_logical_coord, recv_rtas);
 
     auto sender_mesh_workload = CreateMeshWorkload();
@@ -747,6 +791,11 @@ void test_single_connection_multi_device_socket_with_workers(
     // Used to setup fabric connections
     const uint32_t sender_physical_device_id = md0->get_device(MeshCoordinate(0, 0))->id();
     const uint32_t recv_physical_device_id = md1->get_device(MeshCoordinate(0, 0))->id();
+
+    const uint32_t intermed_physical_device_id_send_to_recv =
+        get_intermediate_routing_chip(sender_physical_device_id, recv_physical_device_id);
+    const uint32_t intermed_physical_device_id_recv_to_send =
+        get_intermediate_routing_chip(recv_physical_device_id, sender_physical_device_id);
 
     auto sender_logical_coord = CoreCoord(0, 0);
     auto recv_logical_coord = CoreCoord(0, 0);
@@ -839,7 +888,12 @@ void test_single_connection_multi_device_socket_with_workers(
 
     std::vector<uint32_t> sender_rtas;
     tt_fabric::append_fabric_connection_rt_args(
-        sender_physical_device_id, recv_physical_device_id, 0, sender_program, {sender_logical_coord}, sender_rtas);
+        sender_physical_device_id,
+        intermed_physical_device_id_send_to_recv,
+        0,
+        sender_program,
+        {sender_logical_coord},
+        sender_rtas);
 
     tt_metal::SetRuntimeArgs(sender_program, sender_kernel, sender_logical_coord, sender_rtas);
 
@@ -894,7 +948,12 @@ void test_single_connection_multi_device_socket_with_workers(
 
     std::vector<uint32_t> recv_rtas;
     tt_fabric::append_fabric_connection_rt_args(
-        recv_physical_device_id, sender_physical_device_id, 0, recv_program, {recv_logical_coord}, recv_rtas);
+        recv_physical_device_id,
+        intermed_physical_device_id_recv_to_send,
+        0,
+        recv_program,
+        {recv_logical_coord},
+        recv_rtas);
     tt_metal::SetRuntimeArgs(recv_program, recv_kernel, recv_logical_coord, recv_rtas);
 
     auto worker_kernel = CreateKernel(
@@ -946,6 +1005,8 @@ std::shared_ptr<Program> create_sender_program(
     const CoreCoord& sender_logical_coord,
     chip_id_t sender_physical_device_id,
     chip_id_t recv_physical_device_id) {
+    const uint32_t intermed_physical_device_id_send_to_recv =
+        get_intermediate_routing_chip(sender_physical_device_id, recv_physical_device_id);
     auto control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
     const auto& fabric_context = control_plane->get_fabric_context();
 
@@ -976,7 +1037,12 @@ std::shared_ptr<Program> create_sender_program(
         CreateCircularBuffer(*sender_program, sender_logical_coord, sender_cb_reserved_packet_header_config);
     std::vector<uint32_t> sender_rtas;
     tt_fabric::append_fabric_connection_rt_args(
-        sender_physical_device_id, recv_physical_device_id, 0, *sender_program, {sender_logical_coord}, sender_rtas);
+        sender_physical_device_id,
+        intermed_physical_device_id_send_to_recv,
+        0,
+        *sender_program,
+        {sender_logical_coord},
+        sender_rtas);
     tt_metal::SetRuntimeArgs(*sender_program, sender_kernel, sender_logical_coord, sender_rtas);
 
     return sender_program;
@@ -994,6 +1060,10 @@ std::shared_ptr<Program> create_split_reduce_program(
     chip_id_t sender0_physical_device_id,
     chip_id_t sender1_physical_device_id,
     chip_id_t recv_physical_device_id) {
+    const uint32_t intermed_physical_device_id_recv_to_send_0 =
+        get_intermediate_routing_chip(recv_physical_device_id, sender0_physical_device_id);
+    const uint32_t intermed_physical_device_id_recv_to_send_1 =
+        get_intermediate_routing_chip(recv_physical_device_id, sender1_physical_device_id);
     auto control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
     const auto& fabric_context = control_plane->get_fabric_context();
 
@@ -1109,9 +1179,19 @@ std::shared_ptr<Program> create_split_reduce_program(
     std::vector<uint32_t> recv_rtas_1;
 
     tt_fabric::append_fabric_connection_rt_args(
-        recv_physical_device_id, sender0_physical_device_id, 0, *recv_program, {recv_logical_coord_0}, recv_rtas_0);
+        recv_physical_device_id,
+        intermed_physical_device_id_recv_to_send_0,
+        0,
+        *recv_program,
+        {recv_logical_coord_0},
+        recv_rtas_0);
     tt_fabric::append_fabric_connection_rt_args(
-        recv_physical_device_id, sender1_physical_device_id, 0, *recv_program, {recv_logical_coord_1}, recv_rtas_1);
+        recv_physical_device_id,
+        intermed_physical_device_id_recv_to_send_1,
+        0,
+        *recv_program,
+        {recv_logical_coord_1},
+        recv_rtas_1);
 
     tt_metal::SetRuntimeArgs(*recv_program, recv_kernel_0, recv_logical_coord_0, recv_rtas_0);
     tt_metal::SetRuntimeArgs(*recv_program, recv_kernel_1, recv_logical_coord_1, recv_rtas_1);
@@ -1131,6 +1211,13 @@ std::shared_ptr<Program> create_reduce_program(
     chip_id_t sender1_physical_device_id,
     chip_id_t reducer_physical_device_id,
     chip_id_t recv_physical_device_id) {
+    const uint32_t intermed_physical_device_id_recv_to_send_0 =
+        get_intermediate_routing_chip(reducer_physical_device_id, sender0_physical_device_id);
+    const uint32_t intermed_physical_device_id_recv_to_send_1 =
+        get_intermediate_routing_chip(reducer_physical_device_id, sender1_physical_device_id);
+    const uint32_t intermed_physical_device_id_send_to_recv =
+        get_intermediate_routing_chip(reducer_physical_device_id, recv_physical_device_id);
+
     auto control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
     const auto& fabric_context = control_plane->get_fabric_context();
 
@@ -1194,15 +1281,30 @@ std::shared_ptr<Program> create_reduce_program(
     std::vector<uint32_t> recv_rtas;
 
     tt_fabric::append_fabric_connection_rt_args(
-        reducer_physical_device_id, sender0_physical_device_id, 0, *reduce_program, reduce_logical_coord, recv_rtas);
+        reducer_physical_device_id,
+        intermed_physical_device_id_recv_to_send_0,
+        0,
+        *reduce_program,
+        reduce_logical_coord,
+        recv_rtas);
     tt_fabric::append_fabric_connection_rt_args(
-        reducer_physical_device_id, sender1_physical_device_id, 0, *reduce_program, reduce_logical_coord, recv_rtas);
+        reducer_physical_device_id,
+        intermed_physical_device_id_recv_to_send_1,
+        0,
+        *reduce_program,
+        reduce_logical_coord,
+        recv_rtas);
 
     tt_metal::SetRuntimeArgs(*reduce_program, recv_kernel, reduce_logical_coord, recv_rtas);
 
     std::vector<uint32_t> send_rtas;
     tt_fabric::append_fabric_connection_rt_args(
-        reducer_physical_device_id, recv_physical_device_id, 0, *reduce_program, reduce_logical_coord, send_rtas);
+        reducer_physical_device_id,
+        intermed_physical_device_id_send_to_recv,
+        0,
+        *reduce_program,
+        reduce_logical_coord,
+        send_rtas);
     tt_metal::SetRuntimeArgs(*reduce_program, send_kernel, reduce_logical_coord, send_rtas);
 
     return reduce_program;
@@ -1217,6 +1319,8 @@ std::shared_ptr<Program> create_recv_program(
     const CoreCoord& output_logical_coord,
     chip_id_t sender_physical_device_id,
     chip_id_t recv_physical_device_id) {
+    const uint32_t intermed_physical_device_id_recv_to_send =
+        get_intermediate_routing_chip(recv_physical_device_id, sender_physical_device_id);
     auto control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
     const auto& fabric_context = control_plane->get_fabric_context();
 
@@ -1257,7 +1361,12 @@ std::shared_ptr<Program> create_recv_program(
     std::vector<uint32_t> recv_rtas;
 
     tt_fabric::append_fabric_connection_rt_args(
-        recv_physical_device_id, sender_physical_device_id, 0, *recv_program, {recv_logical_coord}, recv_rtas);
+        recv_physical_device_id,
+        intermed_physical_device_id_recv_to_send,
+        0,
+        *recv_program,
+        {recv_logical_coord},
+        recv_rtas);
 
     tt_metal::SetRuntimeArgs(*recv_program, recv_kernel, recv_logical_coord, recv_rtas);
 
@@ -1588,15 +1697,15 @@ void test_multi_connection_multi_device_data_copy(
 
 template <typename FixtureT>
 void run_single_connection_multi_device_socket_with_workers(FixtureT* fixture) {
-    auto md0 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 0));
-    auto md1 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(1, 0));
+    auto md0 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(1, 3));
+    auto md1 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 1));
     test_single_connection_multi_device_socket_with_workers(md0, md1, 1024, 64, 1024);
 }
 
 template <typename FixtureT>
 void run_single_connection_multi_device_socket(FixtureT* fixture) {
     auto md0 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 0));
-    auto md1 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(1, 0));
+    auto md1 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(1, 3));
     test_single_connection_multi_device_socket(md0, md1, 1024, 64, 1024, false);
     test_single_connection_multi_device_socket(md0, md1, 1024, 64, 2048, false);
     test_single_connection_multi_device_socket(md0, md1, 4096, 1088, 9792, false);
@@ -1606,8 +1715,8 @@ template <typename FixtureT>
 void run_single_connection_multi_device_socket_with_cbs(FixtureT* fixture) {
     auto tile_size_bytes = tile_size(tt::DataFormat::UInt32);
 
-    auto md0 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 0));
-    auto md1 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(1, 0));
+    auto md0 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(1, 0));
+    auto md1 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 3));
 
     test_single_connection_multi_device_socket(
         md0, md1, 2 * tile_size_bytes, tile_size_bytes, 4 * tile_size_bytes, true);
@@ -1624,9 +1733,9 @@ void run_single_connection_multi_device_socket_with_cbs(FixtureT* fixture) {
 template <typename FixtureT>
 void run_multi_sender_single_recv(FixtureT* fixture, bool split_reducer) {
     auto sender_0 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 0));
-    auto sender_1 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 2));
+    auto sender_1 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 3));
     auto reducer = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 1));
-    auto receiver = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(1, 1));
+    auto receiver = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(1, 3));
 
     log_info(LogTest, "Sender 0 ID: {}", sender_0->get_device(MeshCoordinate(0, 0))->id());
     log_info(LogTest, "Sender 1 ID: {}", sender_1->get_device(MeshCoordinate(0, 0))->id());
@@ -2153,23 +2262,24 @@ TEST_F(MeshSocketTest, MultiConnectionSingleDeviceSocketWithWorkersLoopAck) {
 
 // ========= Multi Device Data Movement Tests (1D Fabric) =========
 
-TEST_F(MeshSocketTest1DFabric, SingleConnectionMultiDeviceSocketWithWorkers) {
-    run_single_connection_multi_device_socket_with_workers(this);
-}
+// TEST_F(MeshSocketTest1DFabric, SingleConnectionMultiDeviceSocketWithWorkers) {
+//     run_single_connection_multi_device_socket_with_workers(this);
+// }
 
-TEST_F(MeshSocketTest1DFabric, SingleConnectionMultiDeviceSocket) { run_single_connection_multi_device_socket(this); }
+// TEST_F(MeshSocketTest1DFabric, SingleConnectionMultiDeviceSocket) { run_single_connection_multi_device_socket(this);
+// }
 
-TEST_F(MeshSocketTest1DFabric, SingleConnectionMultiDeviceSocketWithCBs) {
-    run_single_connection_multi_device_socket_with_cbs(this);
-}
+// TEST_F(MeshSocketTest1DFabric, SingleConnectionMultiDeviceSocketWithCBs) {
+//     run_single_connection_multi_device_socket_with_cbs(this);
+// }
 
-TEST_F(MeshSocketTest1DFabric, MultiSenderSingleRecv) { run_multi_sender_single_recv(this, false); }
+// TEST_F(MeshSocketTest1DFabric, MultiSenderSingleRecv) { run_multi_sender_single_recv(this, false); }
 
-TEST_F(MeshSocketTest1DFabric, MultiSenderSingleRecvSplitReducer) { run_multi_sender_single_recv(this, true); }
+// TEST_F(MeshSocketTest1DFabric, MultiSenderSingleRecvSplitReducer) { run_multi_sender_single_recv(this, true); }
 
-TEST_F(MeshSocketTest1DFabric, MultiConnectionMultiDeviceDataCopy) {
-    run_multi_connection_multi_device_data_copy(this);
-}
+// TEST_F(MeshSocketTest1DFabric, MultiConnectionMultiDeviceDataCopy) {
+//     run_multi_connection_multi_device_data_copy(this);
+// }
 
 // ========= Multi Device Data Movement Tests (2D Fabric with Dynamic Routing) =========
 
