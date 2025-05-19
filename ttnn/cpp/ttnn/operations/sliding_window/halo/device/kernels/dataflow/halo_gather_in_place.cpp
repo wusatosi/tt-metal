@@ -173,6 +173,7 @@ template <
     uint32_t input_aligned_page_size,
     uint32_t half_max_bandwidth_stick_size,
     uint32_t local_temp_cb_id,
+    uint32_t sycn_cb_id,
     bool main_thread>
 void copy_sticks_async_local(
     const tt_l1_ptr uint16_t* config_data,
@@ -185,6 +186,9 @@ void copy_sticks_async_local(
     int length = config_data[2];
 
     const uint64_t base_addr = get_noc_addr(my_noc_x, my_noc_y, out_base_l1_addr);
+    const uint32_t local_temp_addr_write = get_write_ptr(local_temp_cb_id);
+    const uint64_t temp_addr_write = get_noc_addr(my_noc_x, my_noc_y, local_temp_addr_write);
+    const uint32_t temp_addr_read = get_read_ptr(local_temp_cb_id);
     while (length) {
         length = config_data[i + 2];
         i += 3;
@@ -196,7 +200,6 @@ void copy_sticks_async_local(
             uint32_t size = nsticks * stick_nbytes;
             uint32_t dst_offset = dst_local_idx * stick_nbytes;
             uint32_t src_offset = src_local_idx * input_aligned_page_size;
-            uint32_t half_size = size / 2;
 
             uint64_t dst_addr = base_addr + dst_offset;
             uint32_t src_addr = in_base_l1_addr + src_offset;
@@ -217,29 +220,36 @@ void copy_sticks_async_local(
                     // avoiding the slow stick by stick copy, however with larger
                     // stick sizes the stick by stick transfer is fast enough that it
                     // is more efficient than the double copy.
-                    // if constexpr (main_thread) {
-                    //     cb_reserve_back(local_temp_cb_id, 1);
-                    //     const uint32_t local_temp_addr = get_write_ptr(local_temp_cb_id);
-                    //     const uint64_t temp_addr = get_noc_addr(my_noc_x, my_noc_y, local_temp_addr);
-                    //     noc_async_write(src_addr, temp_addr, size);
-                    //     noc_async_write_barrier();
-                    //     cb_push_back(local_temp_cb_id, 1);
-                    // }
-                    // else {
-                    //     cb_wait_front(local_temp_cb_id, 1);
-                    //     const uint32_t temp_addr = get_read_ptr(local_temp_cb_id);
-                    //     noc_async_write(temp_addr, dst_addr, size);
-                    //     noc_async_write_barrier();
-                    //     cb_pop_front(local_temp_cb_id, 1);
-                    // }
-                    if constexpr (main_thread) {
-                        const uint32_t local_temp_addr = get_write_ptr(local_temp_cb_id);
-                        const uint64_t temp_addr = get_noc_addr(my_noc_x, my_noc_y, local_temp_addr);
-                        noc_async_write(src_addr, temp_addr, half_size);
+                    if (length == 4) {
+                        uint32_t half_size = size / 2;
+                        if constexpr (main_thread) {
+                            noc_async_write(src_addr, temp_addr_write, half_size);
+                            noc_async_write_barrier();
+                            cb_reserve_back(sycn_cb_id, 1);
+                            cb_push_back(sycn_cb_id, 1);
+                            noc_async_write(temp_addr_read, dst_addr, half_size);
+                        } else {
+                            noc_async_write(src_addr + half_size, temp_addr_write + half_size, half_size);
+                            noc_async_write_barrier();
+                            cb_wait_front(sycn_cb_id, 1);
+                            cb_pop_front(sycn_cb_id, 1);
+                            noc_async_write(temp_addr_read + half_size, dst_addr + half_size, half_size);
+                        }
                     } else {
-                        const uint32_t temp_addr = get_read_ptr(local_temp_cb_id);
-                        noc_async_write(temp_addr + half_size, dst_addr + half_size, half_size);
-                        noc_async_write_barrier();
+                        if constexpr (main_thread) {
+                            cb_reserve_back(local_temp_cb_id, 1);
+                            const uint32_t local_temp_addr = get_write_ptr(local_temp_cb_id);
+                            const uint64_t temp_addr = get_noc_addr(my_noc_x, my_noc_y, local_temp_addr);
+                            noc_async_write(src_addr, temp_addr, size);
+                            noc_async_write_barrier();
+                            cb_push_back(local_temp_cb_id, 1);
+                        } else {
+                            cb_wait_front(local_temp_cb_id, 1);
+                            const uint32_t temp_addr = get_read_ptr(local_temp_cb_id);
+                            noc_async_write(temp_addr, dst_addr, size);
+                            noc_async_write_barrier();
+                            cb_pop_front(local_temp_cb_id, 1);
+                        }
                     }
                 } else {
                     if constexpr (main_thread) {
@@ -386,6 +396,7 @@ void kernel_main() {
         input_aligned_page_size,
         half_max_bandwidth_stick_size,
         local_temp_cb_id,
+        sync_cb_id1,
         0 != remote_config_cb_id>(
         config_data, my_noc_x, my_noc_y, in_base_l1_addr, out_base_l1_addr, in_out_buffer_start_delta);
 
