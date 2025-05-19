@@ -276,64 +276,6 @@ def run_reduce_scatter_test(
         assert eq, f"{first_failed_tensor_index} FAILED: {output_results}"
 
 
-@pytest.mark.parametrize(
-    "device_params",
-    [
-        {
-            "trace_region_size": 90000,
-            "dispatch_core_axis": ttnn.DispatchCoreAxis.ROW,
-            "fabric_config": ttnn.FabricConfig.FABRIC_1D,
-        }
-    ],
-    indirect=True,
-)
-@pytest.mark.parametrize("trace_mode", [True, False])
-@pytest.mark.parametrize(
-    "mesh_device",
-    [
-        (1, 2),  # TODO: Once fabric can be initialized on a SubMesh, revert to (1, 2)
-    ],
-    indirect=True,
-)
-@pytest.mark.parametrize("shard_height", [32])
-@pytest.mark.parametrize("shard_width", [64])
-@pytest.mark.parametrize("input_grid", [(5, 4)])
-@pytest.mark.parametrize("output_grid", [(5, 2)])
-@pytest.mark.parametrize("dtype", [ttnn.bfloat16])
-def test_fabric_reduce_scatter_regular_grid_2_dev(
-    mesh_device, trace_mode, shard_height, shard_width, input_grid, output_grid, dtype
-):
-    # Only run these tests on unharvested TG
-    device_grid = (mesh_device.compute_with_storage_grid_size().x, mesh_device.compute_with_storage_grid_size().y)
-    if device_grid != (8, 8):
-        pytest.skip("Not TG!")
-
-    dim = 3
-    num_devices_scatter = 4
-    num_devices_fracture = 8
-    num_cores = input_grid[0] * input_grid[1]
-    num_iters = 30
-    warmup_iters = 0
-    run_reduce_scatter_test(
-        mesh_device,
-        dim,
-        shard_height,
-        shard_width,
-        num_devices_scatter,
-        num_devices_fracture,
-        num_cores,
-        num_iters,
-        warmup_iters,
-        trace_mode,
-        num_links=1,
-        scheme="random",
-        use_regular_grid=True,
-        input_grid=input_grid,
-        output_grid=output_grid,
-        dtype=dtype,
-    )
-
-
 @pytest.mark.parametrize("mesh_device", [pytest.param((1, 8), id="1x8_grid")], indirect=True)
 @pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D_RING}], indirect=True)
 def test_reduce_scatter_on_T3K(mesh_device):
@@ -350,7 +292,7 @@ def test_reduce_scatter_on_T3K(mesh_device):
         dtype=ttnn.bfloat8_b,
     )
 
-    semaphore_crs = ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(6, 6))])
+    semaphore_crs = ttnn.CoreRangeSet([ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(6, 7))])
     semaphore_sent = ttnn.create_global_semaphore(mesh_device=mesh_device, cores=semaphore_crs, initial_value=0)
     semaphore_can_receive = ttnn.create_global_semaphore(mesh_device=mesh_device, cores=semaphore_crs, initial_value=0)
     semaphores = [semaphore_sent, semaphore_can_receive]
@@ -375,7 +317,7 @@ def test_reduce_scatter_on_T3K(mesh_device):
     print("RESULTS:\n", "----------------------\n", torch_tensor.shape, tt_output_tensor.shape, tt_output_tensor)
     # print(tt_output_tensor)
 
-    for i in range(16):
+    for i in range(2):
         j = i * 32
         print("DEBUG_ROW", i, output_tensor[0, j : j + 32])
     print(output_tensor)

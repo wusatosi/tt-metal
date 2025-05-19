@@ -119,7 +119,7 @@ LlamaPrefillReduceScatterDeviceOperation::compute_output_specs(
 
     std::vector<ttnn::TensorSpec> output_specs;
     auto input_shape = input_tensor.get_padded_shape();
-    auto output_shape = ttnn::Shape({input_shape[0], input_shape[1] * 8});
+    auto output_shape = ttnn::Shape({input_shape[0], input_shape[1]});
     output_specs.push_back(ttnn::TensorSpec(output_shape, input_tensor.tensor_spec().tensor_layout()));
     return output_specs[0];
 }

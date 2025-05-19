@@ -265,7 +265,7 @@ LlamaPrefillReduceScatterDeviceOperation::LlamaPrefillReduceScatterAdd::create_a
     using namespace tt::tt_fabric;
     using namespace ttnn::ccl;
 
-    const uint32_t tile_num_magic_num = 16;
+    const uint32_t tile_num_magic_num = 2;
 
     const auto& input_tensor = tensor_args.input_tensor;
     auto mesh_device = input_tensor.mesh_device();
@@ -361,8 +361,10 @@ LlamaPrefillReduceScatterDeviceOperation::LlamaPrefillReduceScatterAdd::create_a
     // auto sub_device_cores = mesh_device->worker_cores(
     //     tt::tt_metal::HalProgrammableCoreType::TENSIX, mesh_device->get_sub_device_ids().at(0)); // TODO : fix this
     //     for t3k
-    // std::cerr << sub_device_cores.num_cores() << std::endl;
-    CoreRangeSet sub_device_cores = CoreRangeSet(CoreRange(CoreCoord(0, 0), CoreCoord(1, 0)));
+    auto sub_device_cores = target_device->worker_cores(
+        tt::tt_metal::HalProgrammableCoreType::TENSIX, target_device->get_sub_device_ids().at(0));
+    // std::cerr << "subdevice num cores: " << sub_device_cores.num_cores() << std::endl; // how is this 56??
+    // CoreRangeSet sub_device_cores = CoreRangeSet(CoreRange(CoreCoord(0, 0), CoreCoord(1, 0)));
 
     tt::tt_metal::Program program{};
 
@@ -563,7 +565,7 @@ LlamaPrefillReduceScatterDeviceOperation::LlamaPrefillReduceScatterAdd::create_a
         (uint32_t)chip_id,
         // input_tiles_per_core_width,
         // output_tiles_per_core_width,
-        // num_pages_per_packet,
+        num_pages_per_packet,
         // input_shard_cores_per_device,
         num_devices,
         input_page_size,
@@ -619,7 +621,7 @@ LlamaPrefillReduceScatterDeviceOperation::LlamaPrefillReduceScatterAdd::create_a
     uint32_t is_reader_receiver_core_idx = 5;
     uint32_t reader_sender_packet_start_idx = 6;
     uint32_t reader_sender_packet_end_idx = 7;
-    uint32_t reader_sender_total_num_pages_idx = tile_num_magic_num;
+    uint32_t reader_sender_total_num_pages_idx = 8;
 
     uint32_t is_writer_sender_core_idx = 2;
     uint32_t is_writer_worker_core_idx = 3;
@@ -631,6 +633,7 @@ LlamaPrefillReduceScatterDeviceOperation::LlamaPrefillReduceScatterAdd::create_a
     uint32_t reader_sender_packet_start = 0;
     uint32_t writer_sender_packet_start = 0;
     uint32_t sender_core_idx = 0;
+    std::cout << sender_core_idx << std::endl;
 
     uint32_t link_idx = 0;
 
@@ -671,6 +674,10 @@ LlamaPrefillReduceScatterDeviceOperation::LlamaPrefillReduceScatterAdd::create_a
             reader_sender_packet_start += num_shards_to_read_per_worker;
             writer_sender_packet_start += num_packets_to_send_per_worker;
             sender_core_idx++;
+
+            for (auto arg : reader_runtime_args) {
+                std::cout << "This is the reader runtime arg: " << arg << std::endl;
+            }
 
             writer_runtime_args.push_back(forward_fabric_connection);
             if (forward_fabric_connection) {

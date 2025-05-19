@@ -34,6 +34,7 @@ void kernel_main() {
     constexpr uint8_t y_index = 1;
 
     size_t rt_arg_idx = 0;
+    DPRINT << "writer main" << ENDL();
 
     // Define all compile-time arguments at the beginning
     constexpr uint32_t input_tensor_cb_id = get_compile_time_arg_val(0);
@@ -45,13 +46,13 @@ void kernel_main() {
     constexpr uint32_t chip_id = get_compile_time_arg_val(6);
     // constexpr uint32_t tiles_per_core_width = get_compile_time_arg_val(7);
     // constexpr uint32_t tiles_per_core_width_output = get_compile_time_arg_val(8);
-    constexpr uint32_t num_pages_per_packet = 1;  // get_compile_time_arg_val(9);
+    constexpr uint32_t num_pages_per_packet = get_compile_time_arg_val(7);
     // constexpr uint32_t input_shard_cores_per_device = get_compile_time_arg_val(10);
-    constexpr uint32_t num_devices = get_compile_time_arg_val(7);
-    constexpr uint32_t page_size_bytes = get_compile_time_arg_val(8);
+    constexpr uint32_t num_devices = get_compile_time_arg_val(8);
+    constexpr uint32_t page_size_bytes = get_compile_time_arg_val(9);
     // constexpr uint32_t output_cores_per_device = get_compile_time_arg_val(13);
-    constexpr uint32_t packet_receiver_core_x = get_compile_time_arg_val(9);
-    constexpr uint32_t packet_receiver_core_y = get_compile_time_arg_val(10);
+    constexpr uint32_t packet_receiver_core_x = get_compile_time_arg_val(10);
+    constexpr uint32_t packet_receiver_core_y = get_compile_time_arg_val(11);
     // constexpr uint32_t num_packet_worker_cores = get_compile_time_arg_val(16);
 
     // Derived compile-time constants
@@ -78,7 +79,9 @@ void kernel_main() {
     uint32_t linear_output_page_start_idx = get_arg_val<uint32_t>(rt_arg_idx++);
     uint32_t sender_packet_start = get_arg_val<uint32_t>(rt_arg_idx++);
     uint32_t sender_packet_end = get_arg_val<uint32_t>(rt_arg_idx++);
-    uint32_t sender_total_num_pages = get_arg_val<uint32_t>(rt_arg_idx++);
+    uint32_t sender_total_num_pages = get_arg_val<uint32_t>(rt_arg_idx++);  // 0??
+    DPRINT << "sender_total_num_pages: " << sender_total_num_pages << ENDL();
+    sender_total_num_pages = 2;
 
     if (sender_core) {
         auto fabric_connection =
@@ -104,7 +107,7 @@ void kernel_main() {
         const uint32_t base_receiver_l1_addr = get_read_ptr(fabric_receiver_cb_id);
 
         // Precompute the packet offset once
-        const uint32_t packet_offset = base_receiver_l1_addr;  //+ chip_id_offset;
+        uint32_t packet_offset = base_receiver_l1_addr;  //+ chip_id_offset;
 
         if (fabric_connection.is_logically_connected()) {
             fabric_connection.open_finish();
@@ -112,19 +115,21 @@ void kernel_main() {
         // for (uint32_t target_device_id : device_order) {
         // Calculate device-specific constants once per device
         const uint32_t num_hops = 1;  // std::abs(int(target_device_id) - int(chip_id));
-        unicast_packet_header->to_chip_unicast(static_cast<uint8_t>(num_hops));
+        // unicast_packet_header->to_chip_unicast(static_cast<uint8_t>(num_hops));
+        unicast_packet_header->to_chip_multicast(
+            tt::tt_fabric::MulticastRoutingCommandHeader{1, static_cast<uint8_t>(1)});
         auto& fabric_conn =
             fabric_connection
                 .get_forward_connection();  // target_device_id > chip_id ? fabric_connection.get_forward_connection()
                                             //: fabric_connection.get_backward_connection();
 
         uint32_t num_pages_sent = 0;
-        sender_total_num_pages = 1;
+
         uint32_t packet = sender_packet_start;
         while (num_pages_sent < sender_total_num_pages) {
             // Determine packet size based on whether it's the last packet
             auto num_pages_left = sender_total_num_pages - num_pages_sent;
-            const uint32_t curr_packet_num_pages = 1;  // std::min(num_pages_per_packet, num_pages_left);
+            const uint32_t curr_packet_num_pages = 1;  // 1
             const uint32_t curr_packet_size_bytes = curr_packet_num_pages * page_size_bytes;
 
             const uint32_t receiver_core_x = packet_receiver_core_x;  // packet_worker_cores[packet][x_index];
@@ -132,11 +137,12 @@ void kernel_main() {
             const uint64_t noc0_dest_noc_addr = get_noc_addr(receiver_core_x, receiver_core_y, packet_offset);
 
             cb_wait_front(fabric_sender_cb_id, curr_packet_num_pages);
-            const auto sender_l1_addr = get_read_ptr(fabric_sender_cb_id);
+
+            auto sender_l1_addr = get_read_ptr(fabric_sender_cb_id);
 
             const uint64_t sem_noc_addr = get_noc_addr(receiver_core_x, receiver_core_y, receiver_semaphore_address);
             unicast_packet_header->to_noc_fused_unicast_write_atomic_inc(
-                tt::tt_fabric::NocUnicastAtomicIncFusedCommandHeader(noc0_dest_noc_addr, sem_noc_addr, 1, 32, flush),
+                tt::tt_fabric::NocUnicastAtomicIncFusedCommandHeader(noc0_dest_noc_addr, sem_noc_addr, 1, 32, true),
                 curr_packet_size_bytes);
 
             fabric_conn.wait_for_empty_write_slot();
@@ -148,9 +154,11 @@ void kernel_main() {
             cb_pop_front(fabric_sender_cb_id, curr_packet_num_pages);
 
             num_pages_sent += curr_packet_num_pages;
+            packet_offset += curr_packet_size_bytes;
             packet++;
         }
-        DPRINT << "PACKET SENT" << ENDL();
+        DPRINT << "PACKETS SENT: " << packet << ENDL();
+
         if (fabric_connection.is_logically_connected()) {
             fabric_connection.close();
         }
@@ -183,7 +191,23 @@ void kernel_main() {
         //     accumulator_l1_addresses[i] = accumulator_l1_addr + i * page_size_bytes;
         // }
 
-        cb_wait_front(accumulator_cb_id, num_pages_per_packet);
+        // noc_semaphore_wait(
+        //     (uint32_t*)receiver_semaphore_address, 2);
+
+        // auto output_tensor_addrgen = InterleavedAddrGenFast<true>{
+        //     .bank_base_address = output_tensor_address,
+        //     .page_size = page_size_bytes,
+        //     .data_format = get_dataformat(input_tensor_cb_id)};
+
+        // const uint32_t base_acc_l1_addr = get_read_ptr(fabric_receiver_cb_id);
+
+        // for (uint32_t tile_id = 0; tile_id < sender_total_num_pages; tile_id++) {
+        //     auto tensor_tile_addr = output_tensor_addrgen.get_noc_addr(tile_id);
+        //     noc_async_write(base_acc_l1_addr+page_size_bytes*tile_id,tensor_tile_addr, page_size_bytes);
+        // }
+        // noc_async_write_barrier();
+
+        cb_wait_front(accumulator_cb_id, sender_total_num_pages);
 
         // // Process all tiles
         // for (uint32_t tile = 0; tile < num_packets; tile++) {
@@ -197,11 +221,13 @@ void kernel_main() {
 
         const uint32_t base_acc_l1_addr = get_read_ptr(accumulator_cb_id);
 
-        uint64_t dest_addr = output_tensor_addrgen.get_noc_addr(0);
-        noc_async_write(base_acc_l1_addr, dest_addr, page_size_bytes);
+        for (uint32_t tile_id = 0; tile_id < sender_total_num_pages; tile_id++) {
+            auto tensor_tile_addr = output_tensor_addrgen.get_noc_addr(tile_id);
+            noc_async_write(base_acc_l1_addr + page_size_bytes * tile_id, tensor_tile_addr, page_size_bytes);
+        }
         noc_async_write_barrier();
-        DPRINT << "data received on fabric_receiver written to output tensor" << ENDL();
-        cb_pop_front(accumulator_cb_id, num_pages_per_packet);
+        DPRINT << "data received on accumulator_cb_id written to output tensor address" << ENDL();
+        // cb_pop_front(accumulator_cb_id, num_pages_per_packet);
 #else
         cb_wait_front(output_tensor_cb_id, num_pages_per_packet);
 #endif

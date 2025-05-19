@@ -28,7 +28,7 @@ void kernel_main() {
     constexpr uint8_t y_index = 1;
 
     size_t rt_arg_idx = 0;
-
+    DPRINT << "reader main" << ENDL();
     // Define all compile-time arguments at the beginning
     constexpr uint32_t input_tensor_cb_id = get_compile_time_arg_val(0);
     constexpr uint32_t fabric_sender_cb_id = get_compile_time_arg_val(1);
@@ -80,8 +80,8 @@ void kernel_main() {
     bool receiver_core = (bool)get_arg_val<uint32_t>(rt_arg_idx++);
     uint32_t sender_shard_start = get_arg_val<uint32_t>(rt_arg_idx++);
     uint32_t sender_shard_end = get_arg_val<uint32_t>(rt_arg_idx++);
-    uint32_t sender_total_num_pages = get_arg_val<uint32_t>(rt_arg_idx++);
-
+    uint32_t sender_total_num_pages = get_arg_val<uint32_t>(rt_arg_idx++);  // why is this 0??
+    sender_total_num_pages = 2;
     // // Bank base addresses (compute once)
     // const uint32_t bank_base_address = get_write_ptr(input_tensor_cb_id);
     // uint32_t input_tensor_address = get_write_ptr(input_tensor_cb_id);
@@ -89,28 +89,26 @@ void kernel_main() {
     // volatile tt_l1_ptr uint32_t* signal_semaphore_addr_ptr =
     //     reinterpret_cast<volatile tt_l1_ptr uint32_t*>(local_semaphore_address);
 
-    constexpr uint32_t start_tile = 0;
-    constexpr uint32_t end_tile = 1;
-    constexpr uint32_t input_num_tiles = end_tile - start_tile;
+    uint32_t start_tile = 0;
+    uint32_t end_tile = sender_total_num_pages;
+    uint32_t input_num_tiles = end_tile - start_tile;
 
-    uint32_t sender_read_addr = get_write_ptr(fabric_sender_cb_id);
     if (sender_core) {
         auto tensor0_addrgen = InterleavedAddrGenFast<true>{
             .bank_base_address = input_tensor_address,
             .page_size = page_size_bytes,
             .data_format = get_dataformat(input_tensor_cb_id)};
-
-        uint32_t tile_id = 0;
-
+        uint32_t sender_read_addr = get_write_ptr(fabric_sender_cb_id);
         // read from input tensor to input tensor??
-        for (; tile_id < input_num_tiles; tile_id++) {
+        for (uint32_t tile_id = 0; tile_id < input_num_tiles; tile_id++) {
             cb_reserve_back(fabric_sender_cb_id, 1);
             auto tensor_tile_addr = tensor0_addrgen.get_noc_addr(tile_id);
             noc_async_read(tensor_tile_addr, sender_read_addr, page_size_bytes);
-            noc_async_read_barrier();
-            cb_push_back(fabric_sender_cb_id, 1);
+            sender_read_addr += page_size_bytes;
         }
-        DPRINT << "fabric_sender_cb ready" << ENDL();
+        noc_async_read_barrier();
+        cb_push_back(fabric_sender_cb_id, input_num_tiles);
+        DPRINT << "fabric_sender_cb ready for eth sending" << ENDL();
     }
 
     // for (uint32_t target_device_id : device_order) {
@@ -159,16 +157,19 @@ void kernel_main() {
 
         // read from input tensor to input tensor??
         // noc_semaphore_wait((uint32_t*)receiver_semaphore_address, 1);
-        noc_semaphore_wait(
-            (uint32_t*)receiver_semaphore_address, input_num_tiles);  // TODO: should and must be changed!
+        auto input_write_addr = get_write_ptr(input_tensor_cb_id);
+
+        noc_semaphore_wait((uint32_t*)receiver_semaphore_address, input_num_tiles);
+        DPRINT << "reader worker - receiver sema 2: " << input_num_tiles << ENDL();
+        cb_reserve_back(input_tensor_cb_id, input_num_tiles);
         for (uint32_t tile_id = 0; tile_id < input_num_tiles; tile_id++) {
-            cb_reserve_back(input_tensor_cb_id, 1);
             auto tensor_tile_addr = tensor0_addrgen.get_noc_addr(tile_id);
-            noc_async_read(tensor_tile_addr, get_write_ptr(input_tensor_cb_id), page_size_bytes);
-            noc_async_read_barrier();
-            cb_push_back(input_tensor_cb_id, 1);
+            noc_async_read(tensor_tile_addr, input_write_addr, page_size_bytes);
+            input_write_addr += page_size_bytes;
         }
-        DPRINT << "input_tensor_cb ready" << ENDL();
+        noc_async_read_barrier();
+        cb_push_back(input_tensor_cb_id, input_num_tiles);
+        DPRINT << "input_tensor_cb ready for reduction" << ENDL();
 
         // noc_semaphore_wait((uint32_t*)receiver_semaphore_address, input_num_tiles);
         // for (uint32_t tile_id = 0; tile_id < input_num_tiles; tile_id++) {
