@@ -279,7 +279,7 @@ operation::ProgramWithCallbacks layernorm_pre_allgather_multi_core_sharded(
             total_tiles_per_seq_in_merge_buffer * single_tile_size, {{merge_data_cb_index, cb_data_format}})
             .set_page_size(merge_data_cb_index, single_tile_size);
     auto cb_merge_data_in_handle =
-        CreateCircularBuffer(program, merge_core_range, cb_merge_data_config);  // MODIFIED: Store handle
+        CreateCircularBuffer(program, all_used_cores_for_sem_and_reduce, cb_merge_data_config);
     uint32_t dst_cb_index = tt::CBIndex::c_14;
     CircularBufferConfig cb_dst_config =
         CircularBufferConfig(1 * out_single_tile_size, {{dst_cb_index, out_data_format}})
@@ -299,8 +299,8 @@ operation::ProgramWithCallbacks layernorm_pre_allgather_multi_core_sharded(
     log_debug(tt::LogOp, "Host: sender_sem L1 addr: 0x{:x} (init_val=0)", sender_sem_addr);
 
     CoreRange writer_bbox = regular_cores_range;
-    CoreCoord writer_noc_start = device->worker_core_from_logical_core(writer_bbox.start_coord(), CoreType::WORKER);
-    CoreCoord writer_noc_end = device->worker_core_from_logical_core(writer_bbox.end_coord(), CoreType::WORKER);
+    CoreCoord writer_noc_start = device->worker_core_from_logical_core(writer_bbox.start_coord);
+    CoreCoord writer_noc_end = device->worker_core_from_logical_core(writer_bbox.end_coord);
 
     auto input_buffer = a.buffer();
     auto output_buffer = output.buffer();
@@ -320,6 +320,22 @@ operation::ProgramWithCallbacks layernorm_pre_allgather_multi_core_sharded(
         "reader_local_layernorm_pre_allgather.cpp",
         regular_cores_range,
         tt::tt_metal::ReaderDataMovementConfig(reader_local_compile_args, compute_defines));
+
+    // Create writer_local_kernels BEFORE compute_local_kernels to match TopK pattern
+    std::vector<uint32_t> writer_local_compile_args = {
+        (is_rmsnorm ? 1u : 0u),
+        cores_per_dim,
+        cores_per_dim,
+        receiver_sem_addr,
+        sender_sem_addr,
+        cb_merge_data_in_handle};
+    auto writer_local_kernels = CreateKernel(
+        program,
+        "ttnn/cpp/ttnn/operations/normalization/layernorm_distributed/device/kernels/dataflow/"
+        "writer_local_layernorm_pre_allgather.cpp",
+        regular_cores_range,
+        tt::tt_metal::WriterDataMovementConfig(writer_local_compile_args, compute_defines));
+
     constexpr uint32_t compute_local_block_size = 1;
     std::vector<uint32_t> compute_local_compile_args = {tiles_per_dim_shard, compute_local_block_size};
     auto compute_local_kernels = CreateKernel(
@@ -333,14 +349,7 @@ operation::ProgramWithCallbacks layernorm_pre_allgather_multi_core_sharded(
             .math_approx_mode = math_approx_mode,
             .compile_args = compute_local_compile_args,
             .defines = compute_defines});
-    std::vector<uint32_t> writer_local_compile_args = {
-        (is_rmsnorm ? 1u : 0u), cores_per_dim, cores_per_dim, receiver_sem_addr, sender_sem_addr};
-    auto writer_local_kernels = CreateKernel(
-        program,
-        "ttnn/cpp/ttnn/operations/normalization/layernorm_distributed/device/kernels/dataflow/"
-        "writer_local_layernorm_pre_allgather.cpp",
-        regular_cores_range,
-        tt::tt_metal::WriterDataMovementConfig(writer_local_compile_args, compute_defines));
+
     std::vector<uint32_t> reader_final_compile_args = {
         (is_rmsnorm ? 1u : 0u),
         cores_per_dim,
@@ -377,8 +386,6 @@ operation::ProgramWithCallbacks layernorm_pre_allgather_multi_core_sharded(
         merge_core_range,
         tt::tt_metal::WriterDataMovementConfig(writer_final_compile_args, compute_defines));
 
-    uint32_t cb_merge_data_in_addr = program.circular_buffer(cb_merge_data_in_handle)->address();
-
     for (uint32_t seq_idx = 0; seq_idx < cores_per_sequence; ++seq_idx) {
         CoreCoord current_merge_core_logical = merge_cores[seq_idx];
         CoreCoord current_merge_core_physical = device->worker_core_from_logical_core(current_merge_core_logical);
@@ -394,7 +401,7 @@ operation::ProgramWithCallbacks layernorm_pre_allgather_multi_core_sharded(
             std::vector<uint32_t> compute_local_args = {rows_per_core};
             SetRuntimeArgs(program, compute_local_kernels, local_core_logical, compute_local_args);
             std::vector<uint32_t> writer_local_args = {
-                current_merge_core_physical.x, current_merge_core_physical.y, dim_idx, cb_merge_data_in_addr};
+                current_merge_core_physical.x, current_merge_core_physical.y, dim_idx};
             SetRuntimeArgs(program, writer_local_kernels, local_core_logical, writer_local_args);
         }
         std::vector<uint32_t> compute_merge_args = {};

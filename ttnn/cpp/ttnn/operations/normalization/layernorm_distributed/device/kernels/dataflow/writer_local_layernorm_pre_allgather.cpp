@@ -11,19 +11,20 @@
 // 0: merge_core_noc_x
 // 1: merge_core_noc_y
 // 2: dim_shard_idx
-// 3: remote_merge_cb_base_addr
+// NO LONGER HAS ARG 3 (remote_merge_cb_base_addr)
 // Args (COMPILE TIME):
 // 0: is_rmsnorm
 // 1: num_dims_per_group
 // 2: dim_shard_factor
 // 3: receiver_sem_compile_idx
 // 4: sender_sem_compile_idx
+// 5: remote_merge_cb_id
 void kernel_main() {
     // Runtime Args
     uint32_t merge_core_noc_x = get_arg_val<uint32_t>(0);
     uint32_t merge_core_noc_y = get_arg_val<uint32_t>(1);
     uint32_t dim_shard_idx = get_arg_val<uint32_t>(2);
-    uint32_t remote_merge_cb_base_addr = get_arg_val<uint32_t>(3);
+    // uint32_t remote_merge_cb_base_addr = get_arg_val<uint32_t>(3); // This runtime argument is now removed.
 
     // Compile time args
     constexpr bool is_rmsnorm = get_compile_time_arg_val(0);
@@ -31,6 +32,7 @@ void kernel_main() {
     constexpr uint32_t dim_shard_factor = get_compile_time_arg_val(2);
     constexpr uint32_t receiver_sem_compile_idx = get_compile_time_arg_val(3);
     constexpr uint32_t sender_sem_compile_idx = get_compile_time_arg_val(4);
+    constexpr uint32_t remote_merge_cb_id = get_compile_time_arg_val(5);
 
     // Get semaphore L1 addresses using compile-time indices
     uint32_t receiver_sem_addr = get_semaphore(receiver_sem_compile_idx);
@@ -52,7 +54,8 @@ void kernel_main() {
     constexpr uint32_t num_tiles_per_shard = is_rmsnorm ? 1 : 2;
 
     // Destination address setup
-    uint64_t merge_core_base_noc_addr = get_noc_addr(merge_core_noc_x, merge_core_noc_y, remote_merge_cb_base_addr);
+    uint32_t merge_ptr = get_write_ptr(remote_merge_cb_id);
+    uint64_t merge_core_base_noc_addr = get_noc_addr(merge_core_noc_x, merge_core_noc_y, merge_ptr);
 
     // Wait for receiver (on merge core) to signal ready via multicast
     DPRINT << "WL_WAIT_RECEIVER sem_addr=" << receiver_sem_addr << ENDL();
@@ -64,7 +67,7 @@ void kernel_main() {
     uint32_t l1_read_addr = get_read_ptr(partial_results_cb_id);
     uint64_t dst_noc_addr = merge_core_base_noc_addr + (dim_shard_idx * num_tiles_per_shard * single_tile_size);
     DPRINT << "WL_WRITE shard=" << dim_shard_idx << " to (" << merge_core_noc_x << "," << merge_core_noc_y
-           << ") addr=0x" << remote_merge_cb_base_addr
+           << ") addr=0x" << merge_core_base_noc_addr  // Use the resolved L1 address
            << " offset=" << dim_shard_idx * num_tiles_per_shard * single_tile_size << ENDL();
     noc_async_write(l1_read_addr, dst_noc_addr, num_tiles_per_shard * single_tile_size);
     noc_async_write_barrier();
