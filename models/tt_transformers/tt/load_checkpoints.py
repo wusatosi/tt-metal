@@ -311,7 +311,7 @@ def map_meta_to_hf_keys(loaded_weights):
         # For submodule state dicts, try matching the end of the key
         matched = False
         for meta_pattern, hf_pattern in meta_to_hf_mappings.items():
-            if key.endswith(meta_pattern):
+            if key.endswith("." + meta_pattern):
                 # Replace only the matching part at the end
                 prefix = key[: -len(meta_pattern)]
                 new_key = prefix + hf_pattern
