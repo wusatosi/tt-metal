@@ -52,6 +52,7 @@ set(TTNN_TENSOR_UNIT_TESTS_SRC
 )
 
 set(EMITC_UNIT_TESTS_SRC ${CMAKE_CURRENT_SOURCE_DIR}/emitc/test_sanity.cpp)
+set(EMITC_UNIT_TESTS_SRC ${CMAKE_CURRENT_SOURCE_DIR}/emitc/test_conv.cpp)
 
 add_executable(unit_tests_ttnn ${TTNN_UNIT_TESTS_SRC})
 TT_ENABLE_UNITY_BUILD(unit_tests_ttnn)
