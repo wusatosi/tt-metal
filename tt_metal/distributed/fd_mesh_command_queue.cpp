@@ -43,6 +43,7 @@
 #include "tt_metal/impl/program/program_command_sequence.hpp"
 #include "tt_metal/impl/device/dispatch.hpp"
 #include <umd/device/types/xy_pair.h>
+#include "dispatch/simple_trace_allocator.hpp"
 
 namespace tt {
 namespace tt_metal {
@@ -936,17 +937,49 @@ void FDMeshCommandQueue::record_end() {
             }
         }
     }
+    std::vector<uint32_t> exec_buf_end = {};
+
+    DeviceCommand command_sequence(MetalContext::instance().hal().get_alignment(HalMemType::HOST));
+    command_sequence.add_prefetch_exec_buf_end();
+
+    for (int i = 0; i < command_sequence.size_bytes() / sizeof(uint32_t); i++) {
+        exec_buf_end.push_back(((uint32_t*)command_sequence.data())[i]);
+    }
+    size_t max_trace_size = 0;
     for (const auto& range : device_ranges) {
-        uint32_t expected_workers_completed = 0;
+
+        std::vector<TraceNode> trace_nodes;
         for (auto& node : trace_nodes_) {
             for (auto& [device_range, node] : node.trace_nodes) {
                 if (!device_range.intersects(range)) {
                     continue;
                 }
                 TT_ASSERT(range == *device_range.intersection(range));
-                auto& program = *node.program;
+                trace_nodes.push_back(node);
+            }
+        }
+        uint32_t worker_ringbuffer_start =
+            hal.get_dev_addr(HalProgrammableCoreType::TENSIX, tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG);
+        uint32_t worker_ringbuffer_size = mesh_device_->allocator()->get_config().l1_unreserved_base - worker_ringbuffer_start;
+        SimpleTraceAllocator allocator{
+            worker_ringbuffer_start,
+            worker_ringbuffer_size,
+            hal.get_dev_addr(HalProgrammableCoreType::ACTIVE_ETH, tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG),
+            hal.get_dev_size(HalProgrammableCoreType::ACTIVE_ETH, tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG)};
+        allocator.allocate_trace_programs(this->mesh_device_, trace_nodes);
+
+        auto& sysmem_manager_for_trace = mesh_device_->get_device(range.start_coord())->sysmem_manager();
+        uint32_t expected_workers_completed = 0;
+        for (auto& node : this->trace_nodes_) {
+            for (auto& [device_range, node] : node.trace_nodes) {
+                if (!device_range.intersects(range)) {
+                    continue;
+                }
                 auto sub_device_id = node.sub_device_id;
-                auto sub_device_index = *sub_device_id;
+                auto& program = *node.program;
+
+                // Snapshot of expected workers from previous programs, used for dispatch_wait cmd generation.
+                // Compute the total number of workers this program uses
                 uint32_t num_workers = 0;
                 if (program.runs_on_noc_multicast_only_cores()) {
                     num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
@@ -954,35 +987,62 @@ void FDMeshCommandQueue::record_end() {
                 if (program.runs_on_noc_unicast_only_cores()) {
                     num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
                 }
-                program_dispatch::ProgramDispatchMetadata dispatch_metadata;
-                // Reserve space for this program in the kernel config ring buffer
-                program_dispatch::reserve_space_in_kernel_config_buffer(
-                    this->config_buffer_mgr_[sub_device_index],
-                    program.get_program_config_sizes(),
-                    ProgramBinaryStatus::Committed,
-                num_workers,
+
+                // Access the program dispatch-command cache
+                uint64_t command_hash = *mesh_device_->get_active_sub_device_manager_id();
+                auto& cached_program_command_sequence = program.get_trace_cached_program_command_sequences().at(command_hash);
+                auto& worker_launch_message_buffer_state = (*this->worker_launch_message_buffer_state_)[*sub_device_id];
+                // Update the generated dispatch commands based on the state of the CQ and the ring buffer
+                program_dispatch::update_traced_program_dispatch_commands(
+                    node,
+                    cached_program_command_sequence,
+                    worker_launch_message_buffer_state.get_mcast_wptr(),
+                    worker_launch_message_buffer_state.get_unicast_wptr(),
                     expected_workers_completed,
-                    dispatch_metadata);
-                uint32_t index = hal.get_programmable_core_type_index(HalProgrammableCoreType::TENSIX);
-                ProgramConfig& program_config = program.get_program_config(index);
+                this->virtual_program_dispatch_core(),
+                    MetalContext::instance().get_dispatch_core_manager().get_dispatch_core_type(),
+                    sub_device_id,
+                    ProgramBinaryStatus::Committed);
 
-                node.dispatch_metadata.binary_kernel_config_addrs = dispatch_metadata.kernel_config_addrs;
-                node.dispatch_metadata.nonbinary_kernel_config_addrs = dispatch_metadata.kernel_config_addrs;
-                node.dispatch_metadata.sync_count = dispatch_metadata.sync_count;
-                node.dispatch_metadata.stall_first = dispatch_metadata.stall_first;
-                node.dispatch_metadata.stall_before_program = dispatch_metadata.stall_before_program;
+                // Issue dispatch commands for this program
+                program_dispatch::write_program_command_sequence(
+                    cached_program_command_sequence,
+                    sysmem_manager_for_trace,
+                    this->id_,
+                    MetalContext::instance().get_dispatch_core_manager().get_dispatch_core_type(),
+                    node.dispatch_metadata.stall_first,
+                    node.dispatch_metadata.stall_before_program,
+                    node.dispatch_metadata.send_binary);
 
-                // Allocate non-binaries before binaries for tensix. Non-tensix doesn't use a ringbuffer for binaries, so its
-                // addresses don't need adjustment.
-                node.dispatch_metadata.binary_kernel_config_addrs[index].addr += program_config.kernel_text_offset;
-
+                // Update wptrs for tensix and eth launch message in the device class
+                if (program.runs_on_noc_multicast_only_cores()) {
+                    worker_launch_message_buffer_state.inc_mcast_wptr(1);
+                }
+                if (program.runs_on_noc_unicast_only_cores()) {
+                    worker_launch_message_buffer_state.inc_unicast_wptr(1);
+                }
                 expected_workers_completed += num_workers;
             }
         }
+        
+        auto& bypass_data = sysmem_manager_for_trace.get_bypass_data();
+        bypass_data.insert(
+            bypass_data.end(),
+            exec_buf_end.begin(),
+            exec_buf_end.end());
+
+        max_trace_size = std::max(max_trace_size, bypass_data.size());
+
+        trace_ctx_->ordered_trace_data.push_back(MeshTraceData{range, std::move(bypass_data)});
 
     }
+    trace_ctx_->total_trace_size = max_trace_size;
 
-    trace_ctx_->assemble_dispatch_commands(this->device(), ordered_mesh_trace_md_);
+    trace_ctx_->sub_device_ids.reserve(trace_ctx_->descriptors.size());
+    for (const auto& [id, _] : trace_ctx_->descriptors) {
+        trace_ctx_->sub_device_ids.push_back(id);
+    }
+
     trace_id_ = std::nullopt;
     trace_ctx_ = nullptr;
 
