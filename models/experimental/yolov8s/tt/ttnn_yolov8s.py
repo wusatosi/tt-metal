@@ -281,7 +281,7 @@ class TtBottleneck:
                 x, ttnn.TILE_LAYOUT, device=self.device, memory_config=ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b
             )
 
-        return ttnn.add(x, cv2, memory_config=ttnn.L1_MEMORY_CONFIG) if self.shortcut else cv2
+        return ttnn.add(x, cv2) if self.shortcut else cv2
 
 
 class TtC2f:
@@ -313,11 +313,36 @@ class TtC2f:
         self.deallocate_activation = deallocate_activation
         self.output_layout = output_layout
 
+        """
         self.cv1 = TtConv(
             device,
             self.parameters,
             f"{self.path}.cv1",
             input_params=self.input_params[0],
+            bfloat8=self.bfloat8,
+            change_shard=self.change_shard,
+            deallocate_activation=self.deallocate_activation,
+            output_layout=self.output_layout,
+        )
+        """
+
+        # workaround till ttnn.split() is working well on tiled/sharded input
+        self.cv1_a = TtConv(
+            device,
+            self.parameters,
+            f"{self.path}.cv1_a",
+            input_params=self.input_params[3],
+            bfloat8=self.bfloat8,
+            change_shard=self.change_shard,
+            deallocate_activation=self.deallocate_activation,
+            output_layout=self.output_layout,
+        )
+
+        self.cv1_b = TtConv(
+            device,
+            self.parameters,
+            f"{self.path}.cv1_b",
+            input_params=self.input_params[4],
             bfloat8=self.bfloat8,
             change_shard=self.change_shard,
             deallocate_activation=self.deallocate_activation,
@@ -356,6 +381,7 @@ class TtC2f:
     def __call__(self, x):
         if use_signpost:
             signpost(header="C2F")
+        """
         cv1, out_h, out_w = self.cv1(x)
         cv1 = ttnn.to_memory_config(cv1, memory_config=ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
         cv1 = ttnn.to_layout(cv1, ttnn.ROW_MAJOR_LAYOUT)
@@ -377,6 +403,45 @@ class TtC2f:
                 y[i] = ttnn.sharded_to_interleaved(y[i], ttnn.L1_MEMORY_CONFIG, output_dtype=ttnn.bfloat8_b)
 
         x = ttnn.concat(y, 3, memory_config=ttnn.L1_MEMORY_CONFIG)
+
+        for i in range(len(y)):
+            ttnn.deallocate(y[i])
+
+        x, out_h, out_w = self.cv2(x)
+        return x, out_h, out_w
+        """
+
+        cv1_a, out_h_a, out_w_a = self.cv1_a(x)
+        cv1_b, out_h_b, out_w_b = self.cv1_b(x)
+
+        y = [cv1_a, cv1_b]
+
+        for i in range(self.n):
+            z = self.bottleneck_modules[i](y[-1])
+            y.append(z)
+
+        total_width = sum(tensor.shape[-1] for tensor in y)
+
+        # if y[0].is_sharded():
+        input_sharded_memory_config = y[0].memory_config()
+        input_sharded_spec = input_sharded_memory_config.shard_spec
+        shard_height = input_sharded_spec.shape[0]
+        input_sharded_memory_layout = str(input_sharded_memory_config.memory_layout)
+        if "HEIGHT" in input_sharded_memory_layout:
+            out_sharded_memory_config_strategy = ttnn.ShardStrategy.HEIGHT
+        elif "BLOCK" in input_sharded_memory_layout:
+            out_sharded_memory_config_strategy = ttnn.ShardStrategy.BLOCK
+        elif "WIDTH" in input_sharded_memory_layout:
+            out_sharded_memory_config_strategy = ttnn.ShardStrategy.WIDTH
+
+        out_sharded_memory_config = ttnn.create_sharded_memory_config(
+            (shard_height, total_width),
+            core_grid=input_sharded_spec.grid,
+            strategy=out_sharded_memory_config_strategy,
+            use_height_and_width_as_shard_shape=True,
+        )
+
+        x = ttnn.concat(y, -1, memory_config=out_sharded_memory_config)
 
         for i in range(len(y)):
             ttnn.deallocate(y[i])
@@ -535,11 +600,12 @@ class TtDetect:
         cls = ttnn.slice(x_cat, [0, 64, 0], [1, 144, x_cat.shape[2]], memory_config=ttnn.L1_MEMORY_CONFIG)
         dfl = self.dfl_module(box)
 
-        anchors = ttnn.to_memory_config(anchors, memory_config=ttnn.L1_MEMORY_CONFIG)
+        anchors = ttnn.to_memory_config(anchors, memory_config=ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
+        if use_signpost:
+            signpost(header="ttnn_decode_bboxes")
         dbox = ttnn_decode_bboxes(self.device, dfl, anchors)
-        # dbox = ttnn.to_memory_config(dbox, memory_config=ttnn.L1_MEMORY_CONFIG)
-        strides = ttnn.to_memory_config(strides, memory_config=ttnn.L1_MEMORY_CONFIG)
-        dbox = dbox * strides
+        strides = ttnn.to_memory_config(strides, memory_config=ttnn.L1_MEMORY_CONFIG, dtype=ttnn.bfloat8_b)
+        dbox = ttnn.multiply(dbox, strides, dtype=ttnn.bfloat8_b)
 
         return [ttnn.concat((dbox, ttnn.sigmoid(cls)), dim=1, memory_config=ttnn.L1_MEMORY_CONFIG), x]
 
