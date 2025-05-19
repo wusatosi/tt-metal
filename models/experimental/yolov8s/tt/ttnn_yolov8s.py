@@ -24,7 +24,7 @@ c2f_configs = configs["c2f_configs"]
 detect_config = configs["detect_config"]
 
 
-def sharded_concat_sppf(input_tensors, num_cores=64, dim=3):  # expected input tensors to be in fp16, RM, same (h*w)
+def sharded_concat_sppf(input_tensors, num_cores=120, dim=3):  # expected input tensors to be in fp16, RM, same (h*w)
     if use_signpost:
         signpost(header="sharded_concat_sppf")
 
@@ -35,7 +35,7 @@ def sharded_concat_sppf(input_tensors, num_cores=64, dim=3):  # expected input t
     for i in range(len(input_tensors)):
         input_sharded_memory_config = ttnn.create_sharded_memory_config(
             (shard_height, input_tensors[i].shape[-1]),
-            core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 7))}),
+            core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(11, 9))}),
             strategy=ttnn.ShardStrategy.HEIGHT,
             use_height_and_width_as_shard_shape=True,
         )
@@ -48,7 +48,7 @@ def sharded_concat_sppf(input_tensors, num_cores=64, dim=3):  # expected input t
     total_width = sum(tensor.shape[-1] for tensor in input_tensors)
     out_sharded_memory_config = ttnn.create_sharded_memory_config(
         (shard_height, total_width),
-        core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 7))}),
+        core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(11, 9))}),
         strategy=ttnn.ShardStrategy.HEIGHT,
         use_height_and_width_as_shard_shape=True,
     )
@@ -59,7 +59,7 @@ def sharded_concat_sppf(input_tensors, num_cores=64, dim=3):  # expected input t
     return output
 
 
-def sharded_concat(input_tensors, num_cores=64, dim=3):  # expected input tensors to be in fp16, RM, same (h*w)
+def sharded_concat(input_tensors, num_cores=120, dim=3):  # expected input tensors to be in fp16, RM, same (h*w)
     if use_signpost:
         signpost(header="sharded_concat")
 
@@ -70,7 +70,7 @@ def sharded_concat(input_tensors, num_cores=64, dim=3):  # expected input tensor
     for i in range(len(input_tensors)):
         input_sharded_memory_config = ttnn.create_sharded_memory_config(
             (shard_height, input_tensors[i].shape[-1]),
-            core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 7))}),
+            core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(11, 9))}),
             strategy=ttnn.ShardStrategy.HEIGHT,
             use_height_and_width_as_shard_shape=True,
         )
@@ -83,7 +83,7 @@ def sharded_concat(input_tensors, num_cores=64, dim=3):  # expected input tensor
     total_width = sum(tensor.shape[-1] for tensor in input_tensors)
     out_sharded_memory_config = ttnn.create_sharded_memory_config(
         (shard_height, total_width),
-        core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 7))}),
+        core_grid=ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(11, 9))}),
         strategy=ttnn.ShardStrategy.HEIGHT,
         use_height_and_width_as_shard_shape=True,
     )
