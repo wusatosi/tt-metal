@@ -56,7 +56,6 @@ loop = None
 probe_id = 0  # Store probe ID if removal is needed later
 # --- FPS Calculation Globals (for Pad Probe) ---
 inference_time = 0
-inference_time_wo_io = 0
 frame_count = 0
 start_time = 0
 last_update_time = 0
@@ -83,7 +82,7 @@ def process_frame(sample):
 # --- Appsink "new-sample" Callback ---
 def on_new_sample_from_appsink(appsink, user_data):
     """Callback triggered by appsink. Includes user processing."""
-    global shutting_down, model, inference_time_wo_io, inference_time, batch_size  # Access the global flag
+    global shutting_down, model, inference_time, batch_size  # Access the global flag
 
     sample = appsink.emit("pull-sample")
     if sample is None:
@@ -104,10 +103,9 @@ def on_new_sample_from_appsink(appsink, user_data):
     if batch_size > 1:
         n, c, h, w = img.shape
         img = img.expand(batch_size, c, h, w)
-    out, time_without_io = model.run_traced_inference(img)
+    out = model.run_traced_inference(img)
     te = time.time()
     inference_time = inference_time + te - ts
-    inference_time_wo_io = inference_time_wo_io + time_without_io
 
     gst_buffer = Gst.Buffer.new_wrapped(frame.tobytes())
     gst_buffer.pts = pts
@@ -125,7 +123,7 @@ def on_new_sample_from_appsink(appsink, user_data):
 def sink_pad_probe_cb(pad, info, user_data):
     """Callback function for the sink pad probe to calculate FPS."""
     # Access global variables needed
-    global frame_count, start_time, last_update_time, FPS_UPDATE_INTERVAL_SEC, shutting_down, inference_time_wo_io, inference_time, batch_size
+    global frame_count, start_time, last_update_time, FPS_UPDATE_INTERVAL_SEC, shutting_down, inference_time, batch_size
 
     # Optional: check shutting_down flag
     if shutting_down:
@@ -147,11 +145,10 @@ def sink_pad_probe_cb(pad, info, user_data):
             if elapsed_total > 0:  # Avoid division by zero
                 avg_fps = frame_count * batch_size / elapsed_total
                 avg_inference_time = inference_time / (frame_count)
-                avg_inference_time_wo_io = inference_time_wo_io / (frame_count)
                 # This FPS measures the rate buffers arrive at fakesink (sync=false)
                 # It should reflect the bottleneck rate (Python processing).
                 print(
-                    f"--- Pipeline Output FPS for batch {batch_size}@ {elapsed_total:.1f}s: Average={avg_fps:.2f} , Average Inference time per batch:{avg_inference_time:.4f}, Average Inference time without IO per batch:{avg_inference_time_wo_io:.4f} (Frames={frame_count})  ---",
+                    f"--- Pipeline Output FPS for batch {batch_size}@ {elapsed_total:.1f}s: Average={avg_fps:.2f} , Average Inference time per batch:{avg_inference_time:.4f}  ---",
                     flush=True,
                 )
             last_update_time = current_time  # Reset timer for next interval
