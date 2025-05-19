@@ -138,6 +138,17 @@ operation::ProgramWithCallbacks layernorm_pre_allgather_multi_core(
             .set_page_size(tt::CBIndex::c_14, out_single_tile_size);
     CreateCircularBuffer(program, all_cores, cb_out0_config);
 
+    // Log all circular buffers with program.circular_buffers(), which returns
+    // std::vector<std::shared_ptr<CircularBuffer>>
+    for (const auto& cb : program.circular_buffers()) {
+        for (const auto index : cb->buffer_indices()) {
+            tt::log_debug("cb_id {}", index);
+            tt::log_debug("page_size: {}", cb->page_size(index));
+            tt::log_debug("num_pages: {}", cb->num_pages(index));
+            tt::log_debug("data_format: {}", cb->data_format(index));
+        }
+    }
+
     uint32_t curr_row = 0;
     float winv = 1.0f;
     auto bfloat_winv_value = bfloat16(winv);
