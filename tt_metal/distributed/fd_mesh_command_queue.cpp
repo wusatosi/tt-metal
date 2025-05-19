@@ -202,6 +202,16 @@ void FDMeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool
     TT_FATAL(
         mesh_workload.impl().get_program_binary_status(mesh_device_id) != ProgramBinaryStatus::NotSent,
         "Expected program binaries to be written to the MeshDevice.");
+    if (sysmem_manager.get_bypass_mode()) {
+        trace_nodes_.push_back(MeshTraceNode{});
+        auto& trace_node = trace_nodes_.back();
+        for (auto& [device_range, program] : mesh_workload.get_programs()) {
+            trace_node.trace_nodes.push_back(
+                std::pair<MeshCoordinateRange, TraceNode>(device_range, program_dispatch::create_trace_node(program.impl(), mesh_device_)));
+        }
+        return;
+    }
+
 
     // Compute number of workers being used for this workload.
     uint32_t num_workers = 0;
@@ -893,6 +903,39 @@ void FDMeshCommandQueue::record_begin(const MeshTraceId& trace_id, const std::sh
 }
 
 void FDMeshCommandQueue::record_end() {
+
+    std::vector<MeshCoordinateRange> device_ranges;
+    for (auto& trace_node : trace_nodes_) {
+        for (auto& [device_range, program] : trace_node.trace_nodes) {
+            bool intersection_found = false;
+            std::vector<MeshCoordinateRange> device_ranges_to_invalidate;
+            for (auto& existing_range : device_ranges) {
+                if (existing_range.intersects(device_range)) {
+                    intersection_found = true;
+                    auto intersection = *existing_range.intersection(device_range);
+                    if (intersection == existing_range) {
+                    } else {
+                        auto complement = subtract(existing_range, intersection);
+                        for (const auto& complement_range : complement.ranges()) {
+                            device_ranges.push_back(complement_range);
+                        }
+                        device_ranges.push_back(intersection);
+                        device_ranges_to_invalidate.push_back(existing_range);
+                    }
+                }
+            }
+            // TODO handle partial non intersection with anything.
+            if (intersection_found) {
+                for (auto& device_range : device_ranges_to_invalidate) {
+                    device_ranges.erase(std::remove(device_ranges.begin(), device_ranges.end(), device_range),
+                                        device_ranges.end());
+                }
+            } else {
+                device_ranges.push_back(device_range);
+            }
+        }
+    }
+
     trace_ctx_->assemble_dispatch_commands(this->device(), ordered_mesh_trace_md_);
     trace_id_ = std::nullopt;
     trace_ctx_ = nullptr;
