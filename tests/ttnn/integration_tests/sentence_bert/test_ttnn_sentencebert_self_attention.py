@@ -9,7 +9,7 @@ import pytest
 from ttnn.model_preprocessing import preprocess_model_parameters
 from tests.ttnn.utils_for_testing import assert_with_pcc
 from models.experimental.sentence_bert.ttnn.common import custom_preprocessor
-from models.experimental.sentence_bert.reference.sentence_bert import BertSdpaSelfAttention
+from models.experimental.sentence_bert.reference.sentence_bert import BertSelfAttention
 from models.experimental.sentence_bert.ttnn.ttnn_sentencebert_self_attention import TtnnSentenceBertSelfAttention
 
 
@@ -23,7 +23,7 @@ def test_ttnn_sentence_bert_self_attention(device, inputs):
     config = transformers.BertConfig.from_pretrained(inputs[0])
     hidden_states = torch.randn(inputs[1], dtype=torch.bfloat16)
     attention_mask = torch.randn(inputs[2], dtype=torch.bfloat16)
-    reference_module = BertSdpaSelfAttention(config).to(torch.bfloat16)
+    reference_module = BertSelfAttention(config).to(torch.bfloat16)
     reference_module.load_state_dict(transformers_model.state_dict())
     reference_out = reference_module(
         hidden_states,
@@ -45,7 +45,9 @@ def test_ttnn_sentence_bert_self_attention(device, inputs):
             orientation=ttnn.ShardOrientation.COL_MAJOR,
         ),
     )
-    ttnn_attention_mask = ttnn.from_torch(attention_mask, layout=ttnn.TILE_LAYOUT, device=device)
+    ttnn_attention_mask = ttnn.from_torch(
+        attention_mask, layout=ttnn.TILE_LAYOUT, device=device, memory_config=ttnn.L1_MEMORY_CONFIG
+    )
     ttnn_out = ttnn_module(
         sharded_input,
         ttnn_attention_mask,
