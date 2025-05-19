@@ -13,6 +13,8 @@
 #include "dispatch/launch_message_ring_buffer_state.hpp"
 #include "dispatch/worker_config_buffer.hpp"
 
+#include "trace/trace_node.hpp"
+
 namespace tt::tt_metal::distributed {
 
 struct MeshReadEventDescriptor;
@@ -112,11 +114,16 @@ private:
     DispatchArray<uint32_t> expected_num_workers_completed_reset_;
     DispatchArray<tt::tt_metal::WorkerConfigBufferMgr> config_buffer_mgr_reset_;
 
+    struct MeshTraceNode {
+        std::vector<std::pair<MeshCoordinateRange, TraceNode>> trace_nodes;
+    };
+
     // The following data structures are only popiulated when the MeshCQ is being used to trace workloads
     // i.e. between record_begin() and record_end() being called
     std::optional<MeshTraceId> trace_id_;
     std::shared_ptr<MeshTraceDescriptor> trace_ctx_;
     std::vector<MeshTraceStagingMetadata> ordered_mesh_trace_md_;
+    std::vector<MeshTraceNode> trace_nodes_;
 
     CoreCoord dispatch_core_;
     CoreType dispatch_core_type_ = CoreType::WORKER;
