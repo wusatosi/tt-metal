@@ -269,6 +269,7 @@ class TtMixtralAttention(LightweightModule):
             compute_kernel_config=self.compute_kernel,
             dtype=ttnn.bfloat8_b,
         )
+        ttnn.synchronize_device(device=self.mesh_device)
         attn_output_11BH.deallocate(True)
         # All gather
         dense_outputs_11BH = ttnn.experimental.all_gather_async(
@@ -278,7 +279,8 @@ class TtMixtralAttention(LightweightModule):
             multi_device_global_semaphore=self.ccl_semaphore_handle,
             topology=ttnn.Topology.Linear,
         )
-
+        ttnn.synchronize_device(device=self.mesh_device)
+        dense_out_11BH.deallocate(True)
         # return the sum of the outputs
 
         dense_outputs_11BH = ttnn.matmul(
@@ -414,6 +416,7 @@ class TtMixtralAttention(LightweightModule):
 
         if seq_len > 2048:  # Reshape back to intended shape
             output_11SH = ttnn.reshape(output_11SH, (1, 1, seq_len, -1))
+        ttnn.synchronize_device(device=self.mesh_device)
         output_11BH_gathered = ttnn.experimental.all_gather_async(
             output_11SH,
             dim=1,
@@ -421,6 +424,7 @@ class TtMixtralAttention(LightweightModule):
             multi_device_global_semaphore=self.ccl_semaphore_handle,
             topology=ttnn.Topology.Linear,
         )
+        ttnn.synchronize_device(device=self.mesh_device)
         output_11SH.deallocate(True)
         output_11BH_reduced = ttnn.experimental.fast_reduce_nc(
             output_11BH_gathered, dims=[1], output=None, compute_kernel_config=None

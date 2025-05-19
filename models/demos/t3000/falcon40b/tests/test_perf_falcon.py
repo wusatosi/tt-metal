@@ -10,6 +10,7 @@ import ttnn
 from models.demos.t3000.falcon40b.reference.hf_modeling_falcon import FalconForCausalLM
 from models.demos.t3000.falcon40b.tt.falcon_causallm import TtFalconCausalLM
 from models.demos.t3000.falcon40b.tt.model_config import get_model_config
+from models.demos.t3000.falcon40b.tt.model_utils import get_ccl_config
 from models.perf.perf_utils import prep_perf_report
 from models.utility_functions import (
     disable_persistent_kernel_cache,
@@ -86,6 +87,12 @@ def run_test_FalconCausalLM_end_to_end(
     # since we don't yet have embedding support on device
     # device, state_dict, base_url, max_position_embeddings, config, num_decoders
     profiler.start("TtFalcon_model_setup")
+    (
+        worker_sub_device_id,
+        ccl_semaphore_handle,
+        from_remote_semaphore_handles,
+        to_remote_semaphore_handles,
+    ) = get_ccl_config(mesh_device)
     tt_FalconCausalLM = TtFalconCausalLM(
         mesh_device,
         state_dict,
@@ -96,6 +103,10 @@ def run_test_FalconCausalLM_end_to_end(
         model_config,
         tt_cache_path,
         use_global_cos_sin_cache,
+        worker_sub_device_id,
+        ccl_semaphore_handle,
+        from_remote_semaphore_handles,
+        to_remote_semaphore_handles,
     )
     ttnn.synchronize_device(mesh_device)
     profiler.end("TtFalcon_model_setup")
@@ -307,6 +318,7 @@ def run_test_FalconCausalLM_end_to_end(
 
 
 @skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 @pytest.mark.model_perf_t3000
 @pytest.mark.parametrize("num_devices", (8,), ids=["8chips"])
 @pytest.mark.parametrize(
@@ -390,6 +402,7 @@ def test_perf_bare_metal(
 
 
 @skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 @pytest.mark.parametrize("num_devices", (8,), ids=["8chips"])
 @pytest.mark.parametrize(
     "llm_mode, batch, seq_len, kv_cache_len, expected_compile_time, expected_inference_time, num_layers, model_config_str",

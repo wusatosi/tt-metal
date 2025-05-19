@@ -10,6 +10,7 @@ import ttnn
 from models.demos.t3000.falcon40b.reference.hf_modeling_falcon import FalconForCausalLM
 from models.demos.t3000.falcon40b.tt.falcon_mlp import TtFalconMLP
 from models.demos.t3000.falcon40b.tt.model_config import get_model_config
+from models.demos.t3000.falcon40b.tt.model_utils import get_ccl_config
 from models.utility_functions import skip_for_grayskull
 from tests.tt_eager.python_api_testing.sweep_tests.comparison_funcs import comp_pcc
 from ttnn import ConcatMeshToTensor
@@ -62,7 +63,12 @@ def run_test_FalconMLP_inference(
     pytorch_FalconMLP_model = PytorchFalconMLPModel(hugging_face_reference_model, layer_num)
     pytorch_out = pytorch_FalconMLP_model(mlp_input)
     # TT hardware execution -------------------------------------------------------------
-
+    (
+        worker_sub_device_id,
+        ccl_semaphore_handle,
+        from_remote_semaphore_handles,
+        to_remote_semaphore_handles,
+    ) = get_ccl_config(mesh_device)
     tt_FalconMLP_model = TtFalconMLP(
         mesh_device,
         state_dict,
@@ -71,6 +77,9 @@ def run_test_FalconMLP_inference(
         configuration.hidden_size,
         model_config,
         tt_cache_path,
+        worker_sub_device_id,
+        from_remote_semaphore_handles,
+        to_remote_semaphore_handles,
     )
 
     tt_mlp_input = ttnn.as_tensor(
@@ -96,6 +105,7 @@ def run_test_FalconMLP_inference(
 
 
 @skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 @pytest.mark.parametrize("num_devices", (8,), ids=["8chips"])
 @pytest.mark.parametrize(
     "llm_mode, batch, seq_len",

@@ -11,6 +11,7 @@ from models.demos.t3000.falcon40b.reference.hf_modeling_falcon import FalconForC
 from models.demos.t3000.falcon40b.tt.falcon_causallm import TtFalconCausalLM
 from models.demos.t3000.falcon40b.tt.falcon_common import PytorchFalconCausalLM
 from models.demos.t3000.falcon40b.tt.model_config import get_model_config
+from models.demos.t3000.falcon40b.tt.model_utils import get_ccl_config
 from models.utility_functions import (
     disable_persistent_kernel_cache,
     enable_persistent_kernel_cache,
@@ -46,6 +47,12 @@ def run_test_FalconCausalLM_end_to_end(
     hugging_face_reference_model = FalconForCausalLM.from_pretrained(
         model_name, low_cpu_mem_usage=True, num_hidden_layers=num_layers
     )
+    (
+        worker_sub_device_id,
+        ccl_semaphore_handle,
+        from_remote_semaphore_handles,
+        to_remote_semaphore_handles,
+    ) = get_ccl_config(mesh_device)
     hugging_face_reference_model.eval()
     configuration = hugging_face_reference_model.config
     state_dict = hugging_face_reference_model.state_dict()
@@ -119,6 +126,10 @@ def run_test_FalconCausalLM_end_to_end(
         model_config,
         tt_cache_path,
         use_global_cos_sin_cache,
+        worker_sub_device_id,
+        ccl_semaphore_handle,
+        from_remote_semaphore_handles,
+        to_remote_semaphore_handles,
     )
     ttnn.synchronize_device(mesh_device)
     profiler.end("TtFalcon_model_setup")
@@ -380,6 +391,7 @@ def run_test_FalconCausalLM_end_to_end(
 
 
 @skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 @pytest.mark.parametrize("num_devices", (8,), ids=["8chips"])
 @pytest.mark.parametrize(
     "llm_mode, batch, seq_len, kv_cache_len",

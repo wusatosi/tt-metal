@@ -139,6 +139,7 @@ class TtFalconMLP:
                 memory_config=self.model_config["DEFAULT_MEMCFG"],
             )
         )
+        ttnn.synchronize_device(self.mesh_device)
 
         hidden_states = ttnn.aggregate_as_tensor(hidden_states)  # Workaround reverse
 
@@ -218,6 +219,7 @@ class TtFalconMLP:
                 memory_config=self.model_config["DEFAULT_MEMCFG"],
             )
         )
+        ttnn.synchronize_device(self.mesh_device)
 
         hidden_states = ttnn.aggregate_as_tensor(hidden_states)  # Workaround reverse
 

@@ -10,6 +10,7 @@ import ttnn
 from models.demos.t3000.falcon40b.reference.hf_modeling_falcon import FalconForCausalLM
 from models.demos.t3000.falcon40b.tt.falcon_causallm import TtFalconCausalLM
 from models.demos.t3000.falcon40b.tt.model_config import get_model_config
+from models.demos.t3000.falcon40b.tt.model_utils import get_ccl_config
 from models.utility_functions import skip_for_grayskull
 from tests.tt_eager.python_api_testing.sweep_tests.comparison_funcs import comp_pcc
 from ttnn import ConcatMeshToTensor, ShardTensorToMesh
@@ -76,6 +77,12 @@ def run_test_FalconCausalLM_inference(
         # batch identical sequences for debugging
         model_input = torch.stack([torch.randint(0, seq_len)] * batch).reshape(batch, seq_len)
 
+    (
+        worker_sub_device_id,
+        ccl_semaphore_handle,
+        from_remote_semaphore_handles,
+        to_remote_semaphore_handles,
+    ) = get_ccl_config(mesh_device)
     # Generate dummy kv_cache --------------------------------------------------------------
     if llm_mode == "prefill":
         q_len, kv_len = seq_len, seq_len
@@ -167,6 +174,10 @@ def run_test_FalconCausalLM_inference(
         model_config,
         tt_cache_path,
         use_global_cos_sin_cache=use_global_cos_sin_cache,
+        worker_sub_device_id=worker_sub_device_id,
+        ccl_semaphore_handle=ccl_semaphore_handle,
+        from_remote_semaphore_handles=from_remote_semaphore_handles,
+        to_remote_semaphore_handles=to_remote_semaphore_handles,
     )
 
     # TODO: Generate embeddings and attention_mask on device
@@ -277,6 +288,7 @@ def run_test_FalconCausalLM_inference(
 
 
 @skip_for_grayskull("Requires eth connected devices to run")
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 @pytest.mark.parametrize("num_devices", (8,), ids=["8chips"])
 @pytest.mark.parametrize(
     "llm_mode, batch, seq_len, kv_cache_len",

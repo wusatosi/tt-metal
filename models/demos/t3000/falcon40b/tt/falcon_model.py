@@ -435,6 +435,10 @@ class TtFalconModel(TtFalconModelShared):
         model_config,
         tt_cache_path,
         use_global_cos_sin_cache,
+        worker_sub_device_id,
+        ccl_semaphore_handle,
+        from_remote_semaphore_handles,
+        to_remote_semaphore_handles,
     ):
         super().__init__(
             mesh_device=mesh_device,
@@ -446,6 +450,10 @@ class TtFalconModel(TtFalconModelShared):
             model_config=model_config,
             tt_cache_path=tt_cache_path,
             use_global_cos_sin_cache=use_global_cos_sin_cache,
+            worker_sub_device_id=worker_sub_device_id,
+            ccl_semaphore_handle=ccl_semaphore_handle,
+            from_remote_semaphore_handles=from_remote_semaphore_handles,
+            to_remote_semaphore_handles=to_remote_semaphore_handles,
         )
 
     def __call__(

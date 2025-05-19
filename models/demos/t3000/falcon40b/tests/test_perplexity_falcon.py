@@ -21,6 +21,7 @@ from models.datasets.llm_dataset_utils import (
 from models.demos.t3000.falcon40b.tests.test_utils import load_hf_model
 from models.demos.t3000.falcon40b.tt.falcon_causallm import TtFalconCausalLM
 from models.demos.t3000.falcon40b.tt.model_config import get_model_config
+from models.demos.t3000.falcon40b.tt.model_utils import get_ccl_config
 from models.utility_functions import is_wormhole_b0
 from ttnn import ConcatMeshToTensor
 
@@ -160,6 +161,12 @@ def run_test_perplexity(
 
         # Load tt-metal model
         logger.info("Moving weights (all layers) to device; might take some time...")
+        (
+            worker_sub_device_id,
+            ccl_semaphore_handle,
+            from_remote_semaphore_handles,
+            to_remote_semaphore_handles,
+        ) = get_ccl_config(mesh_device)
         model = TtFalconCausalLM(
             mesh_device,
             state_dict,
@@ -170,6 +177,10 @@ def run_test_perplexity(
             model_config,
             tt_cache_path,
             use_global_cos_sin_cache=True,
+            worker_sub_device_id=worker_sub_device_id,
+            ccl_semaphore_handle=ccl_semaphore_handle,
+            from_remote_semaphore_handles=from_remote_semaphore_handles,
+            to_remote_semaphore_handles=to_remote_semaphore_handles,
         )
         ttnn.synchronize_device(mesh_device)
 
@@ -253,6 +264,7 @@ def test_perplexity_huggingface(
     )
 
 
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 @pytest.mark.parametrize(
     "llm_mode, batch_size, max_seq_len, model_config_str, num_samples, expected_ppl, expected_top1, expected_top5",
     (

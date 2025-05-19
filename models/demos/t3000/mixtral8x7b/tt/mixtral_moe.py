@@ -132,6 +132,7 @@ class TtMoeLayer(LightweightModule):
 
         # All gather
         if mode == "prefill":
+            ttnn.synchronize_device(device=self.mesh_device)
             output_11BH_gathered = ttnn.experimental.all_gather_async(
                 results_11BH,
                 dim=1,
@@ -139,6 +140,7 @@ class TtMoeLayer(LightweightModule):
                 multi_device_global_semaphore=self.ccl_semaphore_handle,
                 topology=ttnn.Topology.Linear,
             )
+            ttnn.synchronize_device(device=self.mesh_device)
             results_11BH.deallocate(True)
             # Sum reduction
             output_11BH_reduced = ttnn.experimental.fast_reduce_nc(
@@ -146,6 +148,7 @@ class TtMoeLayer(LightweightModule):
             )
             output_11BH_gathered.deallocate(True)
         else:  # Decode mode
+            ttnn.synchronize_device(device=self.mesh_device)
             output_11BH_gathered = ttnn.experimental.all_gather_async(
                 results_11BH,
                 dim=2,
@@ -153,10 +156,11 @@ class TtMoeLayer(LightweightModule):
                 multi_device_global_semaphore=self.ccl_semaphore_handle,
                 topology=ttnn.Topology.Linear,
             )
+            ttnn.synchronize_device(device=self.mesh_device)
             results_11BH.deallocate(True)
             # Reduction
             output_11BH_reduced = ttnn.matmul(
                 self.reduce_mask, output_11BH_gathered, compute_kernel_config=self.compute_kernel_reduce
             )
-
+            output_11BH_gathered.deallocate(True)
         return output_11BH_reduced

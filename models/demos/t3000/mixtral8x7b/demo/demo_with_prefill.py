@@ -23,6 +23,7 @@ from models.demos.t3000.mixtral8x7b.tt.mixtral_common import (
 )
 from models.demos.t3000.mixtral8x7b.tt.mixtral_embedding import TtMixtralEmbedding
 from models.demos.t3000.mixtral8x7b.tt.mixtral_model import TtTransformer
+from models.demos.t3000.mixtral8x7b.tt.model_config import get_ccl_config
 from models.demos.utils.llm_demo_utils import create_benchmark_data
 from models.perf.benchmarking_utils import BenchmarkProfiler
 from ttnn import ConcatMeshToTensor, ReplicateTensorToMesh
@@ -141,6 +142,7 @@ def run_mixtral_demo(user_input, batch_size, mesh_device, instruct_mode, test_pr
     else:  # TODO Embedding on device
         pass
 
+    ccl_semaphore_handle, worker_sub_device_id = get_ccl_config(mesh_device)
     logger.info("Loading weights to device...")
     profiler.start("loading_weights_to_device")
     tt_model = TtTransformer(
@@ -150,6 +152,7 @@ def run_mixtral_demo(user_input, batch_size, mesh_device, instruct_mode, test_pr
         layers=list(range(model_args.n_layers)),
         dtype=dtype,
         start_pos_ids=decoding_pos,
+        ccl_semaphore_handle=ccl_semaphore_handle,
         rotary_on_host=False,
     )
     profiler.end("loading_weights_to_device")
@@ -233,6 +236,7 @@ def run_mixtral_demo(user_input, batch_size, mesh_device, instruct_mode, test_pr
         current_rot_mat,
         rot_matrix,
         dtype,
+        ccl_semaphore_handle,
     )
     profiler.end("cache_attention")
 
@@ -456,6 +460,7 @@ def run_mixtral_demo(user_input, batch_size, mesh_device, instruct_mode, test_pr
         )
 
 
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 @pytest.mark.parametrize(
     "input_prompts, prefill_len, instruct_weights",
     [
