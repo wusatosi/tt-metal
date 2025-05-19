@@ -149,7 +149,7 @@ def create_tt_model(
             2,  # batch_size -- samples to load from the prompt JSON
             200,  # max_generated_tokens
             True,  # paged_attention
-            {"page_block_size": 32, "page_max_num_blocks": 4096},  # page_params
+            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params
             {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
             False,  # stop_at_eos
             True,  # ci_only
@@ -169,7 +169,7 @@ def create_tt_model(
         # ModelOptimizations.accuracy,
     ],
 )
-@pytest.mark.parametrize("device_params", [{"trace_region_size": 23887872, "num_command_queues": 2}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"trace_region_size": 25663488, "num_command_queues": 2}], indirect=True)
 @pytest.mark.parametrize(
     "mesh_device",
     [
@@ -236,6 +236,12 @@ def test_demo(
         1,
     ]:  # If the flag is provided, use it. Take an int instead of bool due to parser limitations
         stop_at_eos = request.config.getoption("--stop_at_eos")
+
+    if paged_attention:
+        page_cache_max_seq_len = page_params["page_block_size"] * page_params["page_max_num_blocks"] / batch_size
+        assert (
+            max_seq_len <= page_cache_max_seq_len
+        ), f"max_seq_len ({max_seq_len}) needs to be <= than page_cache_max_seq_len ({page_cache_max_seq_len})"
 
     if not stop_at_eos:
         logger.info(f"The decode generation will only stop at the max_generated_tokens limit == {max_generated_tokens}")
