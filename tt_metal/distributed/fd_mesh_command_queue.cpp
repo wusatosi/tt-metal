@@ -969,7 +969,7 @@ void FDMeshCommandQueue::record_end() {
         allocator.allocate_trace_programs(this->mesh_device_, trace_nodes);
 
         auto& sysmem_manager_for_trace = mesh_device_->get_device(range.start_coord())->sysmem_manager();
-        DispatchArray<uint32_t> expected_workers_completed;
+        DispatchArray<uint32_t> expected_workers_completed{};
         for (auto& node : trace_nodes) {
             auto sub_device_id = node.sub_device_id;
             auto& program = *node.program;
@@ -983,6 +983,10 @@ void FDMeshCommandQueue::record_end() {
             if (program.runs_on_noc_unicast_only_cores()) {
                 num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
             }
+            fmt::println(stderr, "Enqueueing program on subdevice {} with expected workers completed {} and num wokers {}",
+                         *sub_device_id,
+                         expected_workers_completed[*sub_device_id],
+                         num_workers);
 
             // Access the program dispatch-command cache
             uint64_t command_hash = *mesh_device_->get_active_sub_device_manager_id();
