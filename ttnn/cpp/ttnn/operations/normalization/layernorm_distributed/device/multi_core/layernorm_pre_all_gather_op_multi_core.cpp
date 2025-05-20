@@ -304,7 +304,7 @@ operation::ProgramWithCallbacks layernorm_pre_allgather_multi_core_sharded(
 
     auto input_buffer = a.buffer();
     auto output_buffer = output.buffer();
-    float reduce_scaler_val = 1.0f / W;
+    float reduce_scaler_val = 1.0f;  // / W;
     auto bfloat_scaler = bfloat16(reduce_scaler_val);
     uint32_t packed_reduce_scaler = pack_two_bfloat16_into_uint32({bfloat_scaler, bfloat_scaler});
 
@@ -323,12 +323,7 @@ operation::ProgramWithCallbacks layernorm_pre_allgather_multi_core_sharded(
 
     // Create writer_local_kernels BEFORE compute_local_kernels to match TopK pattern
     std::vector<uint32_t> writer_local_compile_args = {
-        (is_rmsnorm ? 1u : 0u),
-        cores_per_dim,
-        cores_per_dim,
-        receiver_sem_addr,
-        sender_sem_addr,
-        cb_merge_data_in_handle};
+        (is_rmsnorm ? 1u : 0u), cores_per_dim, cores_per_dim, receiver_sem_addr, sender_sem_addr, merge_data_cb_index};
     auto writer_local_kernels = CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/normalization/layernorm_distributed/device/kernels/dataflow/"

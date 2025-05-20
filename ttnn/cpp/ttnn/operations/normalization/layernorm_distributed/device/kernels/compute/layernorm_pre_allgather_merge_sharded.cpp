@@ -1,5 +1,8 @@
 #include <cstdint>
+#define REDUCE_OP PoolType::SUM
+#define REDUCE_DIM ReduceDim::REDUCE_ROW
 
+#include "compute_kernel_api/reduce.h"
 #include "compute_kernel_api/eltwise_binary.h"
 #include "compute_kernel_api/layernorm.h"
 #include "compute_kernel_api/bcast.h"
@@ -48,36 +51,73 @@ void MAIN {
     DPRINT << "MC_INPUTS_READY" << ENDL();
 
     cb_reserve_back(cb_out, results_per_dim);  // Reserve space for final output (1 or 2 tiles)
+                                               // In layernorm_pre_allgather_merge_sharded.cpp
+                                               // Assuming:
+                                               // - cb_merge (e.g., tt::CBIndex::c_9) contains the partial sums.
+    // - cb_reduce (e.g., tt::CBIndex::c_1) contains a tile with the value 1.0f (for summation).
+    // - cb_out (e.g., tt::CBIndex::c_14) is the output CB for the final merged sums.
+    // - ex2_stride is the tile stride in cb_merge between E(x^2) from different shards.
+    // - ex_stride is the tile stride in cb_merge between E(x) from different shards.
+    // - dim_shard_factor is the number of shards to merge.
+
     ACQ();
 
-    // Merge E(x**2)
-    add_tiles_init(cb_merge, cb_merge, true);
-    add_tiles(cb_merge, cb_merge, 0, 0, 0);
-    for (uint32_t dim_idx = 1; dim_idx < dim_shard_factor; dim_idx++) {
-        uint32_t idx = dim_idx * ex2_stride;
-        add_tiles(cb_merge, cb_merge, idx, 0, 0);
-    }
-    // DPRINT << "MC_EX2_MERGED" << ENDL();
+    // --- Merge E(x**2) ---
+    // Initialize reduction for E(x^2). Output will go to dst_reg 0.
+    // The source for reduction is cb_merge. The scaler is from cb_reduce.
+    reduce_init_delta<false>(cb_merge, cb_reduce, cb_out);  // cb_out here is for config, not direct packing yet
 
-    // Normalize E(x**2)
-    mul_tiles_init(0, cb_reduce);
-    mul_tiles(0, cb_reduce, 0, 0, 0);
-    pack_tile(0, cb_out, 0);  // Pack normalized E(x^2) to output buffer
-    // DPRINT << "MC_EX2_NORMALIZED" << ENDL();
+    // Reduce the first partial sum for E(x^2) (from shard 0)
+    // Assuming E(x^2) for shard 0 is at tile 0 in cb_merge
+    reduce_tile(cb_merge, cb_reduce, 0 /*tile_idx_in_cb_merge*/, 0 /*scaler_tile_idx*/, 0 /*dst_reg_idx*/);
+
+    // Loop through the rest of the shards and accumulate their E(x^2)
+    for (uint32_t dim_idx = 1; dim_idx < dim_shard_factor; dim_idx++) {
+        uint32_t current_ex2_tile_idx = dim_idx * ex2_stride;
+        reduce_tile(cb_merge, cb_reduce, current_ex2_tile_idx, 0 /*scaler_tile_idx*/, 0 /*dst_reg_idx*/);
+    }
+    // DPRINT << "MC_EX2_MERGED" << ENDL(); // Your DPRINT
+
+    // Normalize E(x**2) - This part can remain similar if dst_reg[0] is the implicit source
+    // Ensure mul_tiles_init and mul_tiles use dst_reg[0] (where sum is) as input.
+    // If cb_reduce for mul_tiles needs a different scaler (e.g. 1/total_elements), ensure it's populated.
+    mul_tiles_init(0 /*src_dst_reg_idx*/, cb_reduce /*scaler_cb_for_norm*/);
+    mul_tiles(
+        0 /*src_dst_reg_idx*/,
+        cb_reduce /*scaler_cb_for_norm*/,
+        0 /*scaler_tile_idx*/,
+        0 /*dummy?*/,
+        0 /*dst_reg_idx*/);
+    pack_tile(0 /*dst_reg_idx*/, cb_out, 0 /*output_tile_idx_for_Ex2*/);  // Pack normalized E(x^2)
+    reduce_revert_delta(cb_out);  // Revert delta for the E(x^2) reduction config
+    // DPRINT << "MC_EX2_NORMALIZED" << ENDL(); // Your DPRINT
 
 #ifndef RMSNORM
-    // Merge E(x)
-    add_tiles_init(cb_merge, cb_merge, true);
-    add_tiles(cb_merge, cb_merge, 1, 1, 1);
+    // --- Merge E(x) ---
+    // Initialize reduction for E(x). Output will go to dst_reg 1.
+    reduce_init_delta<false>(cb_merge, cb_reduce, cb_out);  // cb_out here for config
+
+    // Reduce the first partial sum for E(x) (from shard 0)
+    // Assuming E(x) for shard 0 is at tile 1 (or an offset) in cb_merge
+    uint32_t first_ex_tile_idx = 1;  // Or some base_ex_offset
+    reduce_tile(cb_merge, cb_reduce, first_ex_tile_idx, 0 /*scaler_tile_idx*/, 1 /*dst_reg_idx*/);
+
+    // Loop through the rest of the shards and accumulate their E(x)
     for (uint32_t dim_idx = 1; dim_idx < dim_shard_factor; dim_idx++) {
-        uint32_t idx = dim_idx * ex_stride + 1;
-        add_tiles(cb_merge, cb_merge, idx, 1, 1);
+        uint32_t current_ex_tile_idx = dim_idx * ex_stride + first_ex_tile_idx;  // Adjust based on actual layout
+        reduce_tile(cb_merge, cb_reduce, current_ex_tile_idx, 0 /*scaler_tile_idx*/, 1 /*dst_reg_idx*/);
     }
 
-    // Normalize E(x)
-    mul_tiles_init(1, cb_reduce);
-    mul_tiles(1, cb_reduce, 0, 0, 1);
-    pack_tile(1, cb_out, 1);  // Pack normalized E(x) to output buffer
+    // Normalize E(x) - Similar to E(x^2), using dst_reg 1
+    mul_tiles_init(1 /*src_dst_reg_idx*/, cb_reduce /*scaler_cb_for_norm*/);
+    mul_tiles(
+        1 /*src_dst_reg_idx*/,
+        cb_reduce /*scaler_cb_for_norm*/,
+        0 /*scaler_tile_idx*/,
+        0 /*dummy?*/,
+        1 /*dst_reg_idx*/);
+    pack_tile(1 /*dst_reg_idx*/, cb_out, 1 /*output_tile_idx_for_Ex*/);  // Pack normalized E(x)
+    reduce_revert_delta(cb_out);                                         // Revert delta for the E(x) reduction config
 #endif
 
     REL();

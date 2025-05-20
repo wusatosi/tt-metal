@@ -39,17 +39,17 @@ void kernel_main() {
     for (uint32_t i = 0; i < num_tiles; i += tile_cols_per_sequence) {
         DPRINT << "WF_WAIT_COMPUTE tiles=" << tile_cols_per_sequence << ENDL();
         cb_wait_front(cb_out, tile_cols_per_sequence);
-        // DPRINT << "WF_INPUT_RECEIVED" << ENDL();
+        DPRINT << "WF_INPUT_RECEIVED" << ENDL();
 
         uint32_t l1_read_addr = get_read_ptr(cb_out);
         for (uint32_t j = 0; j < tile_cols_per_sequence; j++) {
-            // DPRINT << "WF_WRITE_TILE" << tile_id << ENDL();
+            DPRINT << "WF_WRITE_TILE" << tile_id << ENDL();
             noc_async_write_tile(tile_id, dst_accessor, l1_read_addr);
             tile_id++;
             l1_read_addr += tile_bytes;
         }
 
-        // DPRINT << "WF_WAIT_WRITE" << ENDL();
+        DPRINT << "WF_WAIT_WRITE" << ENDL();
         noc_async_write_barrier();
 
         // DPRINT << "WF_POP_TILES" << tile_cols_per_sequence << ENDL();

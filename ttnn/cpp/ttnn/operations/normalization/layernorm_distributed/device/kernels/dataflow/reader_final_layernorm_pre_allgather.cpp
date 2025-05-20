@@ -80,20 +80,21 @@ void kernel_main() {
     DPRINT << "RF_WAIT_SENDERS target=" << num_dims_per_group << " sem_addr=" << sender_sem_addr << ENDL();
     noc_semaphore_wait(sender_sem_addr_ptr, num_dims_per_group);
     DPRINT << "RF_SENDERS_DONE val=" << *sender_sem_addr_ptr << ENDL();
+    cb_push_back(merge_data_cb_id, total_tiles_to_read);
 
     // Data is ready in merge CB, pop it (assuming compute doesn't need it persisted)
-    cb_wait_front(merge_data_cb_id, total_tiles_to_read);
-    cb_pop_front(merge_data_cb_id, total_tiles_to_read);
-    DPRINT << "RF_POP_MERGE_CB tiles=" << total_tiles_to_read << ENDL();
+    // cb_wait_front(merge_data_cb_id, total_tiles_to_read);
+    // cb_pop_front(merge_data_cb_id, total_tiles_to_read);
+    // DPRINT << "RF_POP_MERGE_CB tiles=" << total_tiles_to_read << ENDL();
 
     // Reset semaphores for potential next iteration
-    DPRINT << "RF_SET_RECEIVER_INVALID sem_addr=" << receiver_sem_addr << ENDL();
-    noc_semaphore_set(receiver_sem_addr_ptr, 0);
-    DPRINT << "RF_SET_RECEIVER_DONE val=" << *receiver_sem_addr_ptr << ENDL();
+    // DPRINT << "RF_SET_RECEIVER_INVALID sem_addr=" << receiver_sem_addr << ENDL();
+    // noc_semaphore_set(receiver_sem_addr_ptr, 0);
+    // DPRINT << "RF_SET_RECEIVER_DONE val=" << *receiver_sem_addr_ptr << ENDL();
 
-    DPRINT << "RF_SET_SENDER_INVALID sem_addr=" << sender_sem_addr << ENDL();
-    noc_semaphore_set(sender_sem_addr_ptr, 0);
-    DPRINT << "RF_SET_SENDER_DONE val=" << *sender_sem_addr_ptr << ENDL();
+    // DPRINT << "RF_SET_SENDER_INVALID sem_addr=" << sender_sem_addr << ENDL();
+    // noc_semaphore_set(sender_sem_addr_ptr, 0);
+    // DPRINT << "RF_SET_SENDER_DONE val=" << *sender_sem_addr_ptr << ENDL();
 
     DPRINT << "RF_KRNL_END" << ENDL();
 }  // kernel_main()

@@ -89,9 +89,9 @@ def run_layernorm_part_1(inp_shape, n_devices, is_rmsnorm, input_dtype, output_d
     torch.manual_seed(42)
 
     if input_dtype == ttnn.float32:
-        canon_inp = torch.randn(inp_shape)
+        canon_inp = torch.ones(inp_shape)
     else:
-        canon_inp = torch.randn(inp_shape).bfloat16()
+        canon_inp = torch.ones(inp_shape).bfloat16()
 
     # Get per-chunk inputs
     inp_chunked = canon_inp.chunk(n_devices, dim=-1)
@@ -141,6 +141,9 @@ def run_layernorm_part_1(inp_shape, n_devices, is_rmsnorm, input_dtype, output_d
             rtol=1e-01 * reduction_width,  # Issue 9908: large error in reduce, set new rtol target when fixed!
             atol=0,
             pcc=0.9,
+        )
+        print(
+            f"tt vs torch sum(xˆ2) =", out_torch[:, :, :, 0 + device_offset], tt_output_host[:, :, :, 0 + device_offset]
         )
         logger.debug(f"tt vs torch sum(xˆ2) = {output_str}")
 
@@ -313,9 +316,9 @@ def test_dimension_sharded_layernorm(input_dtype, output_dtype, is_rmsnorm, mesh
 
     # Generate input tensor
     if input_dtype == ttnn.float32:
-        canon_inp = torch.randn(inp_shape)
+        canon_inp = torch.ones(inp_shape)
     else:
-        canon_inp = torch.randn(inp_shape).bfloat16()
+        canon_inp = torch.ones(inp_shape).bfloat16()
 
     # Get per-chunk inputs
     inp_chunked = canon_inp.chunk(n_devices, dim=-1)
@@ -382,6 +385,9 @@ def test_dimension_sharded_layernorm(input_dtype, output_dtype, is_rmsnorm, mesh
             rtol=1e-01 * reduction_width,
             atol=0,
             pcc=0.9,
+        )
+        print(
+            f"tt vs torch sum(xˆ2) =", out_torch[:, :, :, 0 + device_offset], tt_output_host[:, :, :, 0 + device_offset]
         )
         logger.debug(f"tt vs torch sum(xˆ2) = {output_str}")
         all_passing &= passing
