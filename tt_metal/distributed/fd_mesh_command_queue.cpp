@@ -799,7 +799,7 @@ void FDMeshCommandQueue::record_end() {
     // At the beginning of the trace, expected_num_workers_completed are 0 on all devices on for each sub-device in the trace. launch_msg_rd_ptr will also be 0 for all core-types used on each subdevice in the trace.
     // At the end of the trace, everthing should be the same as when the trace started.
     // While running the traces, launch_msg_rd_ptr and expected_num_workers_completed may be different on different devices, unlike in normal program execution.
-    #if 0
+    #if 1
     std::vector<MeshCoordinateRange> unused_range{MeshCoordinateRange{mesh_device_->shape()}};
     for (auto& trace_node : trace_nodes_) {
         for (auto& [device_range, program] : trace_node.trace_nodes) {
@@ -976,6 +976,7 @@ void FDMeshCommandQueue::record_end() {
             expected_workers_completed,
             /*reset_launch_msg_state=*/true);
             #endif
+
         trace_dispatch::reset_worker_state_after_trace_execution(
             mesh_device_, sysmem_manager_for_trace, id_,
             expected_workers_completed,
@@ -991,7 +992,9 @@ void FDMeshCommandQueue::record_end() {
         max_trace_size = std::max(max_trace_size, bypass_data.size());
 
         trace_ctx_->ordered_trace_data.push_back(MeshTraceData{range, std::move(bypass_data)});
-
+    }
+    for (auto& range : unused_range) {
+        trace_ctx_->ordered_trace_data.push_back(MeshTraceData{range, exec_buf_end});
     }
     trace_ctx_->total_trace_size = max_trace_size * sizeof(uint32_t);
 
