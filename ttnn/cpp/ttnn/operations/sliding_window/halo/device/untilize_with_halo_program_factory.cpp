@@ -504,6 +504,8 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core(
     int half_max_bandwidth_stick_size =
         device->arch() == tt::ARCH::WORMHOLE_B0 ? 256 : 512;  // 256 for wormhole, 512 for blackhole
     uint32_t local_temp_cb_id = 0;
+    // printf("max_local_size = %d\n", max_local_size);
+    // printf("max_remote_size = %d\n", max_ref_size);
     if (out_stick_nbytes <= half_max_bandwidth_stick_size && max_local_size > 0) {  // we will use the temp local buffer
         local_temp_cb_id = cb_indices.get_next_cb_id();
         auto local_temp_cb_config =
@@ -570,7 +572,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core(
     int32_t sync_cb_id2 = cb_indices.get_next_cb_id();
     auto sync_cb2 = create_circular_buffer(program, all_cores, sync_cb_id2, tt::DataFormat::UInt16, 1, 2);
 
-    printf("num_active_cores = %d\n", num_active_cores);
+    // printf("num_active_cores = %d\n", num_active_cores);
 
     // reader kernel
     std::vector<uint32_t> reader_ct_args = {

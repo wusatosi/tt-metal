@@ -235,10 +235,11 @@ def run_max_pool(
     #         gold_shard = output_shards[core_id][0]
     #         opt_shard = output_shards[core_id][1]
 
-    #         y_limit = 4372
+    #         y_low_limit = 5600
+    #         y_high_limits = [5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5650, 5607, 5649, 5608, 5649, 5608, 5649, 5608, 5649, 5608, 5649, 5608, 5649, 5608, 5649, 5608, 5649, 5608, 5649, 5608, 5649, 5608, 5649, 5608, 5574]
 
-    #         gold_shard = gold_shard[:, :, :y_limit, :]
-    #         opt_shard = opt_shard[:, :, :y_limit, :]
+    #         gold_shard = gold_shard[:, :, y_low_limit:y_high_limits[core_id], :]
+    #         opt_shard = opt_shard[:, :, y_low_limit:y_high_limits[core_id], :]
     #         diff = gold_shard[0][0] - opt_shard[0][0]
 
     #         diff = diff.to(torch.float32)

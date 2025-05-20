@@ -321,6 +321,7 @@ std::vector<ShardBoundary> generate_shard_boundaries(
         //        boundary.input_range.end);
         // printf("    input delta: %d\n", boundary.input_range.end - boundary.input_range.start);
         // printf("    output delta: %d\n", boundary.output_range.end - boundary.output_range.start);
+        // printf("%d, ", boundary.input_range.end - boundary.input_range.start);
         core++;
     };
 
@@ -860,15 +861,19 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
         }
         max_len += 2;  // account for the null plug
 
+        // printf("PAD CONFIG\n");
+        int core = 0;
         std::vector<std::vector<std::vector<uint16_t>>> flattened_config(2);
         for (const auto& data : config) {
             std::vector<std::vector<uint16_t>> flat_data(2, std::vector<uint16_t>(max_len, 0));
             uint32_t idx1 = 0, idx2 = 0;
+            // printf("    core: %d\n", core);
             for (size_t i = 0; i < data.size(); ++i) {
                 auto [dst_start, length] = data[i];
                 if (i % 2 == 0 || in_place) {
                     flat_data[0][idx1++] = dst_start;
                     flat_data[0][idx1++] = length;
+                    // printf("        dst: %d, size: %d\n", dst_start, length);
                 } else {
                     flat_data[1][idx2++] = dst_start;
                     flat_data[1][idx2++] = length;
@@ -877,6 +882,8 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
 
             flattened_config[0].emplace_back(std::move(flat_data[0]));
             flattened_config[1].emplace_back(std::move(flat_data[1]));
+
+            core++;
         }
         return flattened_config;
     };
@@ -1144,9 +1151,9 @@ std::tuple<std::vector<std::vector<std::vector<uint16_t>>>, int, int> generate_i
                         idx1 += 3;
                         auto [src_start, dst_start, length] = subdata[i];
                         bool no_wait = flattened_config[0][core][idx1];
-                        if (!no_wait) {
-                            ref_size += length;
-                        }
+                        // if (!no_wait) {
+                        ref_size += length;
+                        //}
                         idx1++;
                         idx1 = flattened_config[0][core][len_idx1] ? idx1 : idx1 - 4;
                     }
