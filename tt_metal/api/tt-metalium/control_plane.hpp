@@ -21,57 +21,52 @@ public:
     ~ControlPlane();
     void initialize_from_mesh_graph_desc_file(const std::string& mesh_graph_desc_file);
 
-    void write_routing_tables_to_chip(mesh_id_t mesh_id, chip_id_t chip_id) const;
-    void write_routing_tables_to_all_chips() const;
-
     // Printing functions
     void print_routing_tables() const;
     void print_ethernet_channels() const;
 
     // Converts chip level routing tables to per ethernet channel
     void configure_routing_tables_for_fabric_ethernet_channels();
+    void write_routing_tables_to_all_chips() const;
 
     // Return mesh_id, chip_id from physical chip id
-    std::pair<mesh_id_t, chip_id_t> get_mesh_chip_id_from_physical_chip_id(chip_id_t physical_chip_id) const;
-    chip_id_t get_physical_chip_id_from_mesh_chip_id(const std::pair<mesh_id_t, chip_id_t>& mesh_chip_id) const;
+    FabricNodeId get_fabric_node_id_from_physical_chip_id(chip_id_t physical_chip_id) const;
+    chip_id_t get_physical_chip_id_from_fabric_node_id(const FabricNodeId& fabric_node_id) const;
 
     std::vector<mesh_id_t> get_user_physical_mesh_ids() const;
     MeshShape get_physical_mesh_shape(mesh_id_t mesh_id) const;
 
     // Return valid ethernet channels on the specificed routing plane
     std::vector<chan_id_t> get_valid_eth_chans_on_routing_plane(
-        mesh_id_t mesh_id, chip_id_t chip_id, routing_plane_id_t routing_plane_id) const;
+        FabricNodeId fabric_node_id, routing_plane_id_t routing_plane_id) const;
 
     // Return path from device to device in the fabric
     std::vector<std::pair<chip_id_t, chan_id_t>> get_fabric_route(
-        mesh_id_t src_mesh_id,
-        chip_id_t src_chip_id,
-        mesh_id_t dst_mesh_id,
-        chip_id_t dst_chip_id,
-        chan_id_t src_chan_id) const;
+        FabricNodeId src_fabric_node_id, FabricNodeId dst_fabric_node_id, chan_id_t src_chan_id) const;
 
     // Return routers to get to the destination chip, avoid local eth to eth routing. CoreCoord is a virtual coord.
     std::vector<std::pair<routing_plane_id_t, CoreCoord>> get_routers_to_chip(
-        mesh_id_t src_mesh_id, chip_id_t src_chip_id, mesh_id_t dst_mesh_id, chip_id_t dst_chip_id) const;
+        FabricNodeId src_fabric_node_id, FabricNodeId dst_fabric_node_id) const;
 
     stl::Span<const chip_id_t> get_intra_chip_neighbors(
-        mesh_id_t src_mesh_id, chip_id_t src_chip_id, RoutingDirection routing_direction) const;
+        FabricNodeId src_fabric_node_id, RoutingDirection routing_direction) const;
     std::unordered_map<mesh_id_t, std::vector<chip_id_t>> get_chip_neighbors(
-        mesh_id_t src_mesh_id, chip_id_t src_chip_id, RoutingDirection routing_direction) const;
+        FabricNodeId src_fabric_node_id, RoutingDirection routing_direction) const;
 
     routing_plane_id_t get_routing_plane_id(chan_id_t eth_chan_id) const;
 
-    size_t get_num_active_fabric_routers(mesh_id_t mesh_id, chip_id_t chip_id) const;
+    size_t get_num_active_fabric_routers(FabricNodeId fabric_node_id) const;
 
     std::set<chan_id_t> get_active_fabric_eth_channels_in_direction(
-        mesh_id_t mesh_id, chip_id_t chip_id, RoutingDirection routing_direction) const;
+        FabricNodeId fabric_node_id, RoutingDirection routing_direction) const;
 
     std::set<std::pair<chan_id_t, eth_chan_directions>> get_active_fabric_eth_channels(
-        mesh_id_t mesh_id, chip_id_t chip_id) const;
-    eth_chan_directions get_eth_chan_direction(mesh_id_t mesh_id, chip_id_t chip_id, int chan) const;
+        FabricNodeId fabric_node_id) const;
+    eth_chan_directions get_eth_chan_direction(FabricNodeId fabric_node_id, int chan) const;
     // TODO: remove this converter, we should consolidate the directions here
     eth_chan_directions routing_direction_to_eth_direction(RoutingDirection direction) const;
 
+    // The following apis should probably be private, and exposed only to some Metal runtime objects
     void set_routing_mode(uint16_t mode);
     uint16_t get_routing_mode() const;
 
@@ -86,14 +81,14 @@ private:
     // TODO: remove this from local node control plane. Can get it from the global control plane
     std::unique_ptr<RoutingTableGenerator> routing_table_generator_;
 
-    std::map<FabricMeshId, chip_id_t> logical_mesh_chip_id_to_physical_chip_id_mapping_;
+    std::map<FabricNodeId, chip_id_t> logical_mesh_chip_id_to_physical_chip_id_mapping_;
     // map[mesh_fabric_id][direction] has a vector of ethernet channels in that direction
-    std::map<FabricMeshId, std::unordered_map<RoutingDirection, std::vector<chan_id_t>>>
+    std::map<FabricNodeId, std::unordered_map<RoutingDirection, std::vector<chan_id_t>>>
         router_port_directions_to_physical_eth_chan_map_;
     // tables[mesh_fabric_id][eth_chan]
-    std::map<FabricMeshId, std::vector<std::vector<chan_id_t>>>
+    std::map<FabricNodeId, std::vector<std::vector<chan_id_t>>>
         intra_mesh_routing_tables_;  // table that will be written to each ethernet core
-    std::map<FabricMeshId, std::vector<std::vector<chan_id_t>>>
+    std::map<FabricNodeId, std::vector<std::vector<chan_id_t>>>
         inter_mesh_routing_tables_;  // table that will be written to each ethernet core
 
     // Tries to get a valid downstream channel from the candidate_target_chans
@@ -108,11 +103,13 @@ private:
     std::vector<chip_id_t> get_mesh_physical_chip_ids(
         std::uint32_t mesh_ns_size, std::uint32_t mesh_ew_size, chip_id_t nw_chip_physical_chip_id) const;
 
-    std::tuple<mesh_id_t, chip_id_t, chan_id_t> get_connected_mesh_chip_chan_ids(
-        mesh_id_t mesh_id, chip_id_t chip_id, chan_id_t chan_id) const;
+    std::pair<FabricNodeId, chan_id_t> get_connected_mesh_chip_chan_ids(
+        FabricNodeId fabric_node_id, chan_id_t chan_id) const;
 
     // Takes RoutingTableGenerator table and converts to routing tables for each ethernet port
     void convert_fabric_routing_table_to_chip_routing_table();
+
+    void write_routing_tables_to_chip(mesh_id_t mesh_id, chip_id_t chip_id) const;
 
     std::unique_ptr<FabricContext> fabric_context_;
 };

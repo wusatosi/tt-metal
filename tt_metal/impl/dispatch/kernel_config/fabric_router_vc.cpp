@@ -35,11 +35,16 @@ void FabricRouterVC::GenerateDependentConfigs() {
         // Upstream can be PREFETCH_H or DISPATCH_D
         // Downstream can be PREFETCH_D or DISPATCH_H
         // 4 Combinations
-        const auto& [src_mesh_id, src_chip_id] =
-            control_plane->get_mesh_chip_id_from_physical_chip_id(us_kernel->GetDeviceId());
-        const auto& [dst_mesh_id, dst_chip_id] =
-            control_plane->get_mesh_chip_id_from_physical_chip_id(ds_kernel->GetDeviceId());
-        const auto& routers = control_plane->get_routers_to_chip(src_mesh_id, src_chip_id, dst_mesh_id, dst_chip_id);
+        const auto& src_fabric_node_id =
+            control_plane->get_fabric_node_id_from_physical_chip_id(us_kernel->GetDeviceId());
+        const auto& dst_fabric_node_id =
+            control_plane->get_fabric_node_id_from_physical_chip_id(ds_kernel->GetDeviceId());
+        auto src_mesh_id = src_fabric_node_id.mesh_id;
+        auto src_chip_id = src_fabric_node_id.chip_id;
+        auto dst_mesh_id = dst_fabric_node_id.mesh_id;
+        auto dst_chip_id = dst_fabric_node_id.chip_id;
+
+        const auto& routers = control_plane->get_routers_to_chip(src_fabric_node_id, dst_fabric_node_id);
         TT_ASSERT(
             !routers.empty(),
             "No routers for (mesh {}, chip {}) to (mesh {}, chip{})",
@@ -49,8 +54,7 @@ void FabricRouterVC::GenerateDependentConfigs() {
             dst_chip_id);
         const auto& [routing_plane, fabric_router] = routers.front();
 
-        const auto& routers_rev =
-            control_plane->get_routers_to_chip(dst_mesh_id, dst_chip_id, src_mesh_id, src_chip_id);
+        const auto& routers_rev = control_plane->get_routers_to_chip(dst_fabric_node_id, src_fabric_node_id);
         TT_ASSERT(
             !routers_rev.empty(),
             "No routers for return path (mesh {}, chip {}) to (mesh {}, chip{})",

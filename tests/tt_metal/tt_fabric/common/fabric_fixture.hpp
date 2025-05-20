@@ -123,8 +123,8 @@ void RunTestLineMcast(
 
 bool find_device_with_neighbor_in_multi_direction(
     BaseFabricFixture* fixture,
-    std::pair<mesh_id_t, chip_id_t>& src_mesh_chip_id,
-    std::unordered_map<RoutingDirection, std::vector<std::pair<mesh_id_t, chip_id_t>>>& dst_mesh_chip_ids_by_dir,
+    FabricNodeId& src_fabric_node_id,
+    std::unordered_map<RoutingDirection, std::vector<FabricNodeId>>& dst_fabric_node_ids_by_dir,
     chip_id_t& src_physical_device_id,
     std::unordered_map<RoutingDirection, std::vector<chip_id_t>>& dst_physical_device_ids_by_dir,
     const std::unordered_map<RoutingDirection, uint32_t>& mcast_hops,
@@ -132,8 +132,8 @@ bool find_device_with_neighbor_in_multi_direction(
 
 bool find_device_with_neighbor_in_direction(
     BaseFabricFixture* fixture,
-    std::pair<mesh_id_t, chip_id_t>& src_mesh_chip_id,
-    std::pair<mesh_id_t, chip_id_t>& dst_mesh_chip_id,
+    FabricNodeId& src_fabric_node_id,
+    FabricNodeId& dst_fabric_node_id,
     chip_id_t& src_physical_device_id,
     chip_id_t& dst_physical_device_id,
     RoutingDirection direction);

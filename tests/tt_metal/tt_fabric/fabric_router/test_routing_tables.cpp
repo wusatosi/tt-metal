@@ -51,9 +51,9 @@ TEST_F(ControlPlaneFixture, TestTGFabricRoutes) {
         "tt_metal/fabric/mesh_graph_descriptors/tg_mesh_graph_descriptor.yaml";
     auto control_plane = std::make_unique<ControlPlane>(tg_mesh_graph_desc_path.string());
     control_plane->configure_routing_tables_for_fabric_ethernet_channels();
-    auto valid_chans = control_plane->get_valid_eth_chans_on_routing_plane(0, 0, 3);
+    auto valid_chans = control_plane->get_valid_eth_chans_on_routing_plane(FabricNodeId(0, 0), 3);
     for (auto chan : valid_chans) {
-        auto path = control_plane->get_fabric_route(0, 0, 4, 31, chan);
+        auto path = control_plane->get_fabric_route(FabricNodeId(0, 0), FabricNodeId(4, 31), chan);
     }
 }
 
@@ -78,13 +78,13 @@ TEST_F(ControlPlaneFixture, TestT3kFabricRoutes) {
         "tt_metal/fabric/mesh_graph_descriptors/t3k_mesh_graph_descriptor.yaml";
     auto control_plane = std::make_unique<ControlPlane>(t3k_mesh_graph_desc_path.string());
     control_plane->configure_routing_tables_for_fabric_ethernet_channels();
-    auto valid_chans = control_plane->get_valid_eth_chans_on_routing_plane(0, 0, 0);
+    auto valid_chans = control_plane->get_valid_eth_chans_on_routing_plane(FabricNodeId(0, 0), 0);
     for (auto chan : valid_chans) {
-        auto path = control_plane->get_fabric_route(0, 0, 0, 7, chan);
+        auto path = control_plane->get_fabric_route(FabricNodeId(0, 0), FabricNodeId(0, 7), chan);
     }
-    valid_chans = control_plane->get_valid_eth_chans_on_routing_plane(0, 0, 1);
+    valid_chans = control_plane->get_valid_eth_chans_on_routing_plane(FabricNodeId(0, 0), 1);
     for (auto chan : valid_chans) {
-        auto path = control_plane->get_fabric_route(0, 0, 0, 7, chan);
+        auto path = control_plane->get_fabric_route(FabricNodeId(0, 0), FabricNodeId(0, 7), chan);
     }
 }
 
@@ -109,21 +109,21 @@ TEST_F(ControlPlaneFixture, TestT3kSplitMeshFabricRoutes) {
         "tt_metal/fabric/mesh_graph_descriptors/t3k_split_mesh_graph_descriptor.yaml";
     auto control_plane = std::make_unique<ControlPlane>(t3k_mesh_graph_desc_path.string());
     control_plane->configure_routing_tables_for_fabric_ethernet_channels();
-    auto valid_chans = control_plane->get_valid_eth_chans_on_routing_plane(0, 0, 0);
+    auto valid_chans = control_plane->get_valid_eth_chans_on_routing_plane(FabricNodeId(0, 0), 0);
     for (auto chan : valid_chans) {
-        auto path = control_plane->get_fabric_route(0, 0, 0, 3, chan);
+        auto path = control_plane->get_fabric_route(FabricNodeId(0, 0), FabricNodeId(0, 3), chan);
     }
-    valid_chans = control_plane->get_valid_eth_chans_on_routing_plane(0, 1, 1);
+    valid_chans = control_plane->get_valid_eth_chans_on_routing_plane(FabricNodeId(0, 1), 1);
     for (auto chan : valid_chans) {
-        auto path = control_plane->get_fabric_route(0, 1, 1, 2, chan);
+        auto path = control_plane->get_fabric_route(FabricNodeId(0, 1), FabricNodeId(1, 2), chan);
     }
-    valid_chans = control_plane->get_valid_eth_chans_on_routing_plane(0, 0, 0);
+    valid_chans = control_plane->get_valid_eth_chans_on_routing_plane(FabricNodeId(0, 0), 0);
     for (auto chan : valid_chans) {
-        auto path = control_plane->get_fabric_route(0, 0, 1, 3, chan);
+        auto path = control_plane->get_fabric_route(FabricNodeId(0, 0), FabricNodeId(1, 3), chan);
     }
-    valid_chans = control_plane->get_valid_eth_chans_on_routing_plane(1, 2, 1);
+    valid_chans = control_plane->get_valid_eth_chans_on_routing_plane(FabricNodeId(1, 2), 1);
     for (auto chan : valid_chans) {
-        auto path = control_plane->get_fabric_route(1, 2, 0, 2, chan);
+        auto path = control_plane->get_fabric_route(FabricNodeId(1, 2), FabricNodeId(0, 2), chan);
     }
 }
 

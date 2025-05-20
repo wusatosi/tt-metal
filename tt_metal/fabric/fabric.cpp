@@ -51,18 +51,18 @@ void append_fabric_connection_rt_args(
 
     auto* control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
 
-    auto [src_mesh_id, src_logical_chip_id] = control_plane->get_mesh_chip_id_from_physical_chip_id(src_chip_id);
-    auto [dst_mesh_id, dst_logical_chip_id] = control_plane->get_mesh_chip_id_from_physical_chip_id(dst_chip_id);
+    auto src_fabric_node_id = control_plane->get_fabric_node_id_from_physical_chip_id(src_chip_id);
+    auto dst_fabric_node_id = control_plane->get_fabric_node_id_from_physical_chip_id(dst_chip_id);
 
     const auto& fabric_context = control_plane->get_fabric_context();
     auto topology = fabric_context.get_fabric_topology();
     bool is_2d_fabric = topology == Topology::Mesh;
     if (!is_2d_fabric) {
         TT_FATAL(
-            src_mesh_id == dst_mesh_id,
+            src_fabric_node_id.mesh_id == dst_fabric_node_id.mesh_id,
             "Currently only the chips on the same mesh are supported for 1D fabric. Src mesh id: {}, Dst mesh id: {}",
-            src_mesh_id,
-            dst_mesh_id);
+            src_fabric_node_id.mesh_id,
+            dst_fabric_node_id.mesh_id);
     }
 
     auto routing_directions = {RoutingDirection::N, RoutingDirection::S, RoutingDirection::E, RoutingDirection::W};
@@ -70,14 +70,14 @@ void append_fabric_connection_rt_args(
     // mimic the 1d fabric connection setup steps to correctly find the candidate links
     for (const auto& direction : routing_directions) {
         // This assumes all neighbor chips to the dst mesh are the same
-        auto neighbors = control_plane->get_chip_neighbors(src_mesh_id, src_logical_chip_id, direction);
-        auto neighbor_mesh_chips = neighbors.find(dst_mesh_id);
-        if (neighbor_mesh_chips == neighbors.end() || neighbor_mesh_chips->second[0] != dst_logical_chip_id) {
+        auto neighbors = control_plane->get_chip_neighbors(src_fabric_node_id, direction);
+        auto neighbor_mesh_chips = neighbors.find(dst_fabric_node_id.mesh_id);
+        if (neighbor_mesh_chips == neighbors.end() || neighbor_mesh_chips->second[0] != dst_fabric_node_id.chip_id) {
             continue;
         }
 
         candidate_ethernet_cores =
-            control_plane->get_active_fabric_eth_channels_in_direction(src_mesh_id, src_logical_chip_id, direction);
+            control_plane->get_active_fabric_eth_channels_in_direction(src_fabric_node_id, direction);
         break;
     }
 
@@ -90,8 +90,7 @@ void append_fabric_connection_rt_args(
     TT_FATAL(link_idx < candidate_ethernet_cores.value().size(), "link idx out of bounds");
 
     auto fabric_router_channel = get_ordered_fabric_eth_chans(src_chip_id, candidate_ethernet_cores.value())[link_idx];
-    auto router_direction =
-        control_plane->get_eth_chan_direction(src_mesh_id, src_logical_chip_id, fabric_router_channel);
+    auto router_direction = control_plane->get_eth_chan_direction(src_fabric_node_id, fabric_router_channel);
 
     CoreCoord fabric_router_virtual_core =
         tt::tt_metal::MetalContext::instance().get_cluster().get_virtual_eth_core_from_channel(
