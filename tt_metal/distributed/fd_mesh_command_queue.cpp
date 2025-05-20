@@ -795,9 +795,42 @@ void FDMeshCommandQueue::record_begin(const MeshTraceId& trace_id, const std::sh
 void FDMeshCommandQueue::record_end() {
     const auto& hal = MetalContext::instance().hal();
 
+    #if 0
+    std::vector<MeshCoordinateRange> unused_range{MeshCoordinateRange{mesh_device_->shape()}};
+    for (auto& trace_node : trace_nodes_) {
+        for (auto& [device_range, program] : trace_node.trace_nodes) {
+            std::vector<size_t> device_ranges_to_invalidate;
+            for (uint32_t i = 0; i < unused_range.size(); i++) {
+                if (unused_range[i].intersects(device_range)) {
+                    auto complement = subtract(unused_range[i], device_range);
+                    device_ranges_to_invalidate.push_back(i);
+                    for (const auto& complement_range : complement.ranges()) {
+                        unused_range.push_back(complement_range);
+                    }
+                }
+            }
+            if (device_ranges_to_invalidate.size() > 0) {
+                uint32_t remove_index = 0;
+                unused_range.erase(std::remove_if(unused_range.begin(), unused_range.end(), [&](const MeshCoordinateRange& range) {
+                    if (remove_index >= device_ranges_to_invalidate.size()) {
+                        return false;
+                    }
+                    uint32_t idx = &range - &*unused_range.begin();
+                    if (idx == device_ranges_to_invalidate[remove_index]) {
+                        remove_index++;
+                        return true;
+                    }
+                    return false;
+                }), unused_range.end());
+            }
+        }
+    }
+    #endif
+
     std::vector<MeshCoordinateRange> device_ranges;
     for (auto& trace_node : trace_nodes_) {
         for (auto& [device_range, program] : trace_node.trace_nodes) {
+
             bool intersection_found = false;
             std::vector<MeshCoordinateRange> device_ranges_to_invalidate;
             for (auto& existing_range : device_ranges) {
