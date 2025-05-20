@@ -46,10 +46,6 @@ The following are the APIs to create Sub-Device core groupings, and to configure
 * `sub_device_0 = ttnn.SubDevice([tensix_core_range_set_0, ethernet_core_range_set_0])`
 
   API to create a SubDevice object representing the configuration of cores we want to track as one group for synchronization/allocations.
-* `sub_device_manager_0 = device.create_sub_device_manager([sub_device_0, sub_device_1], 3200)`
-
-  This takes in a list of sub-devices as well as the local allocator size (described in the following section), and generates the required state/metadata for the specified configuration.
-  Note that this does not change the current configuration of the device.
 
 * `sub_device_manager_0 = device.create_sub_device_manager([sub_device_0, sub_device_1], 3200)`
 
@@ -185,7 +181,7 @@ The following is an example of setting up a global circular buffer for use withi
   Note that the ranges of local and remote circular buffer indices cannot overlap, that is the max local index must be less than the minimum remote index.
   Local circular buffers can be in-placed with a remote circular buffer, as this is useful for using the remote circular buffer for synchronization with other cores, while the local circular buffer is used for feeding data to the compute kernel, as the compute functions/LLKs cannot use the remote config.
 
-* `tt_metal::v1::experimental::UpdateDynamicCircularBufferAddress(program, cb_handle, global_circular_buffer);`
+* `tt_metal::experimental::UpdateDynamicCircularBufferAddress(program, cb_handle, global_circular_buffer);`
 
   Updates an existing circular buffer specified by the handle that was associated with a global circular buffer to the address space of a different global circular buffer.
   The new global circular buffer is expected to contain all the cores used by the circular buffer config.

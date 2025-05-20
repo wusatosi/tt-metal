@@ -2,24 +2,15 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import torch
 import pytest
-import math
+import torch
 from loguru import logger
-from torch import nn
 
 import ttnn
-from tests.tt_eager.python_api_testing.sweep_tests.comparison_funcs import (
-    comp_pcc,
-)
-from models.utility_functions import torch2tt_tensor, tt2torch_tensor, skip_for_grayskull
-from models.demos.t3000.falcon40b.tt.model_config import (
-    get_model_config,
-)
-
-from models.demos.t3000.falcon40b.reference.hf_modeling_falcon import (
-    FalconForCausalLM,
-)
+from models.demos.t3000.falcon40b.reference.hf_modeling_falcon import FalconForCausalLM
+from models.demos.t3000.falcon40b.tt.model_config import get_model_config
+from models.utility_functions import skip_for_grayskull, torch2tt_tensor, tt2torch_tensor
+from tests.tt_eager.python_api_testing.sweep_tests.comparison_funcs import comp_pcc
 
 
 class PytorchFusedLayernorm(torch.nn.Module):
@@ -183,6 +174,7 @@ class TtFusedFalconLayernorm:
             bias=None,
             memory_config=self.sharded_memconfig,
             program_config=self.prg_config,
+            compute_kernel_config=ttnn.WormholeComputeKernelConfig(math_fidelity=ttnn.MathFidelity.HiFi4),
         )
 
         out1 = ttnn.bcast(

@@ -35,9 +35,9 @@ void ScaledDotProductAttentionDecode::validate(
     // Input 0 must be sharded by height or DRAM interleaved. All other inputs must be in DRAM.
     const auto Q_memcfg = input_tensors.at(0).memory_config();
     if (input_tensors.at(0).is_sharded()) {
-        TT_FATAL(Q_memcfg.memory_layout == TensorMemoryLayout::HEIGHT_SHARDED, "Error");
+        TT_FATAL(Q_memcfg.memory_layout() == TensorMemoryLayout::HEIGHT_SHARDED, "Error");
     } else {
-        TT_FATAL(Q_memcfg.buffer_type == tt::tt_metal::BufferType::DRAM, "Error");
+        TT_FATAL(Q_memcfg.buffer_type() == tt::tt_metal::BufferType::DRAM, "Error");
     }
 
     for (std::size_t i = 1; i < input_tensors.size(); i++) {
@@ -45,7 +45,7 @@ void ScaledDotProductAttentionDecode::validate(
     }
     // Output memconfig must be height sharded or DRAM
     if (this->output_mem_config.is_sharded()) {
-        TT_FATAL(this->output_mem_config.memory_layout == TensorMemoryLayout::HEIGHT_SHARDED, "Error");
+        TT_FATAL(this->output_mem_config.memory_layout() == TensorMemoryLayout::HEIGHT_SHARDED, "Error");
     }
 
     if (!this->is_causal) {
@@ -72,6 +72,8 @@ void ScaledDotProductAttentionDecode::validate(
                     mask_shape[3],
                     k_shape[2]);
             }
+
+            TT_FATAL(k_chunk_size > 0, "Must provide k_chunk_size if using attention mask!");
             TT_FATAL(
                 mask_shape[3] % k_chunk_size == 0,
                 "Mask sequence length must be multiple of chunk size, got: {} and {}",
@@ -128,8 +130,10 @@ void ScaledDotProductAttentionDecode::validate(
         TT_FATAL(k_shape[3] == v_shape[3] && k_shape[3] == q_shape[3], "Q, K, V must have same hidden size");
 
         // Validate chunk size for paged version
+        // k_chunk_size can also be zero; if k_chunk_size = 0, figure it out in kernels
         TT_FATAL(k_chunk_size % 32 == 0, "Chunk size must be multiple of 32, got: {}", k_chunk_size);
         if (!this->is_causal) {
+            TT_FATAL(k_chunk_size > 0, "Must provide k_chunk_size if paged and non-causal!");
             TT_FATAL(
                 (page_table_shape[1] * k_shape[2]) % k_chunk_size == 0,
                 "K sequence length must be multiple of chunk size, got: {} and {}",
@@ -162,6 +166,7 @@ void ScaledDotProductAttentionDecode::validate(
         TT_FATAL(k_shape[-2] == v_shape[-2], "Error");
 
         // Validate chunk size for unpaged version
+        TT_FATAL(k_chunk_size > 0, "Must provide k_chunk_size if non-causal!");
         TT_FATAL(k_chunk_size % 32 == 0, "Chunk size must be multiple of 32, got: {}", k_chunk_size);
         TT_FATAL(
             k_shape[2] % k_chunk_size == 0,

@@ -2,13 +2,12 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import ttnn
 from typing import Optional
+
 import torch
-from ttnn.model_preprocessing import (
-    preprocess_linear_bias,
-    preprocess_linear_weight,
-)
+from ttnn.model_preprocessing import preprocess_linear_bias, preprocess_linear_weight
+
+import ttnn
 
 
 def get_head_mask(
@@ -192,6 +191,7 @@ def transformer_block(
         bias=parameters.sa_layer_norm.bias,
         epsilon=1e-12,
         memory_config=ttnn.L1_MEMORY_CONFIG,
+        compute_kernel_config=ttnn.WormholeComputeKernelConfig(math_fidelity=ttnn.MathFidelity.HiFi4),
     )
     ttnn.deallocate(x)
 
@@ -203,6 +203,7 @@ def transformer_block(
         bias=parameters.output_layer_norm.bias,
         epsilon=1e-12,
         memory_config=ttnn.L1_MEMORY_CONFIG,
+        compute_kernel_config=ttnn.WormholeComputeKernelConfig(math_fidelity=ttnn.MathFidelity.HiFi4),
     )
 
     ttnn.deallocate(sa_output)
@@ -322,6 +323,7 @@ def distilbert(
         weight=parameters.embeddings.LayerNorm.weight,
         bias=parameters.embeddings.LayerNorm.bias,
         memory_config=ttnn.L1_MEMORY_CONFIG,
+        compute_kernel_config=ttnn.WormholeComputeKernelConfig(math_fidelity=ttnn.MathFidelity.HiFi4),
     )
 
     return transformer(

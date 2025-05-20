@@ -2,13 +2,14 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import ttnn
 import math
-from loguru import logger
 from pathlib import Path
+
 from transformers import FalconConfig
-from models.utility_functions import is_grayskull, is_wormhole_b0
+
+import ttnn
 from models.demos.falcon7b_common.tt.model_utils import get_default_hifi2_kernel_config
+from models.utility_functions import is_grayskull, is_wormhole_b0
 
 OP_KEYS = (
     # Inputs

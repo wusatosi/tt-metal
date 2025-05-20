@@ -2,27 +2,26 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-from dataclasses import dataclass
-import os
-import gc
 import json
+import os
+from dataclasses import dataclass
+from time import time
+
+import pytest
 import torch
 import torch.nn.functional as F
-
-from time import time
-import pytest
 from loguru import logger
+from transformers.generation.utils import top_k_top_p_filtering
 
 from models.demos.t3000.llama2_70b.reference.llama.llama import Llama
-from transformers.generation.utils import top_k_top_p_filtering
-from models.demos.t3000.llama2_70b.tt.llama_generation import TtLlamaModelForGeneration
-from models.demos.t3000.llama2_70b.tt.llama_common import load_llama_state_dict
 from models.demos.t3000.llama2_70b.reference.llama.llama.tokenizer3 import ChatFormat
 from models.demos.t3000.llama2_70b.tt.llama_common import (
-    setup_llama_env,
     check_mesh_device,
+    load_llama_state_dict,
+    setup_llama_env,
     string_similarity_score,
 )
+from models.demos.t3000.llama2_70b.tt.llama_generation import TtLlamaModelForGeneration
 
 
 @dataclass
@@ -346,7 +345,6 @@ def get_all_text(tokenizer, tokens, prompt_tokens, max_gen_len):
             toks = toks[start : len(prompt_tokens[i]) + max_gen_len]
         except IndexError:
             logger.info(f"Index out of range for sequence {i}, returning entire sequence.")
-            pass
 
         # cut to eos tok if any
         if tokenizer.eos_id in toks:
@@ -456,8 +454,6 @@ def test_LlamaModel_demo(
     )
 
     check_mesh_device(t3k_mesh_device, model_config)
-
-    t3k_mesh_device.enable_async(True)
 
     args = construct_arg(
         implementation=implementation,

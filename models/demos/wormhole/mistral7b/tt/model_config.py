@@ -3,12 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-import ttnn
 from pathlib import Path
-from models.utility_functions import is_wormhole_b0
+
 from loguru import logger
-import tarfile
-import urllib.request
+
+import ttnn
 
 
 class TtModelArgs:

@@ -2,29 +2,16 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import torch
 import pytest
+import torch
 from loguru import logger
-import math
-from torch import nn
-from typing import List
 
 import ttnn
-from tests.tt_eager.python_api_testing.sweep_tests.comparison_funcs import (
-    comp_pcc,
-)
-from models.utility_functions import torch2tt_tensor, tt2torch_tensor, skip_for_grayskull
-from models.demos.t3000.falcon40b.tt.model_config import (
-    get_model_config,
-)
-
-from models.demos.t3000.falcon40b.reference.hf_modeling_falcon import (
-    FalconForCausalLM,
-)
-
-from models.demos.t3000.falcon40b.tt.model_utils import (
-    convert_to_layout,
-)
+from models.demos.t3000.falcon40b.reference.hf_modeling_falcon import FalconForCausalLM
+from models.demos.t3000.falcon40b.tt.model_config import get_model_config
+from models.demos.t3000.falcon40b.tt.model_utils import convert_to_layout
+from models.utility_functions import skip_for_grayskull, torch2tt_tensor, tt2torch_tensor
+from tests.tt_eager.python_api_testing.sweep_tests.comparison_funcs import comp_pcc
 
 
 class PytorchFalconLayernorm(torch.nn.Module):
@@ -125,6 +112,7 @@ class TtFalconLayernorm:
                     block_w=32,
                     inplace=False,
                 ),
+                compute_kernel_config=ttnn.WormholeComputeKernelConfig(math_fidelity=ttnn.MathFidelity.HiFi4),
             )
         else:  # Interleaved does not work for falcon40b dims [32, 8192] since once one core per tile-height is used to process the whole row
             # Uses only one core; runs out of L1
@@ -135,6 +123,7 @@ class TtFalconLayernorm:
                 epsilon=self.layernorm_eps,
                 weight=self.gamma,
                 bias=self.beta,
+                compute_kernel_config=ttnn.WormholeComputeKernelConfig(math_fidelity=ttnn.MathFidelity.HiFi4),
             )
 
         return out

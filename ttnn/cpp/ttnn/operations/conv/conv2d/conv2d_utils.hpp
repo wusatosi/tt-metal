@@ -27,10 +27,16 @@ uint32_t find_closest_largest_divisor_with_num_padding(uint32_t num, uint32_t st
 
 uint32_t find_closest_largest_divisor_with_num_padding(uint32_t num1, uint32_t num2, uint32_t start_divisor);
 
+uint32_t get_input_channels_alignment(
+    TensorMemoryLayout input_tensor_memory_layout,
+    Layout input_tensor_layout,
+    bool is_mm_conv,
+    const std::optional<MemoryConfig>& input_memory_config);
+
 bool use_matmul_for_1x1_conv(
     const std::array<uint32_t, 2>& kernel_size,
     const std::array<uint32_t, 2>& stride,
-    const std::array<uint32_t, 2>& padding,
+    const std::array<uint32_t, 4>& padding,
     const std::array<uint32_t, 2>& dilation,
     uint32_t groups,
     const Conv2dConfig& conv_config);
@@ -38,7 +44,13 @@ bool use_matmul_for_1x1_conv(
 bool is_1d_conv(uint32_t kernel_width, uint32_t image_width);
 
 bool is_1d_deptwise_conv(
-    uint32_t groups, uint32_t input_channels, uint32_t output_channels, uint32_t kernel_width, uint32_t image_width);
+    uint32_t groups,
+    uint32_t input_channels,
+    uint32_t output_channels,
+    uint32_t kernel_width,
+    uint32_t image_width,
+    bool has_bias);
+
 sliding_window::ParallelConfig determine_parallel_config(
     const TensorMemoryLayout shard_layout,
     uint32_t batch_size,
@@ -49,7 +61,8 @@ sliding_window::ParallelConfig determine_parallel_config(
     const CoreCoord& compute_grid_size,
     tt::tt_metal::ShardOrientation block_shard_orientation,
     bool enable_channels_padding,
-    bool is_out_tiled = true,
+    bool is_shard_height_tile_multiple = true,
+    bool is_shard_width_tile_multiple = true,
     uint32_t act_block_h_override = 0);
 
 sliding_window::ParallelConfig determine_output_parallel_config(
@@ -58,11 +71,12 @@ sliding_window::ParallelConfig determine_output_parallel_config(
     uint32_t out_channels,
     bool is_mm_conv);
 
-sliding_window::ParallelConfig determine_output_parallel_config(
-    const sliding_window::ParallelConfig& input_parallel_config,
-    const CoreCoord& compute_grid_size,
-    uint32_t out_channels,
-    bool is_mm_conv);
+std::tuple<uint32_t, uint32_t> calculate_output_image_size(
+    std::array<uint32_t, 2> input_image_size,
+    std::array<uint32_t, 2> kernel_size,
+    std::array<uint32_t, 2> stride,
+    std::array<uint32_t, 4> padding,
+    std::array<uint32_t, 2> dilation);
 
 uint32_t get_num_cores_nhw_from_parallel_config(const sliding_window::ParallelConfig& pconfig);
 
@@ -99,7 +113,7 @@ std::tuple<OptimizedConvParallelizationConfig, OptimizedConvBlockConfig, MemoryC
     const DeviceComputeKernelConfig& compute_config,
     const sliding_window::ParallelConfig& input_parallel_config,
     const sliding_window::ParallelConfig& output_parallel_config,
-    uint32_t in_channels,
+    uint32_t in_channels_padded,
     uint32_t out_channels,
     uint32_t batch_size,
     uint32_t output_height,
@@ -134,12 +148,14 @@ Conv2dConfig determine_conv_config_for_auto_shard(
     uint32_t input_height,
     uint32_t input_width,
     const CoreCoord& compute_grid_size,
-    Layout input_tensor_layout,
+    Layout input_layout,
     std::optional<const MemoryConfig> input_memory_config,
     const std::array<uint32_t, 2>& kernel_size,
     const uint32_t groups,
     const bool enable_bias,
     const DeviceComputeKernelConfig& compute_config);
+
+ttnn::Shape flatten_4d_shape(const ttnn::Shape& input_shape);
 
 template <typename T>
 std::tuple<ttnn::Tensor, sliding_window::ParallelConfig, sliding_window::ParallelConfig>

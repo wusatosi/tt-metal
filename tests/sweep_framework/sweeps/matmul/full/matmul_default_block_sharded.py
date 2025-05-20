@@ -8,10 +8,12 @@ import itertools
 import functools
 import operator
 
+import pytest
 import torch
 
 import ttnn
 
+from tests.sweep_framework.sweep_utils.utils import gen_pytest_parametrize_args
 from tests.ttnn.utils_for_testing import (
     check_with_pcc,
     get_per_core_size_and_num_cores,
@@ -67,7 +69,8 @@ parameters = {
 print(f"parameter keys: {parameters.keys()}")
 
 
-def run(
+def run_matmul(
+    device,
     block_sharded_specs,
     n_size,
     transpose_mcast,
@@ -80,8 +83,6 @@ def run(
     output_dtype,
     input_layout,
     compute_kernel_config,
-    *,
-    device,
 ) -> list:
     (
         batch_sizes,
@@ -112,7 +113,7 @@ def run(
             (per_core_height, per_core_width),
             ttnn.ShardOrientation.ROW_MAJOR,
         )
-    input_a_memory_config.shard_spec = input_a_shard_spec
+    input_a_memory_config = input_a_memory_config.with_shard_spec(input_a_shard_spec)
 
     input_shape_a = (*batch_sizes, m_size, k_size)
     input_shape_b = (k_size, n_size)
@@ -154,3 +155,69 @@ def run(
 
     expected_pcc = 0.989
     return [check_with_pcc(torch_output_tensor, output_tensor, expected_pcc), e2e_perf]
+
+
+@pytest.mark.parametrize(**gen_pytest_parametrize_args(parameters))
+def test_matmul(
+    device,
+    block_sharded_specs,
+    n_size,
+    transpose_mcast,
+    batch_matrix_multiply,
+    input_a_memory_config,
+    input_b_memory_config,
+    output_memory_config,
+    input_a_dtype,
+    input_b_dtype,
+    output_dtype,
+    input_layout,
+    compute_kernel_config,
+):
+    run_matmul(
+        device,
+        block_sharded_specs,
+        n_size,
+        transpose_mcast,
+        batch_matrix_multiply,
+        input_a_memory_config,
+        input_b_memory_config,
+        output_memory_config,
+        input_a_dtype,
+        input_b_dtype,
+        output_dtype,
+        input_layout,
+        compute_kernel_config,
+    )
+
+
+def run(
+    block_sharded_specs,
+    n_size,
+    transpose_mcast,
+    batch_matrix_multiply,
+    input_a_memory_config,
+    input_b_memory_config,
+    output_memory_config,
+    input_a_dtype,
+    input_b_dtype,
+    output_dtype,
+    input_layout,
+    compute_kernel_config,
+    *,
+    device,
+) -> list:
+    return run_matmul(
+        device,
+        block_sharded_specs,
+        n_size,
+        transpose_mcast,
+        batch_matrix_multiply,
+        input_a_memory_config,
+        input_b_memory_config,
+        output_memory_config,
+        input_a_dtype,
+        input_b_dtype,
+        output_dtype,
+        input_layout,
+        compute_kernel_config,
+    )

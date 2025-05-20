@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import math
+
 import ttnn
 from models.utility_functions import nearest_y
 
@@ -63,7 +64,6 @@ def get_conv_input_memory_config(
         compute_grid_size=compute_grid,
         block_shard_orientation=ttnn.ShardOrientation.ROW_MAJOR,
         enable_channels_padding=True,
-        is_out_tiled=True,
     )
 
     if override_num_cores:

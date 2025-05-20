@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import torch
+
 import ttnn
-from models.utility_functions import nearest_32
 
 
 def generate_cos_sin_cache_ttnn(

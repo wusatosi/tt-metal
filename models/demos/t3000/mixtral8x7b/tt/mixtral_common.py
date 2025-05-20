@@ -2,13 +2,14 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-from loguru import logger
-import torch
-import ttnn
-from ttnn import ReplicateTensorToMesh
-from models.utility_functions import nearest_32
 import json
 import math
+
+import torch
+from loguru import logger
+
+import ttnn
+from ttnn import ReplicateTensorToMesh
 
 
 # load from json, return as a list

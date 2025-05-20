@@ -2,20 +2,19 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Union
-import time
-import ttnn
-import torch
-import numpy as np
-from loguru import logger
-import os
 import math
 import struct
+import time
+from typing import Union
+
+import numpy as np
 import pytest
-
+import torch
+from loguru import logger
 from ttnn.device import Arch
-
 from typing_extensions import deprecated
+
+import ttnn
 
 
 ### Math operations ###
@@ -161,20 +160,6 @@ def disable_persistent_kernel_cache():
     Disables persistent compiled kernel caching. This is the default state.
     """
     ttnn.device.DisablePersistentKernelCache()
-
-
-def enable_compilation_reports():
-    """
-    Enables generating reports of compilation statistics in .reports/tt_metal dir
-    """
-    return ttnn.device.EnableCompilationReports()
-
-
-def disable_compilation_reports():
-    """
-    Disables generating reports of compilation statistics
-    """
-    return ttnn.device.DisableCompilationReports()
 
 
 def enable_memory_reports():
@@ -860,6 +845,10 @@ def is_e75(device):
 def is_x2_harvested(device):
     grid = device.compute_with_storage_grid_size()
     return device.arch() == Arch.WORMHOLE_B0 and (grid.x, grid.y) == (8, 7)
+
+
+def is_single_chip():
+    return ttnn.GetNumAvailableDevices() == 1
 
 
 def is_blackhole():

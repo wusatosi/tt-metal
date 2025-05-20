@@ -2,12 +2,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
-
+#include <tt_stl/strong_type.hpp>
+#include <memory>
+#include <set>
+#include <sstream>
+#include <string>
 #include <unordered_set>
-
-#include <strong_type.hpp>
+#include <utility>
 
 using MyIntId = tt::stl::StrongType<int, struct MyIntIdTag>;
 using MyStringId = tt::stl::StrongType<std::string, struct MyStringIdTag>;
@@ -28,6 +30,19 @@ TEST(StrongTypeTest, Basic) {
 
     my_int_id1 = MyIntId(43);
     EXPECT_EQ(my_int_id1, my_int_id2);
+}
+
+TEST(StrongTypeTest, GuarenteedUnique) {
+    StrongType<int> one{1};
+    StrongType<int> otherone{1};
+
+    static_assert(not std::same_as<decltype(one), decltype(otherone)>);
+    static_assert(not std::is_convertible_v<decltype(one), decltype(otherone)>);
+
+    auto runtime_same = std::is_same_v<decltype(one), decltype(otherone)>;
+    EXPECT_FALSE(runtime_same);
+
+    EXPECT_EQ(*one, *otherone);
 }
 
 TEST(StrongTypeTest, UseInContainers) {

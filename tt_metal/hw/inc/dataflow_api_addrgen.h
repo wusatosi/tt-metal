@@ -135,13 +135,22 @@ std::uint64_t get_noc_multicast_addr(
         addr);
 }
 
+// clang-format off
+/**
+ * Get an encoding for a noc address which contains core and L1 address.
+ *
+ * Return value: uint64_t
+ *
+ * | Argument | Description                          | Data type | Valid range        | required |
+ * |----------|--------------------------------------|-----------|--------------------|----------|
+ * | noc_x    | Physical x coordinate of core        | uint32_t  | WH: 0-9, BH: 0-16  | True     |
+ * | noc_y    | Physical y coordinate of core        | uint32_t  | WH: 0-11, BH: 0-11 | True     |
+ * | addr     | Address in local L1 memory           | uint32_t  | 0..1MB             | True     |
+ * | noc      | Which NOC to use for the transaction | uint8_t   | 0 or 1             | False    |
+ */
+// clang-format on
 FORCE_INLINE
 std::uint64_t get_noc_addr(std::uint32_t noc_x, std::uint32_t noc_y, std::uint32_t addr, uint8_t noc = noc_index) {
-    /*
-        Get an encoding which contains tensix core and address you want to
-        write to via the noc multicast
-    */
-
     return NOC_XY_ADDR(DYNAMIC_NOC_X(noc, noc_x), DYNAMIC_NOC_Y(noc, noc_y), addr);
 }
 
@@ -156,24 +165,6 @@ std::uint64_t get_noc_addr_helper(std::uint32_t noc_xy, std::uint32_t addr) {
         write to via the noc multicast
     */
     return ((uint64_t)(noc_xy) << NOC_ADDR_COORD_SHIFT) | addr;
-}
-
-FORCE_INLINE
-std::uint32_t get_noc_exclude_region(
-    std::uint32_t exclude_start_x,
-    std::uint32_t exclude_start_y,
-    std::uint32_t exclude_dir_x,
-    std::uint32_t exclude_dir_y,
-    uint8_t noc = noc_index) {
-    /*
-        Get an encoding which contians the definition of the exclusion area
-    */
-    return (
-        EXCLUDE_ENABLED << EXCLUDE_ENABLED_OFFSET |
-        DYNAMIC_NOC_DIRECTION(noc, exclude_dir_y) << EXCLUDE_DIRECTION_Y_OFFSET |
-        DYNAMIC_NOC_DIRECTION(noc, exclude_dir_x) << EXCLUDE_DIRECTION_X_OFFSET |
-        DYNAMIC_NOC_Y(noc, exclude_start_y) << EXCLUDE_START_Y_OFFSET |
-        DYNAMIC_NOC_X(noc, exclude_start_x) << EXCLUDE_START_X_OFFSET);
 }
 
 uint64_t get_dram_noc_addr(
@@ -230,14 +221,6 @@ std::uint64_t get_noc_addr(std::uint32_t addr, uint8_t noc = noc_index) {
     return NOC_XY_ADDR(my_x[noc], my_y[noc], addr);
 }
 
-// Forward declare noc_async_read and default template, arg vals here to AVOID
-// circular dependency between InterleavedAddrGen::noc_async_read (defined and
-// implemented here) and free function noc_async_read() defined in
-// dataflow_api.h
-template <uint32_t max_page_size = NOC_MAX_BURST_SIZE + 1>
-void noc_async_read(
-    std::uint64_t src_noc_addr, std::uint32_t dst_local_l1_addr, std::uint32_t size, uint8_t noc = noc_index);
-
 template <bool DRAM>
 struct InterleavedAddrGen {
     uint32_t bank_base_address;  // Base address for the whole tensor.
@@ -269,7 +252,16 @@ struct InterleavedAddrGen {
     FORCE_INLINE
     void noc_async_read_page(
         const uint32_t id, const uint32_t dest_addr, const uint32_t offset = 0, uint8_t noc = noc_index) const {
-        noc_async_read(this->get_noc_addr(id, offset), dest_addr, page_size, noc);
+        uint64_t src_noc_addr = this->get_noc_addr(id, offset);
+        uint32_t dst_local_l1_addr = dest_addr;
+        uint32_t size = this->page_size;
+        // RECORD_NOC_EVENT_WITH_ADDR(NocEventType::READ, src_noc_addr, size, -1); // TODO: need to fix circular
+        // dependency to uncomment this line
+
+        WAYPOINT("NARW");
+        DEBUG_SANITIZE_NOC_READ_TRANSACTION(noc, src_noc_addr, dst_local_l1_addr, size);
+        ncrisc_noc_fast_read_any_len<noc_mode>(noc, read_cmd_buf, src_noc_addr, dst_local_l1_addr, size);
+        WAYPOINT("NARD");
     }
 };
 
@@ -337,6 +329,9 @@ struct InterleavedAddrGenFast {
     FORCE_INLINE
     void noc_async_read_tile(
         const uint32_t id, uint32_t dest_addr, const uint32_t offset = 0, uint8_t noc = noc_index) const {
+        if constexpr (noc_mode == DM_DYNAMIC_NOC) {
+            inc_noc_counter_val<proc_type, NocBarrierType::READS_NUM_ISSUED>(noc, 1);
+        }
         uint32_t bank_offset_index = interleaved_addr_gen::get_bank_offset_index<DRAM>(id);
         uint32_t bank_index = interleaved_addr_gen::get_bank_index<DRAM>(id, bank_offset_index);
         uint32_t src_addr = this->get_addr(id, bank_offset_index, bank_index, offset);
@@ -357,15 +352,17 @@ struct InterleavedAddrGenFast {
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_COORDINATE, src_noc_xy);  // src_addr >> 32
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_AT_LEN_BE, this->page_size);        // len_bytes
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
-        if constexpr (noc_mode == DM_DYNAMIC_NOC) {
-            inc_noc_counter_val<proc_type, NocBarrierType::READS_NUM_ISSUED>(noc, 1);
-        } else {
+        if constexpr (noc_mode == DM_DEDICATED_NOC) {
             noc_reads_num_issued[noc] += 1;
         }
     }
 
     FORCE_INLINE
     void noc_async_write_tile(const uint32_t id, uint32_t src_addr, uint8_t noc = noc_index) const {
+        if constexpr (noc_mode == DM_DYNAMIC_NOC) {
+            inc_noc_counter_val<proc_type, NocBarrierType::NONPOSTED_WRITES_NUM_ISSUED>(noc, 1);
+            inc_noc_counter_val<proc_type, NocBarrierType::NONPOSTED_WRITES_ACKED>(noc, 1);
+        }
         uint32_t bank_offset_index = interleaved_addr_gen::get_bank_offset_index<DRAM>(id);
         uint32_t bank_index = interleaved_addr_gen::get_bank_index<DRAM>(id, bank_offset_index);
         uint32_t dest_addr = this->get_addr(id, bank_offset_index, bank_index);
@@ -389,10 +386,7 @@ struct InterleavedAddrGenFast {
         NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_RET_ADDR_COORDINATE, dest_noc_xy);  // dest_addr >> 32
         NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_AT_LEN_BE, this->page_size);        // len_bytes
         NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
-        if constexpr (noc_mode == DM_DYNAMIC_NOC) {
-            inc_noc_counter_val<proc_type, NocBarrierType::NONPOSTED_WRITES_NUM_ISSUED>(noc, 1);
-            inc_noc_counter_val<proc_type, NocBarrierType::NONPOSTED_WRITES_ACKED>(noc, 1);
-        } else {
+        if constexpr (noc_mode == DM_DEDICATED_NOC) {
             noc_nonposted_writes_num_issued[noc] += 1;
             noc_nonposted_writes_acked[noc] += 1;  // num_dests
         }
@@ -435,6 +429,9 @@ struct InterleavedPow2AddrGenFast {
     FORCE_INLINE
     void noc_async_read_page(
         const uint32_t id, uint32_t dest_addr, const uint32_t offset = 0, uint8_t noc = noc_index) const {
+        if constexpr (noc_mode == DM_DYNAMIC_NOC) {
+            inc_noc_counter_val<proc_type, NocBarrierType::READS_NUM_ISSUED>(noc, 1);
+        }
         uint32_t bank_offset_index = interleaved_addr_gen::get_bank_offset_index<DRAM>(id);
         uint32_t bank_index = interleaved_addr_gen::get_bank_index<DRAM>(id, bank_offset_index);
         uint32_t src_addr = this->get_addr(id, bank_offset_index, bank_index, offset);
@@ -457,9 +454,7 @@ struct InterleavedPow2AddrGenFast {
         NOC_CMD_BUF_WRITE_REG(
             noc, read_cmd_buf, NOC_AT_LEN_BE, 1 << this->aligned_log_base_2_of_page_size);  // len_bytes
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
-        if constexpr (noc_mode == DM_DYNAMIC_NOC) {
-            inc_noc_counter_val<proc_type, NocBarrierType::READS_NUM_ISSUED>(noc, 1);
-        } else {
+        if constexpr (noc_mode == DM_DEDICATED_NOC) {
             noc_reads_num_issued[noc] += 1;
         }
     }
@@ -471,6 +466,9 @@ struct InterleavedPow2AddrGenFast {
         const uint32_t size,
         const uint32_t offset,
         uint8_t noc = noc_index) const {
+        if constexpr (noc_mode == DM_DYNAMIC_NOC) {
+            inc_noc_counter_val<proc_type, NocBarrierType::READS_NUM_ISSUED>(noc, 1);
+        }
         uint32_t bank_offset_index = interleaved_addr_gen::get_bank_offset_index<DRAM>(id);
         uint32_t bank_index = interleaved_addr_gen::get_bank_index<DRAM>(id, bank_offset_index);
         uint32_t src_addr = this->get_addr(id, bank_offset_index, bank_index, offset);
@@ -491,9 +489,7 @@ struct InterleavedPow2AddrGenFast {
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_TARG_ADDR_COORDINATE, src_noc_xy);  // src_addr >> 32
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_AT_LEN_BE, size);                   // len_bytes
         NOC_CMD_BUF_WRITE_REG(noc, read_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
-        if constexpr (noc_mode == DM_DYNAMIC_NOC) {
-            inc_noc_counter_val<proc_type, NocBarrierType::READS_NUM_ISSUED>(noc, 1);
-        } else {
+        if constexpr (noc_mode == DM_DEDICATED_NOC) {
             noc_reads_num_issued[noc] += 1;
         }
     }
@@ -505,6 +501,10 @@ struct InterleavedPow2AddrGenFast {
         const uint32_t write_size_bytes,
         const uint32_t offset = 0,
         uint8_t noc = noc_index) const {
+        if constexpr (noc_mode == DM_DYNAMIC_NOC) {
+            inc_noc_counter_val<proc_type, NocBarrierType::NONPOSTED_WRITES_NUM_ISSUED>(noc, 1);
+            inc_noc_counter_val<proc_type, NocBarrierType::NONPOSTED_WRITES_ACKED>(noc, 1);
+        }
         uint32_t bank_offset_index = interleaved_addr_gen::get_bank_offset_index<DRAM>(id);
         uint32_t bank_index = interleaved_addr_gen::get_bank_index<DRAM>(id, bank_offset_index);
         uint32_t dest_addr = this->get_addr(id, bank_offset_index, bank_index, offset);
@@ -528,10 +528,7 @@ struct InterleavedPow2AddrGenFast {
         NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_RET_ADDR_COORDINATE, dest_noc_xy);  // dest_addr >> 32
         NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_AT_LEN_BE, write_size_bytes);       // len_bytes
         NOC_CMD_BUF_WRITE_REG(noc, write_cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
-        if constexpr (noc_mode == DM_DYNAMIC_NOC) {
-            inc_noc_counter_val<proc_type, NocBarrierType::NONPOSTED_WRITES_NUM_ISSUED>(noc, 1);
-            inc_noc_counter_val<proc_type, NocBarrierType::NONPOSTED_WRITES_ACKED>(noc, 1);
-        } else {
+        if constexpr (noc_mode == DM_DEDICATED_NOC) {
             noc_nonposted_writes_num_issued[noc] += 1;
             noc_nonposted_writes_acked[noc] += 1;  // num_dests
         }
@@ -606,10 +603,23 @@ FORCE_INLINE std::uint64_t get_noc_addr(
     return s.get_noc_addr(id, offset, noc);
 }
 
+// clang-format off
+/**
+ * Get an encoding for a noc address using DRAM/L1 bank id. Uses addrgen tables to convert bank_ids to physical NOC coordinates
+ *
+ * Return value: uint64_t
+ *
+ * | Argument                 | Description                             | Data type | Valid range                                            | required |
+ * |--------------------------|-----------------------------------------|-----------|--------------------------------------------------------|----------|
+ * | bank_id                  | DRAM/L1 bank id                         | uint32_t  | Refer to relevant yaml in "tt_metal/soc_descriptors"   | True     |
+ * | bank_address_offset      | DRAM/L1 bank address offset             | uint32_t  | 0..1MB                                                 | True     |
+ * | noc                      | Which NOC to use for the transaction    | uint8_t   | 0 or 1                                                 | False    |
+ * | DRAM (template argument) | Signifies if address is from DRAM or L1 | bool      | True or False                                          | True     |
+ */
+// clang-format on
 template <bool DRAM>
 FORCE_INLINE uint64_t
 get_noc_addr_from_bank_id(uint32_t bank_id, uint32_t bank_address_offset, uint8_t noc = noc_index) {
-    // Use addrgen tables to convert bank_ids to physical NOC coordinates
     uint64_t noc_addr = 0;
     if constexpr (DRAM) {
         noc_addr = dram_bank_to_noc_xy[noc_index][bank_id];
@@ -635,4 +645,18 @@ FORCE_INLINE auto get_interleaved_addr_gen(uint32_t base_addr) {
     } else {
         return InterleavedAddrGen<DRAM>{.bank_base_address = base_addr, .page_size = page_size};
     }
+}
+
+template <bool DRAM, bool is_size_pow2>
+FORCE_INLINE auto get_interleaved_addr_gen(uint32_t base_addr, uint32_t page_size, uint32_t log2_page_size) {
+    if constexpr (is_size_pow2) {
+        return InterleavedPow2AddrGen<DRAM>{.bank_base_address = base_addr, .log_base_2_of_page_size = log2_page_size};
+    } else {
+        return InterleavedAddrGen<DRAM>{.bank_base_address = base_addr, .page_size = page_size};
+    }
+}
+
+template <bool DRAM, bool is_size_pow2>
+FORCE_INLINE auto get_interleaved_addr_gen(uint32_t base_addr, uint32_t size) {
+    return get_interleaved_addr_gen<DRAM, is_size_pow2>(base_addr, size, size);
 }

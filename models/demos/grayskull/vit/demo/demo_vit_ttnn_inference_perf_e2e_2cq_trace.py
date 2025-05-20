@@ -3,31 +3,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
-
 import torch
-import transformers
-from datasets import load_dataset
-from transformers import AutoImageProcessor
 from loguru import logger
-import time
 
 import ttnn
-from ttnn.model_preprocessing import preprocess_model_parameters
-
-from models.utility_functions import is_wormhole_b0, torch2tt_tensor, is_blackhole
-from models.experimental.vit.vit_helper_funcs import get_data_loader, get_batch
-
-from models.utility_functions import (
-    is_wormhole_b0,
-    enable_persistent_kernel_cache,
-    disable_persistent_kernel_cache,
-    torch_random,
-    profiler,
-)
-
-from models.demos.grayskull.vit.demo.vit_test_infra import create_test_infra
-
+from models.demos.vit.tests.vit_test_infra import create_test_infra
 from models.perf.perf_utils import prep_perf_report
+from models.utility_functions import disable_persistent_kernel_cache, is_blackhole, is_wormhole_b0, profiler
 
 try:
     from tracy import signpost
@@ -41,7 +23,7 @@ except ModuleNotFoundError:
 
 def get_expected_times(functional_vit):
     return {
-        ttnn_optimized_sharded_vit: (11, 0.02),
+        ttnn_optimized_sharded_vit_gs: (11, 0.02),
     }[functional_vit]
 
 

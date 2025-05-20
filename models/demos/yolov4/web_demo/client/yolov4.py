@@ -2,25 +2,19 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import time
-import io
-import math
-import json
-import random
 import argparse
-import cv2
-import requests
-import torch
-import orjson
-import av
+import io
 import logging
-import streamlit as st
+import math
+import time
+
+import av
+import cv2
 import numpy as np
-
-
-from torch import nn
+import orjson
+import requests
+import streamlit as st
 from streamlit_webrtc import VideoProcessorBase, webrtc_streamer
-
 
 # Configure the logger
 logging.basicConfig(

@@ -3,18 +3,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-import ttnn
-import torch
 from typing import Optional
-import torch.nn as nn
-from tt_lib.fallback_ops import fallback_ops
-from models.utility_functions import torch_to_tt_tensor_rm, tt_to_torch_tensor
-from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions import (
-    conv_cache,
-    get_default_compute_config,
-)
 
-import math
+import torch
+
+import ttnn
+from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions import get_default_compute_config
 
 
 def permute_conv_parameters(weight, bias):
@@ -44,7 +38,6 @@ class downsample_2d:
         self,
         device,
         parameters,
-        reader_patterns_cache,
         batch_size,
         input_height,
         input_width,
@@ -97,7 +90,6 @@ class downsample_2d:
                 compute_grid_size=self.device.compute_with_storage_grid_size(),
                 block_shard_orientation=ttnn.ShardOrientation.ROW_MAJOR,
                 enable_channels_padding=False,
-                is_out_tiled=True,
             ),
             tile_size=32,
         )
@@ -128,7 +120,6 @@ class downsample_2d:
             weights_dtype=ttnn.bfloat8_b,
             activation="",
             shard_layout=self.shard_layout,
-            input_channels_alignment=32,
             transpose_shards=False,
             reshard_if_not_optimal=False,
         )
@@ -179,7 +170,6 @@ class downsample_2d:
             weight_tensor=self.conv_weights,
             bias_tensor=self.conv_bias,
             compute_config=compute_config,
-            conv_op_cache=conv_cache,
         )
 
         return hidden_states

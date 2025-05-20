@@ -34,6 +34,11 @@ namespace kernel_profiler {
 uint32_t tt_l1_ptr *rta_l1_base __attribute__((used));
 uint32_t tt_l1_ptr *crta_l1_base __attribute__((used));
 
+uint8_t my_logical_x_ __attribute__((used));
+uint8_t my_logical_y_ __attribute__((used));
+uint8_t my_relative_x_ __attribute__((used));
+uint8_t my_relative_y_ __attribute__((used));
+
 namespace ckernel {
 
 enum class ttRiscCores : std::uint32_t { Unpack = 0, Math = 1, Pack = 2, Brisc = 3, Nrisc = 4 };
@@ -54,7 +59,7 @@ const uint8_t thread_id = COMPILE_FOR_TRISC;
 #define GET_TRISC_RUN_EVAL(x, t) x##t
 #define GET_TRISC_RUN(x, t) GET_TRISC_RUN_EVAL(x, t)
 volatile tt_l1_ptr uint8_t *const trisc_run =
-    &GET_TRISC_RUN(((tt_l1_ptr mailboxes_t *)(MEM_MAILBOX_BASE))->slave_sync.trisc, COMPILE_FOR_TRISC);
+    &GET_TRISC_RUN(((tt_l1_ptr mailboxes_t *)(MEM_MAILBOX_BASE))->subordinate_sync.trisc, COMPILE_FOR_TRISC);
 tt_l1_ptr mailboxes_t *const mailboxes = (tt_l1_ptr mailboxes_t *)(MEM_MAILBOX_BASE);
 }  // namespace ckernel
 
@@ -88,7 +93,7 @@ void init_sync_registers() {
 }
 
 int main(int argc, char *argv[]) {
-    configure_l1_data_cache();
+    configure_csr();
     DIRTY_STACK_MEMORY();
     WAYPOINT("I");
 
@@ -100,6 +105,9 @@ int main(int argc, char *argv[]) {
 
     reset_cfg_state_id();
 
+    my_logical_x_ = mailboxes->core_info.absolute_logical_x;
+    my_logical_y_ = mailboxes->core_info.absolute_logical_y;
+
     // Cleanup profiler buffer incase we never get the go message
     while (1) {
         WAYPOINT("W");
@@ -110,6 +118,12 @@ int main(int argc, char *argv[]) {
                     *trisc_run = RUN_SYNC_MSG_DONE;
                 }
             }
+#if defined(ARCH_WORMHOLE)
+            // Avoid hammering L1 while other cores are trying to work. Seems not to
+            // be needed on Blackhole, probably because invalidate_l1_cache takes
+            // time.
+            asm volatile("nop; nop; nop; nop; nop");
+#endif
             invalidate_l1_cache();
         }
         DeviceZoneScopedMainN("TRISC-FW");
@@ -133,8 +147,11 @@ int main(int argc, char *argv[]) {
 
         rta_l1_base = (uint32_t tt_l1_ptr *)(kernel_config_base +
             launch_msg->kernel_config.rta_offset[DISPATCH_CLASS_TENSIX_COMPUTE].rta_offset);
-        crta_l1_base = (uint32_t tt_l1_ptr *)(kernel_config_base +
-            launch_msg->kernel_config.rta_offset[DISPATCH_CLASS_TENSIX_COMPUTE].crta_offset);
+        crta_l1_base =
+            (uint32_t tt_l1_ptr*)(kernel_config_base +
+                                  launch_msg->kernel_config.rta_offset[DISPATCH_CLASS_TENSIX_COMPUTE].crta_offset);
+        my_relative_x_ = my_logical_x_ - launch_msg->kernel_config.sub_device_origin_x;
+        my_relative_y_ = my_logical_y_ - launch_msg->kernel_config.sub_device_origin_y;
 
         WAYPOINT("R");
         int index = static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::MATH0) + thread_id;

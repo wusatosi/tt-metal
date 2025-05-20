@@ -29,7 +29,7 @@ void MorehArangeOperation::validate_inputs(
     TT_FATAL(output->buffer() != nullptr, "Must have 1 output tensor.");
     TT_FATAL(
         dtype == output->get_dtype(), "If output is provided as input, its dtype should match the dtype parameter.");
-    TT_FATAL(output->memory_config().memory_layout == TensorMemoryLayout::INTERLEAVED, "Error");
+    TT_FATAL(output->memory_config().memory_layout() == TensorMemoryLayout::INTERLEAVED, "Error");
 
     auto output_layout = output->get_layout();
     if (operation_attributes.untilize_out) {
@@ -62,7 +62,7 @@ MorehArangeOperation::spec_return_value_t MorehArangeOperation::compute_output_s
     }
 
     uint32_t num_elems = static_cast<uint32_t>(
-        ceil((operation_attributes.end - operation_attributes.start) / operation_attributes.step));
+        std::ceil((operation_attributes.end - operation_attributes.start) / operation_attributes.step));
 
     if (operation_attributes.untilize_out) {
         return TensorSpec(

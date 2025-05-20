@@ -10,6 +10,7 @@
 #include <ttnn/tensor/tensor.hpp>
 #include <wandbcpp.hpp>
 
+#include "3tier/remote_optimizer.hpp"
 #include "autograd/tensor.hpp"
 #include "core/clip_grad_norm.hpp"
 #include "core/distributed/distributed.hpp"
@@ -17,14 +18,21 @@
 #include "datasets/dataloader.hpp"
 #include "datasets/in_memory_token_dataset.hpp"
 #include "datasets/utils.hpp"
+#include "models/common/transformer_common.hpp"
 #include "models/distributed/gpt2.hpp"
+#include "models/distributed/llama.hpp"
 #include "models/gpt2.hpp"
+#include "models/llama.hpp"
 #include "ops/binary_ops.hpp"
 #include "ops/losses.hpp"
 #include "optimizers/adamw.hpp"
 #include "tokenizers/bpe_tokenizer.hpp"
 #include "tokenizers/char_tokenizer.hpp"
 #include "utils.hpp"
+
+namespace {
+constexpr auto gpt2_tokenizer_file_name = "/gpt2-tokenizer.json";
+}
 
 /* WANDB BLocks this signal.
  Control+C didn't work.
@@ -35,25 +43,23 @@ void signal_handler(int signum) {
     exit(signum);
 }
 
-using Model = std::variant<
-    std::shared_ptr<ttml::models::gpt2::Transformer>,
-    std::shared_ptr<ttml::models::distributed::gpt2::DistributedTransformer>>;
+using Model = std::shared_ptr<ttml::autograd::ModuleBase>;
 
 void model_to_eval(Model &model) {
-    std::visit([](auto &model) { model->eval(); }, model);
+    model->eval();
 }
 
 void model_to_train(Model &model) {
-    std::visit([](auto &model) { model->train(); }, model);
+    model->train();
 }
 
 ttml::autograd::TensorPtr run_model(
     Model &model, const ttml::autograd::TensorPtr &data, const ttml::autograd::TensorPtr &mask) {
-    return std::visit([&data, &mask](auto &model) { return (*model)(data, mask); }, model);
+    return (*model)(data, mask);
 }
 
 ttml::serialization::NamedParameters get_model_parameters(Model &model) {
-    return std::visit([](auto &model) { return model->parameters(); }, model);
+    return model->parameters();
 }
 
 uint64_t get_number_of_parameters(Model &model, bool enable_tp) {
@@ -68,7 +74,7 @@ uint64_t get_number_of_parameters(Model &model, bool enable_tp) {
     uint64_t num_params = 0;
     for (const auto &[name, tensor_ptr] : parameters) {
         auto tensor = tensor_ptr->get_value();
-        auto params_in_tensor = tensor.get_logical_volume();
+        auto params_in_tensor = tensor.logical_volume();
         if (enable_tp && (contains(name, "fc") || contains(name, "linear"))) {
             num_params += params_in_tensor * num_devices;
         } else {
@@ -360,6 +366,7 @@ EvalConfig parse_eval_config(const YAML::Node &yaml_config) {
 
 struct TrainingConfig {
     std::string project_name;
+    std::string model_type;  // one of "gpt2", "llama"
     uint32_t seed = 5489U;
     uint32_t model_save_interval = 500;
     uint32_t batch_size = 64;
@@ -376,15 +383,21 @@ struct TrainingConfig {
     std::string data_path;
     std::string tokenizer_type = "char";
     std::string scheduler_type = "identity";
+    std::string tokenizer_path = std::string(DATA_FOLDER) + gpt2_tokenizer_file_name;
     bool use_clip_grad_norm = false;
     float clip_grad_norm_max_norm = 1.0F;
-    ttml::models::gpt2::TransformerConfig transformer_config;
+    std::variant<ttml::models::gpt2::TransformerConfig, ttml::models::llama::LlamaConfig> transformer_config;
+
+    // mpi config
+    bool enable_mpi = false;
+    uint32_t num_mh_workers = 0U;
 };
 
 TrainingConfig parse_config(const YAML::Node &yaml_config) {
     TrainingConfig config;
     auto training_config = yaml_config["training_config"];
     config.project_name = training_config["project_name"].as<std::string>("tt_train_nano_gpt");
+    config.model_type = training_config["model_type"].as<std::string>();
     config.seed = training_config["seed"].as<uint32_t>();
     config.model_save_interval = training_config["model_save_interval"].as<uint32_t>();
     config.batch_size = training_config["batch_size"].as<uint32_t>();
@@ -400,11 +413,23 @@ TrainingConfig parse_config(const YAML::Node &yaml_config) {
     config.data_path = training_config["data_path"].as<std::string>(std::string(DATA_FOLDER) + "/shakespeare.txt");
     config.tokenizer_type = training_config["tokenizer_type"].as<std::string>(config.tokenizer_type);
     config.scheduler_type = training_config["scheduler_type"].as<std::string>(config.scheduler_type);
+    config.tokenizer_path = training_config["tokenizer_path"].as<std::string>(config.tokenizer_path);
     config.use_clip_grad_norm = training_config["use_clip_grad_norm"].as<bool>(config.use_clip_grad_norm);
     config.clip_grad_norm_max_norm =
         training_config["clip_grad_norm_max_norm"].as<float>(config.clip_grad_norm_max_norm);
 
-    config.transformer_config = ttml::models::gpt2::read_config(training_config["transformer_config"]);
+    if (config.model_type == "gpt2") {
+        config.transformer_config = ttml::models::gpt2::read_config(training_config["transformer_config"]);
+    } else if (config.model_type == "llama") {
+        config.transformer_config = ttml::models::llama::read_config(training_config["transformer_config"]);
+    } else {
+        throw std::runtime_error("Unknown model type: " + config.model_type);
+    }
+
+    if (auto multihost_config = yaml_config["multihost_config"]) {
+        config.enable_mpi = multihost_config["enabled"].as<bool>(false);
+        config.num_mh_workers = multihost_config["num_workers"].as<uint32_t>(0U);
+    }
     return config;
 }
 
@@ -438,7 +463,36 @@ int main(int argc, char **argv) {
         throw std::logic_error("DDP and TP cannot be enabled at the same time. Disable DDP or TP.");
     }
 
-    initialize_device(ddp, enable_tp);
+    auto yaml_config = YAML::LoadFile(config_name);
+    TrainingConfig config = parse_config(yaml_config);
+    EvalConfig eval_config = parse_eval_config(yaml_config);
+
+    if (config.enable_mpi) {
+        auto &ctx = ttml::autograd::ctx();
+        ctx.initialize_distributed_context(argc, argv);
+
+        auto &distributed_ctx = ctx.get_distributed_context();
+        fmt::print("Size {}, Rank {}: Initializing MPI context\n", *distributed_ctx.size(), *distributed_ctx.rank());
+
+        // disable wandb for now in case of mpi example
+        enable_wandb = false;
+    }
+
+    // needs more validation for TP
+    if (ddp) {
+        fmt::println("Distributed data parallel is enabled");
+    }
+    if (enable_tp) {
+        fmt::println("Tensor parallel is enabled");
+    }
+
+    if (config.enable_mpi) {
+        fmt::print("MPI config:\n");
+        fmt::print("  enable_mpi: {}\n", config.enable_mpi);
+        fmt::print("  num_mh_workers: {}\n", config.num_mh_workers);
+    } else {
+        fmt::print("Not MPI run.\n");
+    }
 
     if (enable_wandb) {
         auto result = signal(SIGINT, signal_handler);
@@ -448,9 +502,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    auto yaml_config = YAML::LoadFile(config_name);
-    TrainingConfig config = parse_config(yaml_config);
-    EvalConfig eval_config = parse_eval_config(yaml_config);
+    initialize_device(ddp, enable_tp);
 
     if (enable_tp) {
         if (!config.model_path.empty()) {
@@ -463,27 +515,50 @@ int main(int argc, char **argv) {
     }
 
     if (enable_wandb) {
+        auto positional_embedding_type = std::visit(
+            [](auto &&arg) -> std::string {
+                if constexpr (requires { arg.positional_embedding_type; }) {
+                    return arg.positional_embedding_type == ttml::models::gpt2::PositionalEmbeddingType::Trainable
+                               ? "trainable"
+                               : "fixed";
+                } else {
+                    return "n/a";
+                }
+            },
+            config.transformer_config);
+
         wandbcpp::init({.project = config.project_name, .name = generate_run_name(run_name, config, add_time_to_name)});
         wandbcpp::update_config({
             {"model", "transformer"},
-            {"num_heads", static_cast<int>(config.transformer_config.num_heads)},
-            {"embedding_dim", static_cast<int>(config.transformer_config.embedding_dim)},
-            {"num_blocks", static_cast<int>(config.transformer_config.num_blocks)},
-            {"dropout_prob", config.transformer_config.dropout_prob},
+            {"num_heads",
+             static_cast<int>(std::visit([](auto &&arg) { return arg.num_heads; }, config.transformer_config))},
+            {"num_groups",
+             static_cast<int>(std::visit(
+                 [](auto &&arg) {
+                     if constexpr (requires { arg.num_groups; }) {
+                         return arg.num_groups;
+                     } else {
+                         return arg.num_heads;
+                     }
+                 },
+                 config.transformer_config))},
+            {"embedding_dim",
+             static_cast<int>(std::visit([](auto &&arg) { return arg.embedding_dim; }, config.transformer_config))},
+            {"num_blocks",
+             static_cast<int>(std::visit([](auto &&arg) { return arg.num_blocks; }, config.transformer_config))},
+            {"dropout_prob", std::visit([](auto &&arg) { return arg.dropout_prob; }, config.transformer_config)},
             {"learning_rate", config.learning_rate},
             {"weight_decay", config.weight_decay},
             {"batch_size", static_cast<int>(config.batch_size)},
-            {"sequence_length", static_cast<int>(config.transformer_config.max_sequence_length)},
+            {"sequence_length",
+             static_cast<int>(
+                 std::visit([](auto &&arg) { return arg.max_sequence_length; }, config.transformer_config))},
             {"max_steps", static_cast<int>(config.max_steps)},
             {"seed", static_cast<int>(config.seed)},
             {"tokenizer_type", config.tokenizer_type},
             {"use_kahan_summation", config.use_kahan_summation},
             {"gradient_accumulation_steps", static_cast<int>(config.gradient_accumulation_steps)},
-            {"positional_embedding_type",
-             config.transformer_config.positional_embedding_type ==
-                     ttml::models::gpt2::PositionalEmbeddingType::Trainable
-                 ? "trainable"
-                 : "fixed"},
+            {"positional_embedding_type", positional_embedding_type},
             {"scheduler_type", config.scheduler_type},
             {"using_clip_grad_norm", config.use_clip_grad_norm},
             {"clip_grad_norm_max_norm", config.clip_grad_norm_max_norm},
@@ -492,11 +567,23 @@ int main(int argc, char **argv) {
 
     // set seed
     ttml::autograd::ctx().set_seed(config.seed);
+    if (config.enable_mpi) {
+        int rank = *ttml::autograd::ctx().get_distributed_context().rank();
+        auto seed = config.seed + static_cast<uint32_t>(rank);
+        ttml::autograd::ctx().set_seed(seed);
+    }
     auto schedule_func = schedulers.at(config.scheduler_type);
 
     std::string text;
+    std::variant<std::string, std::vector<uint32_t>> text_or_tokens;
     try {
         text = read_file_to_str(config.data_path);
+        // check file extension:
+        if (config.data_path.ends_with(".txt")) {
+            text_or_tokens = read_file_to_str(config.data_path);
+        } else {
+            text_or_tokens = ttml::datasets::load_tokens_from_space_separated_file(config.data_path);
+        }
     } catch (const std::exception &e) {
         std::cerr << e.what() << std::endl;
         return -1;
@@ -507,30 +594,33 @@ int main(int argc, char **argv) {
     fmt::print("Total batch size {}\n", config.batch_size * config.gradient_accumulation_steps);
     fmt::print("Scheduler type {}\n", config.scheduler_type);
     fmt::print("Seed {}\n", ttml::autograd::ctx().get_seed());
-    auto sequence_length = config.transformer_config.max_sequence_length;
+    auto sequence_length = std::visit([](auto &&arg) { return arg.max_sequence_length; }, config.transformer_config);
 
-    auto create_dataset_and_tokenizer = [](const auto &text, const auto sequence_length, const auto &tokenizer_type) {
-        if (tokenizer_type == "char") {
-            return ttml::datasets::create_in_memory_token_dataset<ttml::tokenizers::CharTokenizer>(
-                text, sequence_length);
-        } else if (tokenizer_type == "bpe") {
-            return ttml::datasets::create_in_memory_token_dataset<ttml::tokenizers::BPETokenizer>(
-                text, sequence_length);
-        } else {
-            throw std::runtime_error("Unknown tokenizer type: " + tokenizer_type);
-        }
-    };
+    auto create_dataset_and_tokenizer =
+        [](const auto &text, const auto sequence_length, const auto &tokenizer_path, const auto &tokenizer_type) {
+            if (tokenizer_type == "char") {
+                return ttml::datasets::create_in_memory_token_dataset<ttml::tokenizers::CharTokenizer>(
+                    std::get<0>(text), sequence_length);
+            } else if (tokenizer_type == "bpe") {
+                return std::visit(
+                    [&](const auto &tokens) {
+                        return ttml::datasets::create_in_memory_token_dataset<ttml::tokenizers::BPETokenizer>(
+                            tokens, sequence_length, tokenizer_path);
+                    },
+                    text);
+            } else {
+                throw std::runtime_error("Unknown tokenizer type: " + tokenizer_type);
+            }
+        };
 
-    auto [dataset, tokenizer] = create_dataset_and_tokenizer(text, sequence_length, config.tokenizer_type);
+    auto [dataset, tokenizer] =
+        create_dataset_and_tokenizer(text_or_tokens, sequence_length, config.tokenizer_path, config.tokenizer_type);
     fmt::print("Dataset size: {}\n", dataset.get_size());
     fmt::print("Vocab size: {}\n", tokenizer->get_vocab_size());
     fmt::print("Tokenizer type: {}\n", config.tokenizer_type);
 
     auto *device = &ttml::autograd::ctx().get_device();
     device->enable_program_cache();
-
-    // disable for now, unexpected freezes and crashes
-    // device->enable_async(true);
 
     struct CachedHostData {
         std::vector<uint32_t> data;
@@ -539,7 +629,7 @@ int main(int argc, char **argv) {
     };
     CachedHostData cached_data;
     std::vector<float> mask;
-    auto num_heads = config.transformer_config.num_heads;
+    auto num_heads = std::visit([](auto &&arg) { return arg.num_heads; }, config.transformer_config);
     mask.reserve(sequence_length * sequence_length);
     for (int i = 0; i < sequence_length; ++i) {
         for (int j = 0; j < sequence_length; ++j) {
@@ -610,30 +700,58 @@ int main(int argc, char **argv) {
     fmt::print("Overriding vocab size to be divisible by 32\n");
     auto num_devices = static_cast<uint32_t>(device->num_devices());
     // this is workaround for tensor parallel case, we need to have vocab size divisible by 32 per device
-    config.transformer_config.vocab_size =
-        round_up_to_tile(tokenizer->get_vocab_size(), (enable_tp ? num_devices : 1U) * 32U);
+    std::visit(
+        [&](auto &&arg) {
+            if constexpr (requires { arg.vocab_size; }) {
+                arg.vocab_size = round_up_to_tile(tokenizer->get_vocab_size(), (enable_tp ? num_devices : 1U) * 32U);
+            } else {
+                throw std::runtime_error(
+                    "Unsupported transformer configuration type: " + std::string(typeid(arg).name()));
+            }
+        },
+        config.transformer_config);
 
-    Model model;
-    if (enable_tp) {
-        model = ttml::models::distributed::gpt2::create(config.transformer_config);
-    } else {
-        model = ttml::models::gpt2::create(config.transformer_config);
-    }
+    Model model = std::visit(
+        [enable_tp](auto &&arg) -> Model {
+            if constexpr (std::is_same_v<std::decay_t<decltype(arg)>, ttml::models::llama::LlamaConfig>) {
+                if (enable_tp) {
+                    return ttml::models::distributed::llama::create(arg);
+                } else {
+                    return ttml::models::llama::create(arg);
+                }
+            } else if constexpr (std::is_same_v<std::decay_t<decltype(arg)>, ttml::models::gpt2::TransformerConfig>) {
+                if (enable_tp) {
+                    return ttml::models::distributed::gpt2::create(arg);
+                } else {
+                    return ttml::models::gpt2::create(arg);
+                }
+            } else {
+                throw std::runtime_error(
+                    "Unsupported transformer configuration type: " + std::string(typeid(arg).name()));
+            }
+        },
+        config.transformer_config);
 
     auto adamw_params = ttml::optimizers::AdamWConfig();
     adamw_params.lr = config.learning_rate;
     adamw_params.weight_decay = config.weight_decay;
     adamw_params.use_kahan_summation = config.use_kahan_summation;
-    fmt::print("AdamW configuration:\n");
-    fmt::print("    Learning rate: {}\n", adamw_params.lr);
-    fmt::print("    Weight decay: {}\n", adamw_params.weight_decay);
-    fmt::print("    Use Kahan summation: {}\n", adamw_params.use_kahan_summation);
+    if (!config.enable_mpi) {
+        fmt::print("AdamW configuration:\n");
+        fmt::print("    Learning rate: {}\n", adamw_params.lr);
+        fmt::print("    Weight decay: {}\n", adamw_params.weight_decay);
+        fmt::print("    Use Kahan summation: {}\n", adamw_params.use_kahan_summation);
+    } else {
+        fmt::println("Remote optimizer configured!");
+    }
 
     fmt::print("Number of parameters: {}\n", get_number_of_parameters(model, enable_tp));
 
-    auto select_optimizer = [&model,
-                             &adamw_params](bool use_moreh_adamw) -> std::unique_ptr<ttml::optimizers::OptimizerBase> {
-        if (use_moreh_adamw) {
+    auto select_optimizer =
+        [&model, &adamw_params, &config](bool use_moreh_adamw) -> std::unique_ptr<ttml::optimizers::OptimizerBase> {
+        if (config.enable_mpi) {
+            return std::make_unique<RemoteOptimizer>(get_model_parameters(model), config.num_mh_workers);
+        } else if (use_moreh_adamw) {
             return std::make_unique<ttml::optimizers::MorehAdamW>(get_model_parameters(model), adamw_params);
         } else {
             return std::make_unique<ttml::optimizers::AdamW>(get_model_parameters(model), adamw_params);
@@ -642,10 +760,30 @@ int main(int argc, char **argv) {
 
     auto optimizer = select_optimizer(config.use_moreh_adamw);
     auto scheduler = schedule_func(optimizer.get(), config.max_steps);
-    if (!config.model_path.empty() && std::filesystem::exists(config.model_path)) {
-        fmt::print("Loading model from {}\n", config.model_path);
-        load_training_state(config.model_path, model, scheduler, "transformer", "adamw");
-        fmt::print("Model loaded after {} steps\n", optimizer->get_steps());
+
+    if (config.enable_mpi) {
+        auto *optimizer_ptr = dynamic_cast<RemoteOptimizer *>(optimizer.get());
+        if (!optimizer_ptr) {
+            throw std::runtime_error("Optimizer is not RemoteOptimizer");
+        }
+        fmt::println("[worker] Remote optimizer receiving weights from rank {}", config.num_mh_workers);
+        optimizer_ptr->receive_weights();
+        fmt::println("[worker] Remote optimizer received weights from rank {}", config.num_mh_workers);
+    } else {
+        // otherwise proceed with normal loading training state if necessary
+        if (!config.model_path.empty() && std::filesystem::exists(config.model_path)) {
+            fmt::print("Loading model from {}\n", config.model_path);
+            load_training_state(config.model_path, model, scheduler, "transformer", "adamw");
+            fmt::print("Model loaded after {} steps\n", optimizer->get_steps());
+        }
+    }
+
+    if (config.enable_mpi && is_eval) {
+        throw std::logic_error("Evaluation is not supported with 3 tier training");
+    }
+
+    if (config.enable_mpi && config.use_clip_grad_norm) {
+        throw std::logic_error("Clip grad norm is not supported with 3 tier training");
     }
 
     if (is_eval) {
@@ -654,7 +792,7 @@ int main(int argc, char **argv) {
             generate(
                 model,
                 *tokenizer,
-                config.transformer_config.max_sequence_length,
+                std::visit([](auto &&arg) { return arg.max_sequence_length; }, config.transformer_config),
                 num_heads,
                 sequence_length,
                 enable_tp,
@@ -699,7 +837,7 @@ int main(int argc, char **argv) {
             loss->backward();
             ttml::autograd::ctx().reset_graph();
 
-            auto samples = features->get_value().get_logical_shape()[0];
+            auto samples = features->get_value().logical_shape()[0];
             gradient_accumulator_helper.update(loss_float, samples);
 
             if (gradient_accumulator_helper.should_step()) {
@@ -718,6 +856,9 @@ int main(int argc, char **argv) {
                 optimizer->step();
                 scheduler->step();
                 auto global_step = optimizer->get_steps();
+                if (config.enable_mpi) {
+                    fmt::print("[Rank {}] ", *ttml::autograd::ctx().get_distributed_context().rank());
+                }
                 fmt::print("Step: {}, Loss: {}\n", global_step, gradient_accumulator_helper.average_loss());
                 loss_meter.update(gradient_accumulator_helper.average_loss());
 
@@ -729,8 +870,12 @@ int main(int argc, char **argv) {
                          {"Learning rate", optimizer->get_lr()}});
                     loss_meter.reset();
                 }
-                if (!config.model_path.empty() && global_step % config.model_save_interval == 0) {
-                    save_training_state(config.model_path, model, scheduler, "transformer", "adamw");
+
+                if (!config.enable_mpi) {
+                    // save training state if it's not 3 tier training
+                    if (!config.model_path.empty() && global_step % config.model_save_interval == 0) {
+                        save_training_state(config.model_path, model, scheduler, "transformer", "adamw");
+                    }
                 }
 
                 if (global_step >= config.max_steps) {
@@ -751,8 +896,11 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (!config.model_path.empty()) {
-        save_training_state(config.model_path, model, scheduler, "transformer", "adamw");
+    if (!config.enable_mpi) {
+        // save training state if it's not 3 tier training
+        if (!config.model_path.empty()) {
+            save_training_state(config.model_path, model, scheduler, "transformer", "adamw");
+        }
     }
 
     auto end_timer = std::chrono::high_resolution_clock::now();
@@ -763,8 +911,16 @@ int main(int argc, char **argv) {
         (double)duration / 1000000.,
         device->num_program_cache_entries());
 
+    if (config.enable_mpi) {
+        auto &ctx = ttml::autograd::ctx();
+        auto &distributed_ctx = ctx.get_distributed_context();
+        distributed_ctx.barrier();
+        fmt::print("Rank {}: Finalizing MPI context\n", *distributed_ctx.rank());
+    }
+
     if (enable_wandb) {
         wandbcpp::finish();
     }
+
     return 0;
 }

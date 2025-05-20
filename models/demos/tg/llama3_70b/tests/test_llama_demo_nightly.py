@@ -2,19 +2,14 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-from dataclasses import dataclass
-import os
-import json
-import torch
-import torch.nn.functional as F
 
-from time import time
 import pytest
 from loguru import logger
-from models.utility_functions import skip_for_grayskull
+
 from models.demos.t3000.llama2_70b.tt.llama_common import check_mesh_device
+from models.demos.tg.llama3_70b.demo.demo import construct_arg, run_demo
 from models.demos.tg.llama3_70b.tt.llama_common import setup_llama_env
-from models.demos.tg.llama3_70b.demo.demo import run_demo, construct_arg
+from models.utility_functions import skip_for_grayskull
 
 
 @pytest.mark.timeout(240000)
@@ -91,9 +86,6 @@ def test_llama3_tg_nightly_demo(
     )
 
     check_mesh_device(mesh_device, model_config)
-
-    # TODO: Renable when issue #11089 is resolved
-    mesh_device.enable_async(True)
 
     args = construct_arg(
         implementation=implementation,

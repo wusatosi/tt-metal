@@ -3,10 +3,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import torch
+
 import ttnn
-from models.utility_functions import nearest_32
-from ttnn import ShardTensorToMesh, ReplicateTensorToMesh, ConcatMeshToTensor
 from models.common.lightweightmodule import LightweightModule
+from ttnn import ReplicateTensorToMesh, ShardTensorToMesh
 
 
 class TtMixtralAttention(LightweightModule):

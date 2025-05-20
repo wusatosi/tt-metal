@@ -2,7 +2,7 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-from models.perf.device_perf_utils import run_device_perf, check_device_perf, prep_device_perf_report
+from models.perf.device_perf_utils import check_device_perf, prep_device_perf_report, run_device_perf
 
 
 def run_perf_device(batch_size, test, command, expected_perf):
@@ -13,7 +13,7 @@ def run_perf_device(batch_size, test, command, expected_perf):
     inference_time_key = "AVG DEVICE KERNEL SAMPLES/S"
     expected_perf_cols = {inference_time_key: expected_perf}
 
-    post_processed_results = run_device_perf(command, subdir, num_iterations, cols, batch_size, True)
+    post_processed_results = run_device_perf(command, subdir, num_iterations, cols, batch_size, has_signposts=True)
     expected_results = check_device_perf(post_processed_results, margin, expected_perf_cols)
     prep_device_perf_report(
         model_name=f"ttnn_resnet50_batch_size{batch_size}",

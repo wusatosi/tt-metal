@@ -5,7 +5,7 @@
 #include "ttnn/operations/embedding_backward/device/embedding_backward_device_operation.hpp"
 
 #include <tt-metalium/constants.hpp>
-#include "cpp/ttnn/run_operation.hpp"
+#include "ttnn/run_operation.hpp"
 
 using namespace tt::constants;
 using namespace std;
@@ -20,10 +20,6 @@ void EmbeddingBackward::validate(const std::vector<Tensor> &input_tensors) const
     const auto &grad_tensor = input_tensors.at(1);
     const auto &index_tensor_shape = index_tensor.get_padded_shape();
     const auto &grad_tensor_shape = grad_tensor.get_padded_shape();
-
-    TT_FATAL(
-        index_tensor.device()->arch() == tt::ARCH::WORMHOLE_B0,
-        "Embedding backwards is only implemented for Wormhole!");
 
     TT_FATAL(index_tensor.get_layout() == Layout::ROW_MAJOR, "Error");
     TT_FATAL(
@@ -48,9 +44,9 @@ void EmbeddingBackward::validate(const std::vector<Tensor> &input_tensors) const
         grad_tensor.get_dtype() == this->output_dtype, "Output and input gradient tensors must have the same dtype");
 
     TT_FATAL(
-        grad_tensor.memory_config().memory_layout == TensorMemoryLayout::INTERLEAVED or
-            index_tensor.memory_config().memory_layout == TensorMemoryLayout::INTERLEAVED or
-            this->output_mem_config.memory_layout == TensorMemoryLayout::INTERLEAVED,
+        grad_tensor.memory_config().memory_layout() == TensorMemoryLayout::INTERLEAVED or
+            index_tensor.memory_config().memory_layout() == TensorMemoryLayout::INTERLEAVED or
+            this->output_mem_config.memory_layout() == TensorMemoryLayout::INTERLEAVED,
         "Embedding b/w does not currently support sharding");
 
     TT_FATAL(

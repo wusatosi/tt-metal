@@ -2,19 +2,19 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import ttnn
 import torch
-import torch.nn as nn
 from tqdm import tqdm
-from models.tt_transformers.tt.decoder import TransformerBlock
-from models.common.rmsnorm import RMSNorm
+
 import ttnn
 from models.common.lightweightmodule import LightweightModule
-from models.tt_transformers.tt.distributed_norm import DistributedNorm
-from models.tt_transformers.tt.lm_head import LMHead
+from models.common.rmsnorm import RMSNorm
 from models.tt_transformers.tt.common import copy_host_to_device
-from models.tt_transformers.tt.rope import RotarySetup
+from models.tt_transformers.tt.decoder import TransformerBlock
+from models.tt_transformers.tt.distributed_norm import DistributedNorm
 from models.tt_transformers.tt.embedding import Embedding
+from models.tt_transformers.tt.lm_head import LMHead
+from models.tt_transformers.tt.model_config import TensorGroup
+from models.tt_transformers.tt.rope import RotarySetup
 
 
 class Transformer(LightweightModule):
@@ -99,6 +99,7 @@ class Transformer(LightweightModule):
             state_dict=state_dict,
             state_dict_prefix=state_dict_prefix,
             weight_cache_path=weight_cache_path,
+            max_columns_per_device=self.args.max_columns_per_device_lm_head,
         )
 
     def prepare_inputs_prefill(self, tokens, start_pos=0, page_table=None, chunk_page_table=None):
@@ -122,7 +123,13 @@ class Transformer(LightweightModule):
         tokens_embd = ttnn.unsqueeze_to_4D(tokens_embd)
 
         # Slice the rot mats to the prefill seqlen
-        tt_rot_mats_prefill = [self.rope_setup.cos_matrix[:, :, :S, :], self.rope_setup.sin_matrix[:, :, :S, :]]
+        assert (
+            self.rope_setup.cos_matrix.shape[2] >= start_pos + S
+        ), f"Padded prefill end idx {start_pos + S} exceeds max seq len {self.rope_setup.cos_matrix.shape[2]}"
+        tt_rot_mats_prefill = [
+            self.rope_setup.cos_matrix[:, :, start_pos : start_pos + S, :],
+            self.rope_setup.sin_matrix[:, :, start_pos : start_pos + S, :],
+        ]
 
         if page_table is not None:
             tt_page_table = ttnn.from_torch(
@@ -239,11 +246,11 @@ class Transformer(LightweightModule):
         )[0, 0, last_token_idx, : self.vocab_size]
         return logits
 
-    def process_output_decode(self, tt_out, B, S=1, argmax_on_device=False):
+    def process_output_decode(self, tt_out, B, S=1, is_tokens=False):
         """
-        Input is ttnn device tensor of logits. Output is torch logits tensor or the generated token if argmax on device
+        Input is ttnn device tensor of logits if is_tokens=False, otherwise tokens. Output is the corresponding torch tensor.
         """
-        if argmax_on_device:
+        if is_tokens:
             tt_out = ttnn.to_torch(
                 tt_out,  # tt_out.cpu(blocking=True, cq_id=1),
                 mesh_composer=ttnn.ConcatMesh2dToTensor(
@@ -328,7 +335,10 @@ class Transformer(LightweightModule):
 
         if argmax_on_device:
             tt_logits = ttnn.argmax(  # TODO Add multicore support to batch > 1
-                tt_logits, dim=3, use_multicore=False if self.args.max_batch_size > 1 else True  # ,output_tensor=tokens
+                tt_logits,
+                dim=3,
+                keepdim=True,
+                use_multicore=False if self.args.max_batch_size > 1 else True,  # ,output_tensor=tokens
             )
         else:
             # Send output logits to DRAM so L1 is not reserved for ttnn tracing and can be used by subsequent operations
@@ -350,11 +360,16 @@ class Transformer(LightweightModule):
         get_last_token=-1,
         kv_cache=None,
     ):
-        # No-op if callers already provide the right memory config
-        if mode == "decode" and not self.args.is_galaxy:
-            x = ttnn.to_memory_config(x, self.model_config["DECODE_RESIDUAL_MEMCFG"])
-
         for i, layer in enumerate(self.layers):
+            # No-op if callers already provide the right memory config
+            activation_dtype = self.model_config["DECODERS_OPTIMIZATIONS"].get_tensor_dtype(
+                decoder_id=i, tensor=TensorGroup.ACTIVATION
+            )
+            if mode == "decode" and not self.args.is_galaxy:
+                x = ttnn.to_memory_config(x, self.model_config["DECODE_RESIDUAL_MEMCFG"], activation_dtype)
+            elif activation_dtype is not None and x.dtype != activation_dtype:
+                x = ttnn.typecast(x, activation_dtype)
+
             x = layer(
                 x,
                 current_pos,
@@ -380,4 +395,9 @@ class Transformer(LightweightModule):
         if mode == "prefill" and self.model_config["LM_HEAD_INPUT_MEMCFG"].is_sharded():
             x = ttnn.interleaved_to_sharded(x, self.model_config["LM_HEAD_INPUT_MEMCFG"])
 
-        return self.lm_head(x)
+        x = self.lm_head(x)
+
+        if mode == "prefill":
+            x = ttnn.to_layout(x, layout=ttnn.ROW_MAJOR_LAYOUT)
+            x = ttnn.to_memory_config(x, memory_config=ttnn.DRAM_MEMORY_CONFIG)
+        return x

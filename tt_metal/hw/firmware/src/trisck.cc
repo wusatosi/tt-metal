@@ -46,9 +46,9 @@ void kernel_launch(uint32_t kernel_base_addr) {
 #endif
 #else
   extern uint32_t __kernel_init_local_l1_base[];
-  extern uint32_t __fw_export_end_text[];
+  extern uint32_t __fw_export_text_end[];
   do_crt1((
-      uint32_t tt_l1_ptr *)(kernel_base_addr + (uint32_t)__kernel_init_local_l1_base - (uint32_t)__fw_export_end_text));
+      uint32_t tt_l1_ptr *)(kernel_base_addr + (uint32_t)__kernel_init_local_l1_base - (uint32_t)__fw_export_text_end));
 
 #if defined(UCK_CHLKC_UNPACK)
     // Make sure DBG_FEATURE_DISABLE register is cleared before every kernel is executed
@@ -59,6 +59,9 @@ void kernel_launch(uint32_t kernel_base_addr) {
 #endif
     wait_for_go_message();
     DeviceZoneScopedMainChildN("TRISC-KERNEL");
+    EARLY_RETURN_FOR_DEBUG
+    WAYPOINT("K");
     run_kernel();
+    WAYPOINT("KD");
 #endif
 }

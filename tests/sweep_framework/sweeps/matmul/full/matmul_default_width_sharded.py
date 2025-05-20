@@ -7,10 +7,12 @@ from loguru import logger
 import functools
 import operator
 
+import pytest
 import torch
 
 import ttnn
 
+from tests.sweep_framework.sweep_utils.utils import gen_pytest_parametrize_args
 from tests.ttnn.utils_for_testing import (
     check_with_pcc,
     get_per_core_size_and_num_cores,
@@ -55,7 +57,8 @@ parameters = {
 }
 
 
-def run(
+def run_matmul(
+    device,
     batch_sizes,
     m_size,
     width_sharded_specs,
@@ -69,8 +72,6 @@ def run(
     output_dtype,
     input_layout,
     compute_kernel_config,
-    *,
-    device,
 ) -> list:
     k_size, per_core_width, num_cores_width = width_sharded_specs
     total_height = functools.reduce(operator.mul, batch_sizes) * m_size
@@ -80,10 +81,12 @@ def run(
     assert input_a_memory_config == ttnn.L1_WIDTH_SHARDED_MEMORY_CONFIG
     # TODO: row_wise=False and ROW_MAJOR shard orientation gives bad PCC
     # TODO: COL_MAJOR shard orientation doesn't work for get_matmul_program_config
-    input_a_memory_config.shard_spec = ttnn.ShardSpec(
-        ttnn.num_cores_to_corerangeset(num_cores_width, core_grid, row_wise=True),
-        (total_height, per_core_width),
-        ttnn.ShardOrientation.ROW_MAJOR,
+    input_a_memory_config = input_a_memory_config.with_shard_spec(
+        ttnn.ShardSpec(
+            ttnn.num_cores_to_corerangeset(num_cores_width, core_grid, row_wise=True),
+            (total_height, per_core_width),
+            ttnn.ShardOrientation.ROW_MAJOR,
+        )
     )
 
     input_shape_a = (*batch_sizes, m_size, k_size)
@@ -126,3 +129,73 @@ def run(
 
     expected_pcc = 0.99 if k_size < 1024 else 0.98
     return [check_with_pcc(torch_output_tensor, output_tensor, expected_pcc), e2e_perf]
+
+
+@pytest.mark.parametrize(**gen_pytest_parametrize_args(parameters))
+def test_matmul(
+    device,
+    batch_sizes,
+    m_size,
+    width_sharded_specs,
+    n_size,
+    batch_matrix_multiply,
+    input_a_memory_config,
+    input_b_memory_config,
+    output_memory_config,
+    input_a_dtype,
+    input_b_dtype,
+    output_dtype,
+    input_layout,
+    compute_kernel_config,
+):
+    run_matmul(
+        device,
+        batch_sizes,
+        m_size,
+        width_sharded_specs,
+        n_size,
+        batch_matrix_multiply,
+        input_a_memory_config,
+        input_b_memory_config,
+        output_memory_config,
+        input_a_dtype,
+        input_b_dtype,
+        output_dtype,
+        input_layout,
+        compute_kernel_config,
+    )
+
+
+def run(
+    batch_sizes,
+    m_size,
+    width_sharded_specs,
+    n_size,
+    batch_matrix_multiply,
+    input_a_memory_config,
+    input_b_memory_config,
+    output_memory_config,
+    input_a_dtype,
+    input_b_dtype,
+    output_dtype,
+    input_layout,
+    compute_kernel_config,
+    *,
+    device,
+) -> list:
+    return run_matmul(
+        device,
+        batch_sizes,
+        m_size,
+        width_sharded_specs,
+        n_size,
+        batch_matrix_multiply,
+        input_a_memory_config,
+        input_b_memory_config,
+        output_memory_config,
+        input_a_dtype,
+        input_b_dtype,
+        output_dtype,
+        input_layout,
+        compute_kernel_config,
+    )

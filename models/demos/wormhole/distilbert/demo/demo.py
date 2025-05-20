@@ -1,26 +1,18 @@
 # SPDX-FileCopyrightText: © 2024 Tenstorrent Inc.
 # SPDX-License-Identifier: Apache-2.0
 import json
+
+import evaluate
 import pytest
 import torch
 from loguru import logger
+from transformers import AutoTokenizer, DistilBertForQuestionAnswering, pipeline
+from ttnn.model_preprocessing import preprocess_model_parameters
+
 import ttnn
-from models.utility_functions import (
-    disable_compilation_reports,
-    disable_persistent_kernel_cache,
-    profiler,
-)
+from models.demos.wormhole.distilbert.distilbert_utils import squadv2_1K_samples_input, squadv2_answer_decode_batch
 from models.demos.wormhole.distilbert.tt import ttnn_optimized_distilbert
-from models.demos.wormhole.distilbert.distilbert_utils import (
-    squadv2_1K_samples_input,
-    squadv2_answer_decode_batch,
-)
-from ttnn.model_preprocessing import (
-    preprocess_model_parameters,
-)
-from models.utility_functions import is_wormhole_b0, skip_for_grayskull
-from transformers import DistilBertForQuestionAnswering, AutoTokenizer, pipeline
-import evaluate
+from models.utility_functions import disable_persistent_kernel_cache, profiler, skip_for_grayskull
 
 
 def load_inputs(input_path, batch):
@@ -307,7 +299,6 @@ def run_distilbert_question_and_answering_inference_squad_v2(
 @pytest.mark.parametrize("distilbert", [ttnn_optimized_distilbert])
 def test_demo(input_loc, model_name, distilbert, batch_size, model_location_generator, mesh_device):
     disable_persistent_kernel_cache()
-    disable_compilation_reports()
 
     if ttnn.GetNumAvailableDevices() == 2:
         batch_size = batch_size * 2
@@ -335,7 +326,6 @@ def test_demo_squadv2(
     model_name, distilbert, batch_size, n_iterations, model_location_generator, use_program_cache, mesh_device
 ):
     disable_persistent_kernel_cache()
-    disable_compilation_reports()
 
     if ttnn.GetNumAvailableDevices() == 2:
         batch_size = batch_size * 2

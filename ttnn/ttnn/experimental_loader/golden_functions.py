@@ -20,7 +20,7 @@ def _golden_function(
     input_tensor,
     kv_input_tensor,
     *,
-    num_q_heads,
+    num_heads,
     num_kv_heads,
     transpose_k_heads=True,
     **_,
@@ -28,12 +28,12 @@ def _golden_function(
     import torch
 
     if num_kv_heads is None:
-        num_kv_heads = num_q_heads
+        num_kv_heads = num_heads
 
     batch_size, Z, sequence_size, hidden_size = input_tensor.shape
-    head_size = hidden_size // num_q_heads
+    head_size = hidden_size // num_heads
 
-    query = torch.reshape(input_tensor, (batch_size, sequence_size, num_q_heads, head_size))
+    query = torch.reshape(input_tensor, (batch_size, sequence_size, num_heads, head_size))
     query = torch.permute(query, (0, 2, 1, 3)).contiguous().clone()
 
     batch_size, Z, sequence_size, hidden_size = kv_input_tensor.shape
@@ -68,14 +68,34 @@ def _golden_function(tensor, grid_size, shard_spec, num_slices, slice, *args, **
 ttnn.attach_golden_function(ttnn.interleaved_to_sharded_partial, _golden_function)
 
 
-def _golden_function(in0, in1, op, dir, *args, **kwargs):
-    in0 = in0.reshape((in1.shape[0], 1, -1, in0.shape[-1]))
-    if op == ttnn.BcastOpMath.ADD:
+def _golden_function(slice, tensor, num_slices, slice_id, *args, **kwargs):
+    original_shape = tensor.shape
+    tensor = tensor.reshape(1, 1, -1, tensor.shape[-1])
+    slice_size = tensor.shape[-2] // num_slices
+    start = slice_id * slice_size
+    stop = start + slice_size
+    tensor[:, :, start:stop, :] = slice
+    return tensor.reshape(original_shape)
+
+
+ttnn.attach_golden_function(ttnn.sharded_to_interleaved_partial, _golden_function)
+
+
+def _golden_function(in0, in1, math_op, bcast_dim, *args, **kwargs):
+    if bcast_dim in {ttnn.BcastOpDim.W, ttnn.BcastOpDim.H, ttnn.BcastOpDim.HW}:
+        in1 = in1.expand(in0.shape)
+    else:
+        raise AssertionError("Invalid bcast dimension")
+
+    if math_op == ttnn.BcastOpMath.ADD:
         res = in0 + in1
-    elif op == ttnn.BcastOpMath.SUB:
+    elif math_op == ttnn.BcastOpMath.SUB:
         res = in0 - in1
-    elif op == ttnn.BcastOpMath.MUL:
+    elif math_op == ttnn.BcastOpMath.MUL:
         res = in0 * in1
+    else:
+        raise AssertionError("Invalid math operation")
+
     return res
 
 

@@ -111,92 +111,6 @@ def test_binary_isclose_ttnn(input_shapes, atol, rtol, equal_nan, device):
         (torch.Size([1, 3, 320, 384])),
     ),
 )
-def test_binary_minimum_ttnn(input_shapes, device):
-    in_data1, input_tensor1 = data_gen_with_range(input_shapes, -100, 100, device)
-    in_data2, input_tensor2 = data_gen_with_range(input_shapes, -150, 150, device)
-
-    output_tensor = ttnn.minimum(input_tensor1, input_tensor2)
-    golden_function = ttnn.get_golden_function(ttnn.minimum)
-    golden_tensor = golden_function(in_data1, in_data2)
-
-    comp_pass = compare_pcc([output_tensor], [golden_tensor])
-    assert comp_pass
-
-
-@pytest.mark.parametrize(
-    "input_shapes",
-    (
-        (torch.Size([1, 1, 32, 32])),
-        (torch.Size([1, 1, 320, 384])),
-        (torch.Size([1, 3, 320, 384])),
-    ),
-)
-@pytest.mark.parametrize(
-    "scalar",
-    {-82.5, -45.7, 0.0, 12.5, 66.4, 96, 8},
-)
-def test_binary_minimum_scalar_ttnn(input_shapes, scalar, device):
-    in_data1, input_tensor1 = data_gen_with_range(input_shapes, -100, 100, device)
-
-    output_tensor = ttnn.minimum(input_tensor1, scalar)
-    golden_function = ttnn.get_golden_function(ttnn.minimum)
-    golden_tensor = golden_function(in_data1, torch.full(input_shapes, scalar))
-
-    comp_pass = compare_pcc([output_tensor], [golden_tensor])
-    assert comp_pass
-
-
-@pytest.mark.parametrize(
-    "input_shapes",
-    (
-        (torch.Size([1, 1, 32, 32])),
-        (torch.Size([1, 1, 320, 384])),
-        (torch.Size([1, 3, 320, 384])),
-    ),
-)
-def test_binary_maximum_ttnn(input_shapes, device):
-    in_data1, input_tensor1 = data_gen_with_range(input_shapes, -100, 100, device)
-    in_data2, input_tensor2 = data_gen_with_range(input_shapes, -150, 150, device)
-
-    output_tensor = ttnn.maximum(input_tensor1, input_tensor2)
-    golden_function = ttnn.get_golden_function(ttnn.maximum)
-    golden_tensor = golden_function(in_data1, in_data2)
-
-    comp_pass = compare_pcc([output_tensor], [golden_tensor])
-    assert comp_pass
-
-
-@pytest.mark.parametrize(
-    "input_shapes",
-    (
-        (torch.Size([1, 1, 32, 32])),
-        (torch.Size([1, 1, 320, 384])),
-        (torch.Size([1, 3, 320, 384])),
-    ),
-)
-@pytest.mark.parametrize(
-    "scalar",
-    {-82.5, -45.7, 0.0, 12.5, 66.4, 96, 8},
-)
-def test_binary_maximum_scalar_ttnn(input_shapes, scalar, device):
-    in_data1, input_tensor1 = data_gen_with_range(input_shapes, -100, 100, device)
-
-    output_tensor = ttnn.maximum(input_tensor1, scalar)
-    golden_function = ttnn.get_golden_function(ttnn.maximum)
-    golden_tensor = golden_function(in_data1, torch.full(input_shapes, scalar))
-
-    comp_pass = compare_pcc([output_tensor], [golden_tensor])
-    assert comp_pass
-
-
-@pytest.mark.parametrize(
-    "input_shapes",
-    (
-        (torch.Size([1, 1, 32, 32])),
-        (torch.Size([1, 1, 320, 384])),
-        (torch.Size([1, 3, 320, 384])),
-    ),
-)
 def test_binary_atan2_ttnn(input_shapes, device):
     in_data1, input_tensor1 = data_gen_with_range(input_shapes, -100, 100, device)
     in_data2, input_tensor2 = data_gen_with_range(input_shapes, -150, 150, device)
@@ -289,8 +203,8 @@ def test_binary_div_ttnn(accurate_mode, round_mode, input_shapes, device):
         in_data1, input_tensor1 = data_gen_with_range(input_shapes, -100, 100, device)
         in_data2, input_tensor2 = data_gen_with_range(input_shapes, -150, -1, device)
     else:
-        in_data1, input_tensor1 = data_gen_with_range(input_shapes, -100, 100, device)
-        in_data2, input_tensor2 = data_gen_with_range(input_shapes, -100, 100, device)
+        in_data1, input_tensor1 = data_gen_with_range(input_shapes, -200, 150, device)
+        in_data2, input_tensor2 = data_gen_with_range(input_shapes, -120, 200, device)
 
     output_tensor = ttnn.div(input_tensor1, input_tensor2, accurate_mode=accurate_mode, round_mode=round_mode)
     golden_function = ttnn.get_golden_function(ttnn.div)
@@ -318,8 +232,8 @@ def test_binary_div_ttnn_ci(accurate_mode, round_mode, input_shapes, device):
         in_data1, input_tensor1 = data_gen_with_range(input_shapes, -1e6, 1e6, device)
         in_data2, input_tensor2 = data_gen_with_range(input_shapes, -1e6, -1, device)
     else:
-        in_data1, input_tensor1 = data_gen_with_range(input_shapes, -1e6, 1e6, device)
-        in_data2, input_tensor2 = data_gen_with_range(input_shapes, -1e6, 1e6, device)
+        in_data1, input_tensor1 = data_gen_with_range(input_shapes, -2e6, 1e6, device)
+        in_data2, input_tensor2 = data_gen_with_range(input_shapes, -1e6, 2e6, device)
 
     output_tensor = ttnn.div(input_tensor1, input_tensor2, accurate_mode=accurate_mode, round_mode=round_mode)
     golden_function = ttnn.get_golden_function(ttnn.div)
@@ -348,8 +262,8 @@ def test_binary_div_ttnn_opt(accurate_mode, round_mode, input_shapes, device):
         in_data1, input_tensor1 = data_gen_with_range(input_shapes, -100, 100, device)
         in_data2, input_tensor2 = data_gen_with_range(input_shapes, -150, -1, device)
     else:
-        in_data1, input_tensor1 = data_gen_with_range(input_shapes, -100, 100, device)
-        in_data2, input_tensor2 = data_gen_with_range(input_shapes, -100, 100, device)
+        in_data1, input_tensor1 = data_gen_with_range(input_shapes, -200, 100, device)
+        in_data2, input_tensor2 = data_gen_with_range(input_shapes, -150, 200, device)
 
     _, output_tensor = data_gen_with_range(input_shapes, -1, 1, device)
 
@@ -594,7 +508,7 @@ def test_binary_fmod_ttnn(input_shapes, device):
 
     output_tensor = ttnn.fmod(input_tensor1, input_tensor2)
     golden_function = ttnn.get_golden_function(ttnn.fmod)
-    golden_tensor = golden_function(in_data1, in_data2)
+    golden_tensor = golden_function(in_data1, in_data2, device=device)
 
     comp_pass = compare_pcc([output_tensor], [golden_tensor])
     assert comp_pass
@@ -617,7 +531,7 @@ def test_binary_fmod_decimal_ttnn(input_shapes, device):
     input_tensor2 = ttnn.Tensor(in_data2, ttnn.float32).to(ttnn.TILE_LAYOUT).to(device)
     output_tensor = ttnn.fmod(input_tensor1, input_tensor2)
     golden_function = ttnn.get_golden_function(ttnn.fmod)
-    golden_tensor = golden_function(in_data1, in_data2)
+    golden_tensor = golden_function(in_data1, in_data2, device=device)
 
     comp_pass = compare_pcc([output_tensor], [golden_tensor], 0.9999)
     assert comp_pass
@@ -641,7 +555,7 @@ def test_fmod_ttnn(input_shapes, scalar, device):
 
     output_tensor = ttnn.fmod(input_tensor1, scalar)
     golden_function = ttnn.get_golden_function(ttnn.fmod)
-    golden_tensor = golden_function(in_data1, scalar)
+    golden_tensor = golden_function(in_data1, scalar, device=device)
 
     comp_pass = compare_pcc([output_tensor], [golden_tensor])
     assert comp_pass
@@ -1000,8 +914,10 @@ def test_nei_ttnn(input_shapes, scalar, device):
 )
 @skip_for_grayskull("#ToDo: GS implementation needs to be done for remainder")
 def test_binary_gcd_ttnn(input_shapes, device):
-    in_data1, input_tensor1 = data_gen_with_range_int(input_shapes, -1024, 1024, device)
-    in_data2, input_tensor2 = data_gen_with_range_int(input_shapes, -1000, 1000, device)
+    in_data1 = torch.randint(-2147483647, 2147483648, input_shapes, dtype=torch.int32)
+    in_data2 = torch.randint(-2147483647, 2147483648, input_shapes, dtype=torch.int32)
+    input_tensor1 = ttnn.from_torch(in_data1, dtype=ttnn.int32, layout=ttnn.TILE_LAYOUT, device=device)
+    input_tensor2 = ttnn.from_torch(in_data2, dtype=ttnn.int32, layout=ttnn.TILE_LAYOUT, device=device)
     output_tensor = ttnn.gcd(input_tensor1, input_tensor2)
     golden_function = ttnn.get_golden_function(ttnn.gcd)
     golden_tensor = golden_function(in_data1, in_data2)
@@ -1021,10 +937,10 @@ def test_binary_gcd_ttnn(input_shapes, device):
 @skip_for_grayskull("#ToDo: GS implementation needs to be done for remainder")
 def test_binary_lcm_ttnn(input_shapes, device):
     torch.manual_seed(213919)
-    in_data1 = torch.randint(-100, 100, input_shapes, dtype=torch.int32)
-    in_data2 = torch.randint(-80, 180, input_shapes, dtype=torch.int32)
-    input_tensor1 = ttnn.from_torch(in_data1, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
-    input_tensor2 = ttnn.from_torch(in_data2, dtype=ttnn.bfloat16, layout=ttnn.TILE_LAYOUT, device=device)
+    in_data1 = torch.randint(-32767, 32768, input_shapes, dtype=torch.int32)
+    in_data2 = torch.randint(-32767, 32768, input_shapes, dtype=torch.int32)
+    input_tensor1 = ttnn.from_torch(in_data1, dtype=ttnn.int32, layout=ttnn.TILE_LAYOUT, device=device)
+    input_tensor2 = ttnn.from_torch(in_data2, dtype=ttnn.int32, layout=ttnn.TILE_LAYOUT, device=device)
     output_tensor = ttnn.lcm(input_tensor1, input_tensor2)
     golden_function = ttnn.get_golden_function(ttnn.lcm)
     golden_tensor = golden_function(in_data1, in_data2)
@@ -1043,12 +959,12 @@ def test_binary_lcm_ttnn(input_shapes, device):
     ),
 )
 @skip_for_grayskull("#ToDo: GS implementation needs to be done for remainder")
-def test_binary_gcd_fp32(input_shapes, device):
+def test_binary_gcd_int32(input_shapes, device):
     torch.manual_seed(213919)
-    in_data1 = torch.randint(-1000, 1000, input_shapes, dtype=torch.int32)
-    in_data2 = torch.randint(-1024, 1024, input_shapes, dtype=torch.int32)
-    input_tensor1 = ttnn.from_torch(in_data1, dtype=ttnn.float32, layout=ttnn.TILE_LAYOUT, device=device)
-    input_tensor2 = ttnn.from_torch(in_data2, dtype=ttnn.float32, layout=ttnn.TILE_LAYOUT, device=device)
+    in_data1 = torch.randint(-2147483647, 2147483648, input_shapes, dtype=torch.int32)
+    in_data2 = torch.randint(-2147483647, 2147483648, input_shapes, dtype=torch.int32)
+    input_tensor1 = ttnn.from_torch(in_data1, dtype=ttnn.int32, layout=ttnn.TILE_LAYOUT, device=device)
+    input_tensor2 = ttnn.from_torch(in_data2, dtype=ttnn.int32, layout=ttnn.TILE_LAYOUT, device=device)
 
     output_tensor = ttnn.gcd(input_tensor1, input_tensor2)
     golden_function = ttnn.get_golden_function(ttnn.gcd)
@@ -1070,11 +986,11 @@ def test_binary_gcd_fp32(input_shapes, device):
 @skip_for_grayskull("#ToDo: GS implementation needs to be done for remainder")
 def test_binary_lcm_pos(input_shapes, device):
     torch.manual_seed(213919)
-    in_data1 = torch.randint(1, 1000, input_shapes, dtype=torch.int32)
-    in_data2 = torch.randint(1, 1024, input_shapes, dtype=torch.int32)
+    in_data1 = torch.randint(1, 32768, input_shapes, dtype=torch.int32)
+    in_data2 = torch.randint(1, 32768, input_shapes, dtype=torch.int32)
 
-    input_tensor1 = ttnn.from_torch(in_data1, dtype=ttnn.float32, layout=ttnn.TILE_LAYOUT, device=device)
-    input_tensor2 = ttnn.from_torch(in_data2, dtype=ttnn.float32, layout=ttnn.TILE_LAYOUT, device=device)
+    input_tensor1 = ttnn.from_torch(in_data1, dtype=ttnn.int32, layout=ttnn.TILE_LAYOUT, device=device)
+    input_tensor2 = ttnn.from_torch(in_data2, dtype=ttnn.int32, layout=ttnn.TILE_LAYOUT, device=device)
     output_tensor = ttnn.lcm(input_tensor1, input_tensor2)
     golden_function = ttnn.get_golden_function(ttnn.lcm)
     golden_tensor = golden_function(in_data1, in_data2)
@@ -1093,14 +1009,13 @@ def test_binary_lcm_pos(input_shapes, device):
     ),
 )
 @skip_for_grayskull("#ToDo: GS implementation needs to be done for remainder")
-# when both inputs are 0, torch=0, tt=nan
 def test_binary_lcm_neg(input_shapes, device):
     torch.manual_seed(213919)
-    in_data1 = torch.randint(-1000, -1, input_shapes, dtype=torch.int32)
-    in_data2 = torch.randint(-1024, -1, input_shapes, dtype=torch.int32)
+    in_data1 = torch.randint(-32767, 0, input_shapes, dtype=torch.int32)
+    in_data2 = torch.randint(-32767, 0, input_shapes, dtype=torch.int32)
 
-    input_tensor1 = ttnn.from_torch(in_data1, dtype=ttnn.float32, layout=ttnn.TILE_LAYOUT, device=device)
-    input_tensor2 = ttnn.from_torch(in_data2, dtype=ttnn.float32, layout=ttnn.TILE_LAYOUT, device=device)
+    input_tensor1 = ttnn.from_torch(in_data1, dtype=ttnn.int32, layout=ttnn.TILE_LAYOUT, device=device)
+    input_tensor2 = ttnn.from_torch(in_data2, dtype=ttnn.int32, layout=ttnn.TILE_LAYOUT, device=device)
     output_tensor = ttnn.lcm(input_tensor1, input_tensor2)
     golden_function = ttnn.get_golden_function(ttnn.lcm)
     golden_tensor = golden_function(in_data1, in_data2)

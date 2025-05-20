@@ -8,7 +8,7 @@
 
 namespace tt::tt_metal {
 
-// Original types defined in buffer_constants.hpp
+// Original types defined in buffer_types.hpp
 flatbuffer::BufferType to_flatbuffer(BufferType type) {
     switch (type) {
         case BufferType::DRAM: return flatbuffer::BufferType::DRAM;
@@ -20,7 +20,7 @@ flatbuffer::BufferType to_flatbuffer(BufferType type) {
     TT_THROW("Unsupported BufferType to flatbuffer.");
 }
 
-// Original types defined in buffer_constants.hpp
+// Original types defined in buffer_types.hpp
 flatbuffer::TensorMemoryLayout to_flatbuffer(TensorMemoryLayout layout) {
     switch (layout) {
         case TensorMemoryLayout::INTERLEAVED: return flatbuffer::TensorMemoryLayout::Interleaved;
@@ -35,7 +35,7 @@ flatbuffer::TensorMemoryLayout to_flatbuffer(TensorMemoryLayout layout) {
 // For page sizes, keep lambda usage consistent across types.
 static inline uint32_t to_flatbuffer(const uint32_t& value) { return value; }
 
-// Original type defined in circular_buffer_types.hpp
+// Original type defined in circular_buffer_config.hpp
 flatbuffers::Offset<flatbuffer::CircularBufferConfig> to_flatbuffer(
     const CircularBufferConfig& config, flatbuffers::FlatBufferBuilder& builder) {
     // Convert optional arrays of various types to Flatbuffers vectors.

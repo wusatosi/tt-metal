@@ -6,7 +6,6 @@ import torch
 import ttnn
 from ttnn import ShardTensorToMesh, ReplicateTensorToMesh
 from models.experimental.grok.tt.grok_common import LightweightModule
-from models.experimental.grok.scripts.tlog import tlog, tlog_mesh_device
 
 
 class TtMoeLayer(LightweightModule):
@@ -121,7 +120,7 @@ class TtMoeLayer(LightweightModule):
         # tlog('our_topk_indices', ttl_topk_indices)
         ttl_topk_values = ttl_topk_values * self.top2_mask_11BB  # masked unwanted ones to 0
         mask_B2 = ttnn.eq(self.expert_mask_11BB, ttl_topk_indices)  # Each device masks for its own expert index 1-8
-        weights_1SB1 = ttnn.sum(ttl_topk_values * mask_B2, dim=3)
+        weights_1SB1 = ttnn.sum(ttl_topk_values * mask_B2, dim=3, keepdim=True)
 
         # MLP and masking
         weights = expert_i_HH(input_i_1SBH)

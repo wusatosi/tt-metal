@@ -2,10 +2,11 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
+import torch
+
 import ttnn
 from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_cross_attention import cross_attention
 from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_feedforward import feedforward
-import torch
 
 
 def compare(tensor, name, permute=False):
@@ -87,6 +88,7 @@ class basic_transformer_block:
             bias=self.parameters.norm1.bias,
             memory_config=sharded_mem_cfg,
             program_config=program_config,
+            compute_kernel_config=ttnn.WormholeComputeKernelConfig(math_fidelity=ttnn.MathFidelity.HiFi4),
         )
 
         # 1. Self-Attention
@@ -126,6 +128,7 @@ class basic_transformer_block:
                 bias=self.parameters.norm2.bias,
                 memory_config=sharded_mem_cfg,
                 program_config=program_config,
+                compute_kernel_config=ttnn.WormholeComputeKernelConfig(math_fidelity=ttnn.MathFidelity.HiFi4),
             )
 
             # 2. Cross-Attention
@@ -159,6 +162,7 @@ class basic_transformer_block:
             bias=self.parameters.norm3.bias,
             memory_config=sharded_mem_cfg,
             program_config=program_config,
+            compute_kernel_config=ttnn.WormholeComputeKernelConfig(math_fidelity=ttnn.MathFidelity.HiFi4),
         )
         if use_ada_layer_norm_zero:
             assert False, "AdaLayerNormZero not supported and not used in stable diffusion"

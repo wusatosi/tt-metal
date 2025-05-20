@@ -3,22 +3,18 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import time
+
 import pytest
 import torch
 from loguru import logger
-from models.generation_utils import get_logits_processor
-import ttnn
-import time
-
-from transformers import T5ForConditionalGeneration, AutoTokenizer, T5Config
-from models.demos.grayskull.t5.tt import ttnn_optimized_functional_t5
+from transformers import AutoTokenizer, T5Config, T5ForConditionalGeneration
 from ttnn.model_preprocessing import preprocess_model_parameters
 
-from models.utility_functions import (
-    disable_compilation_reports,
-    disable_persistent_kernel_cache,
-    enable_persistent_kernel_cache,
-)
+import ttnn
+from models.demos.grayskull.t5.tt import ttnn_optimized_functional_t5
+from models.generation_utils import get_logits_processor
+from models.utility_functions import disable_persistent_kernel_cache, enable_persistent_kernel_cache
 
 
 def load_inputs(input_path, batch):
@@ -133,6 +129,5 @@ def run_summarization_inference(device, batch_size, sequence_length, max_tokens,
 )
 def test_t5_demo_for_summarize(device, use_program_cache, batch_size, sequence_length, max_tokens, model_name):
     disable_persistent_kernel_cache()
-    disable_compilation_reports()
 
     return run_summarization_inference(device, batch_size, sequence_length, max_tokens, model_name)

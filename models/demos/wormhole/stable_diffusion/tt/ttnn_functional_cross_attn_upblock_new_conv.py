@@ -2,39 +2,21 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import torch
-import ttnn
-from typing import Optional, Dict
-
-
-from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_upsample_2d_new_conv import upsample2d
-
-from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_resnetblock2d_new_conv import resnetBlock2D
-
-from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_transformer_2d_new_conv import (
-    transformer_2d_model,
-)
-from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions import dealloc_input
 from loguru import logger
 
-
-def torch_to_ttnn(input, device, layout=ttnn.TILE_LAYOUT):
-    input = ttnn.from_torch(input, ttnn.bfloat16)
-    input = ttnn.to_layout(input, layout)
-    input = ttnn.to_device(input, device, memory_config=ttnn.DRAM_MEMORY_CONFIG)
-    return input
+import ttnn
+from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_resnetblock2d_new_conv import resnetBlock2D
+from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_transformer_2d_new_conv import transformer_2d_model
+from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_upsample_2d_new_conv import upsample2d
+from models.demos.wormhole.stable_diffusion.tt.ttnn_functional_utility_functions import dealloc_input
 
 
 class cross_attention_upblock2d:
-    def __init__(
-        self, device, parameters, reader_patterns_cache, batch_size, input_height, input_width, compute_kernel_config
-    ):
+    def __init__(self, device, parameters, batch_size, input_height, input_width, compute_kernel_config):
         self.device = device
         self.parameters = parameters
         self.resnets = [
-            resnetBlock2D(
-                device, resnet, reader_patterns_cache, batch_size, input_height, input_width, compute_kernel_config
-            )
+            resnetBlock2D(device, resnet, batch_size, input_height, input_width, compute_kernel_config)
             for resnet in parameters.resnets
         ]
         self.attentions = [
@@ -49,7 +31,6 @@ class cross_attention_upblock2d:
             self.upsample_2d = upsample2d(
                 device,
                 parameters.upsamplers[0],
-                reader_patterns_cache,
                 batch_size,
                 input_height,
                 input_width,

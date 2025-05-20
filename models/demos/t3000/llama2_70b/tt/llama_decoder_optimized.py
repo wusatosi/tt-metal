@@ -2,14 +2,12 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-from loguru import logger
 from typing import List
-import torch
-import ttnn
-from ttnn import ReplicateTensorToMesh, ShardTensorToMesh
 
+import ttnn
 from models.demos.t3000.llama2_70b.tt.llama_attention_optimized import TtLlamaAttention_optimized
 from models.demos.t3000.llama2_70b.tt.llama_mlp_optimized import TtLlamaMLP_optimized
+from ttnn import ReplicateTensorToMesh, ShardTensorToMesh
 
 
 class TtLlamaDecoder_optimized:
