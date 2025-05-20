@@ -880,13 +880,28 @@ void FDMeshCommandQueue::record_end() {
     for (const auto& range : device_ranges) {
 
         std::vector<TraceNode> trace_nodes;
+        uint32_t unused_nodes = 0;
+        uint32_t unused_nodes_multicast = 0;
+        uint32_t unused_nodes_unicast = 0;
         for (auto& node : trace_nodes_) {
+            bool used = false;
             for (auto& [device_range, node] : node.trace_nodes) {
                 if (!device_range.intersects(range)) {
                     continue;
                 }
                 TT_ASSERT(range == *device_range.intersection(range));
                 trace_nodes.push_back(node);
+                used = true;
+                break;
+            }
+            if (!used) {
+                unused_nodes++;
+                if (node.multicast_go_signals) {
+                    unused_nodes_multicast++;
+                }
+                if (node.unicast_go_signals) {
+                    unused_nodes_unicast++;
+                }
             }
         }
         uint32_t worker_ringbuffer_start =
