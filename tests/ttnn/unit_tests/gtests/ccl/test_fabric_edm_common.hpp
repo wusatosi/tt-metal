@@ -2790,7 +2790,7 @@ void Run1DFabricPacketSendTest(
                     [&sync_core_coord](const CoreCoord& core) {
                         return core.x == sync_core_coord.x && core.y == sync_core_coord.y;
                     }),
-                "Atleast one worker core must be mapped onto sync core: x={}, y={}",
+                "At least one worker core must be mapped onto sync core: x={}, y={}",
                 sync_core_coord.x,
                 sync_core_coord.y);
             auto worker_kernel_id = tt_metal::CreateKernel(

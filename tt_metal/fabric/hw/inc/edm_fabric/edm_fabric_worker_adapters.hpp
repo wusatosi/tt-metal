@@ -53,7 +53,6 @@ struct WorkerToFabricEdmSenderImpl {
     static constexpr uint32_t unused_connection_value = 0;
     static constexpr uint32_t open_connection_value = 1;
     static constexpr uint32_t close_connection_request_value = 2;
-    // HACK: Need a way to properly set this up
 
     WorkerToFabricEdmSenderImpl() : from_remote_buffer_free_slots_ptr(nullptr) {}
 
@@ -73,7 +72,7 @@ struct WorkerToFabricEdmSenderImpl {
         auto writer_send_sem_addr =
             reinterpret_cast<volatile uint32_t* const>(get_semaphore<my_core_type>(writer_send_sem_id));
 
-        // DEAD CODE
+        // NOTE: DEAD CODE
         // Workers don't have a local stream ID, so we set to a placeholder (unused) value until the worker and EDM
         // codepaths are split
         const StreamId my_fc_stream_channel_id = StreamId{std::numeric_limits<uint32_t>::max()};
@@ -161,7 +160,7 @@ struct WorkerToFabricEdmSenderImpl {
         this->data_noc_cmd_buf = data_noc_cmd_buf;
         this->sync_noc_cmd_buf = sync_noc_cmd_buf;
 
-        if (I_USE_STREAM_REG_FOR_CREDIT_RECEIVE) {
+        if constexpr (I_USE_STREAM_REG_FOR_CREDIT_RECEIVE) {
             // The EDM is guaranteed to know the number of free slots of the downstream EDM
             // becausen all EDMs are brought up/initialized at the same time
             init_ptr_val(this->worker_credits_stream_id, EDM_NUM_BUFFER_SLOTS);
@@ -237,7 +236,9 @@ struct WorkerToFabricEdmSenderImpl {
 
     FORCE_INLINE void wait_for_empty_write_slot() const {
         WAYPOINT("FWSW");
-        while (!this->edm_has_space_for_packet());
+        while (!this->edm_has_space_for_packet()) {
+            invalidate_l1_cache();
+        }
         WAYPOINT("FWSD");
     }
 
@@ -432,6 +433,7 @@ struct WorkerToFabricEdmSenderImpl {
         // Need to wait for the ack to teardown notice, from edm
         // noc_semaphore_wait(this->worker_teardown_addr, 1);
         while (*this->worker_teardown_addr != 1) {
+            invalidate_l1_cache();
         }
         WAYPOINT("FCFD");
         noc_async_write_barrier();

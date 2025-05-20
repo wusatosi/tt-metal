@@ -182,6 +182,9 @@ struct FabricMuxConfig {
 
         if (channel_type == FabricMuxChannelType::HEADER_ONLY_CHANNEL) {
             stream_id += this->num_full_size_channels;
+            TT_ASSERT(channel_id < this->num_header_only_channels, "Channel id out of bounds");
+        } else {
+            TT_ASSERT(channel_id < this->num_full_size_channels, "Channel id out of bounds");
         }
 
         return stream_id;
