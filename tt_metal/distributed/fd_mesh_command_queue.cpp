@@ -807,11 +807,11 @@ void FDMeshCommandQueue::record_end() {
                     if (intersection == existing_range) {
                     } else {
                         auto complement = subtract(existing_range, intersection);
+                        device_ranges_to_invalidate.push_back(existing_range);
                         for (const auto& complement_range : complement.ranges()) {
                             device_ranges.push_back(complement_range);
                         }
                         device_ranges.push_back(intersection);
-                        device_ranges_to_invalidate.push_back(existing_range);
                     }
                 }
             }
