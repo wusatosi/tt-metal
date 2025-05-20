@@ -835,6 +835,7 @@ void FDMeshCommandQueue::record_end() {
         exec_buf_end.push_back(((uint32_t*)command_sequence.data())[i]);
     }
     size_t max_trace_size = 0;
+    std::set<SubDeviceId> sub_device_ids;
     for (const auto& range : device_ranges) {
 
         std::vector<TraceNode> trace_nodes;
@@ -865,6 +866,7 @@ void FDMeshCommandQueue::record_end() {
         for (auto& node : trace_nodes) {
             auto sub_device_id = node.sub_device_id;
             auto& program = *node.program;
+            sub_device_ids.insert(sub_device_id);
 
             // Snapshot of expected workers from previous programs, used for dispatch_wait cmd generation.
             // Compute the total number of workers this program uses
@@ -944,9 +946,10 @@ void FDMeshCommandQueue::record_end() {
     }
     trace_ctx_->total_trace_size = max_trace_size * sizeof(uint32_t);
 
-    trace_ctx_->sub_device_ids.reserve(trace_ctx_->descriptors.size());
-    for (const auto& [id, _] : trace_ctx_->descriptors) {
-        trace_ctx_->sub_device_ids.push_back(id);
+    trace_ctx_->sub_device_ids.reserve(sub_device_ids.size());
+    for (auto& sub_device_id : sub_device_ids) {
+        trace_ctx_->sub_device_ids.push_back(sub_device_id);
+        trace_ctx_->descriptors[sub_device_id] = TraceWorkerDescriptor{.num_traced_programs_needing_go_signal_multicast = launch_msg_buffer_num_entries, .num_traced_programs_needing_go_signal_unicast=launch_msg_buffer_num_entries};
     }
 
     trace_nodes_.clear();
