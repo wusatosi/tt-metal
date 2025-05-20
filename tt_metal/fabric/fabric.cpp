@@ -96,9 +96,15 @@ void append_fabric_connection_rt_args(
     CoreCoord fabric_router_virtual_core =
         tt::tt_metal::MetalContext::instance().get_cluster().get_virtual_eth_core_from_channel(
             src_chip_id, fabric_router_channel);
+    auto logical_ethernet_core =
+        tt::tt_metal::MetalContext::instance().get_cluster().get_logical_ethernet_core_from_virtual(
+            src_chip_id, fabric_router_virtual_core);
+    size_t connected_ethernet_channel_id = logical_ethernet_core.y;
+    TT_FATAL(logical_ethernet_core.x == 0, "Grabbed wrong coord field");
 
     const auto& edm_config = fabric_context.get_fabric_router_config();
-    const auto sender_channel = is_2d_fabric ? router_direction : 0;
+    // Worker always connects to channel 0
+    const auto sender_channel = 0;
     tt::tt_fabric::SenderWorkerAdapterSpec edm_connection = {
         .edm_noc_x = fabric_router_virtual_core.x,
         .edm_noc_y = fabric_router_virtual_core.y,
