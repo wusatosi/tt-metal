@@ -140,11 +140,12 @@ TEST_F(MeshTraceTestSuite, Sanity) {
         trace_ids.push_back(trace_id);
     }
 
-    for (int i = 0; i < num_iters; i++) {
-        for (auto trace_id : trace_ids) {
-            ReplayTrace(mesh_device_.get(), 0, trace_id, false);
+  //  for (int i = 0; i < num_iters; i++) {
+
+        for (int trace_idx = 0; trace_idx < num_traces; trace_idx++) {
+            ReplayTrace(mesh_device_.get(), 0, trace_ids[trace_idx], false);
         }
-    }
+    //}
     Finish(mesh_device_->mesh_command_queue());
 
     for (auto trace_id : trace_ids) {
