@@ -471,15 +471,23 @@ TEST_F(MeshTraceTestSuite, DataCopyOnSubDevicesTrace) {
         tt::llrt::write_hex_vec_to_core(device->id(), syncer_core_phys, std::vector<uint32_t>{1}, global_sem.address());
     }
 
+    fmt::println(stderr, "Before capture trace");
     // Capture Trace
     auto trace_id = BeginTraceCapture(mesh_device_.get(), 0);
+    fmt::println(stderr, "After begin capture trace");
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), syncer_mesh_workload, false);
+    fmt::println(stderr, "After enqueue 1");
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), datacopy_mesh_workload, false);
+    fmt::println(stderr, "After enqueue 2");
     EnqueueMeshWorkload(mesh_device_->mesh_command_queue(), add_mesh_workload, false);
+    fmt::println(stderr, "After enqueue 3");
     EndTraceCapture(mesh_device_.get(), 0, trace_id);
+    fmt::println(stderr, "After capture trace");
     // Run trace and verify outputs
     for (int i = 0; i < 50; i++) {
+        fmt::println(stderr, "Before replay trace {}", i);
         ReplayTrace(mesh_device_.get(), 0, trace_id, false);
+        fmt::println(stderr, "After replay trace {}", i);
 
         std::vector<uint32_t> src_vec(input_buf->size() / sizeof(uint32_t));
         std::iota(src_vec.begin(), src_vec.end(), i);
@@ -488,6 +496,7 @@ TEST_F(MeshTraceTestSuite, DataCopyOnSubDevicesTrace) {
         // buffer data
         mesh_device_->set_sub_device_stall_group({SubDeviceId{2}});
         EnqueueWriteMeshBuffer(mesh_device_->mesh_command_queue(), input_buf, src_vec, true);
+        fmt::println(stderr, "After Enqueue Write mesh buffer");
 
         for (auto device : mesh_device_->get_devices()) {
             tt::llrt::write_hex_vec_to_core(
@@ -499,6 +508,7 @@ TEST_F(MeshTraceTestSuite, DataCopyOnSubDevicesTrace) {
             ReadShard(mesh_device_->mesh_command_queue(), dst_vec, output_buf, device_coord);
             EXPECT_EQ(dst_vec, src_vec);
         }
+        fmt::println(stderr, "After First readshards");
 
         for (const auto& device_coord : bottom_row) {
             std::vector<uint32_t> dst_vec;
@@ -507,6 +517,7 @@ TEST_F(MeshTraceTestSuite, DataCopyOnSubDevicesTrace) {
                 EXPECT_EQ(dst_vec[j], src_vec[j] + 3);
             }
         }
+        fmt::println(stderr, "After second readshards");
     }
     ReleaseTrace(mesh_device_.get(), trace_id);
 }
