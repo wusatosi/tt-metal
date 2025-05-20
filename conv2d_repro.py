@@ -8,6 +8,15 @@ torch.manual_seed(0)
 
 
 def ttnn_out(input_torch, weights_ttnn, device):
+    compute_config = ttnn.init_device_compute_kernel_config(
+        device.arch(),
+        math_fidelity=ttnn.MathFidelity.HiFi4,
+        fp32_dest_acc_en=True,
+        packer_l1_acc=True,
+        math_approx_mode=True,
+        dst_full_sync_en=False,
+    )
+
     v4 = input_torch.transpose(1, 2)
     v5 = v4.transpose(2, 3)
     v6 = v5.reshape([1, 1, 196, 256])
@@ -21,9 +30,7 @@ def ttnn_out(input_torch, weights_ttnn, device):
     v9 = ttnn.to_device(
         v8,
         device,
-        memoDeviceComputeKernelConfigry_config=ttnn.MemoryConfig(
-            ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM
-        ),
+        memory_config=ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM),
     )
 
     # Conv2d operation
@@ -43,6 +50,7 @@ def ttnn_out(input_torch, weights_ttnn, device):
         groups=1,
         conv_config=ttnn.Conv2dConfig(dtype=ttnn.float32, weights_dtype=ttnn.float32),
         memory_config=ttnn.MemoryConfig(ttnn.TensorMemoryLayout.INTERLEAVED, ttnn.BufferType.DRAM),
+        compute_config=compute_config,
     )
 
     v11 = ttnn.to_torch(v11)
