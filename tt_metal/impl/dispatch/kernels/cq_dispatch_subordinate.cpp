@@ -209,6 +209,7 @@ void process_go_signal_mcast_cmd() {
     }
     mcasts_sent++;  // Go signal sent -> update counter
 
+    DPRINT << "dispatch_s go wait " << cmd->mcast.wait_count << ENDL();
     // The location of the go signal embedded in the command does not meet NOC alignment requirements.
     // cmd_ptr is guaranteed to meet the alignment requirements, since it is written to by prefetcher over NOC.
     // Copy the go signal from an unaligned location to an aligned (cmd_ptr) location. This is safe as long as we
@@ -260,6 +261,7 @@ void process_go_signal_mcast_cmd() {
                 (num_virtual_unicast_cores - num_physical_unicast_cores) << REMOTE_DEST_BUF_WORDS_FREE_INC);
         }
     }
+    DPRINT << "dispatch_s GO " << cmd->mcast.go_signal << ENDL();
 
     for (uint32_t i = 0; i < num_unicasts; ++i) {
         uint64_t dst = get_noc_addr_helper(go_signal_noc_data[go_signal_noc_data_idx++], unicast_go_signal_addr);
@@ -283,6 +285,7 @@ void process_dispatch_s_wait_cmd() {
     volatile uint32_t* worker_sem =
         (volatile uint32_t*)STREAM_REG_ADDR(stream, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX);
 
+    DPRINT << "dispatch_s wait " << cmd->wait.count << ENDL();
     // Wait for workers to complete
     while (stream_wrap_gt(cmd->wait.count, *worker_sem)) {
     }

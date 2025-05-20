@@ -31,6 +31,7 @@
 #include "debug/waypoint.h"
 #include "debug/dprint.h"
 #include "debug/stack_usage.h"
+#include "debug/ring_buffer.h"
 
 // clang-format on
 
@@ -392,6 +393,7 @@ int main() {
             DeviceZoneScopedMainN("BRISC-FW");
             uint32_t launch_msg_rd_ptr = mailboxes->launch_msg_rd_ptr;
             launch_msg_t* launch_msg_address = &(mailboxes->launch[launch_msg_rd_ptr]);
+            WATCHER_RING_BUFFER_PUSH(launch_msg_rd_ptr);
             DeviceValidateProfiler(launch_msg_address->kernel_config.enables);
             DeviceZoneSetCounter(launch_msg_address->kernel_config.host_assigned_id);
             enum dispatch_core_processor_masks enables =
