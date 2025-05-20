@@ -122,10 +122,15 @@ TEST_F(MeshTraceTestSuite, Sanity) {
         mesh_workloads.push_back(workload);
     }
 
+    uint32_t program_id = 0;
     std::vector<MeshTraceId> trace_ids = {};
     for (int trace_idx = 0; trace_idx < num_traces; trace_idx++) {
         auto trace_id = BeginTraceCapture(mesh_device_.get(), 0);
         for (int workload_idx = 0; workload_idx < num_workloads_per_trace; workload_idx++) {
+            for (auto& program : mesh_workloads[trace_idx * num_workloads_per_trace + workload_idx]->get_programs()) {
+                fmt::println("Program in trace {} gets id {}", trace_idx, program_id);
+                program.second.set_runtime_id(program_id++);
+            }
             EnqueueMeshWorkload(
                 mesh_device_->mesh_command_queue(),
                 *mesh_workloads[trace_idx * num_workloads_per_trace + workload_idx],
