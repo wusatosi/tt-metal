@@ -268,41 +268,18 @@ void FDMeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool
             mesh_workload.impl().get_program_binary_status(mesh_device_id),
             std::pair<bool, int>(unicast_go_signals, num_virtual_eth_cores));
 
-        if (sysmem_manager.get_bypass_mode()) {
-            this->capture_program_trace_on_subgrid(
-                device_range,
-                program_cmd_seq,
-                dispatch_metadata.stall_first,
-                dispatch_metadata.stall_before_program,
-                program.get_runtime_id());
-            active_sub_grids.push_back(device_range);
-        } else {
-            this->write_program_cmds_to_subgrid(
-                device_range,
-                program_cmd_seq,
-                dispatch_metadata.stall_first,
-                dispatch_metadata.stall_before_program,
-                chip_ids_in_workload,
-                program.get_runtime_id());
-        }
+        TT_ASSERT(!sysmem_manager.get_bypass_mode());
+        this->write_program_cmds_to_subgrid(
+            device_range,
+            program_cmd_seq,
+            dispatch_metadata.stall_first,
+            dispatch_metadata.stall_before_program,
+            chip_ids_in_workload,
+            program.get_runtime_id());
     }
     // Send go signals to devices not running a program to ensure consistent global state
-    if (not sysmem_manager.get_bypass_mode()) {
-        this->write_go_signal_to_unused_sub_grids(
-            chip_ids_in_workload, sub_device_id, expected_num_workers_completed, mcast_go_signals, unicast_go_signals);
-    } else {
-        MeshCoordinateRangeSet active_sub_grids_set;
-        for (const auto& sub_grid : active_sub_grids) {
-            active_sub_grids_set.merge(sub_grid);
-        }
-        TT_FATAL(active_sub_grids_set.size() == 1, "Cannot support non convex grids.");
-        this->capture_go_signal_trace_on_unused_subgrids(
-            active_sub_grids_set.ranges().front(),
-            sub_device_id,
-            expected_num_workers_completed,
-            mcast_go_signals,
-            unicast_go_signals);
-    }
+    this->write_go_signal_to_unused_sub_grids(
+        chip_ids_in_workload, sub_device_id, expected_num_workers_completed, mcast_go_signals, unicast_go_signals);
     // Increment Launch Message Buffer Write Pointers
     if (mcast_go_signals) {
         (*worker_launch_message_buffer_state_)[*sub_device_id].inc_mcast_wptr(1);
@@ -311,21 +288,7 @@ void FDMeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool
         (*worker_launch_message_buffer_state_)[*sub_device_id].inc_unicast_wptr(1);
     }
 
-    if (sysmem_manager.get_bypass_mode()) {
-        if (mcast_go_signals) {
-            // The workload contains programs that required a go signal mcast. Capture this here
-            // to accurately update the launch msg ring buffer state post trace execution on all
-            // mcast cores.
-            trace_ctx_->descriptors[sub_device_id].num_traced_programs_needing_go_signal_multicast++;
-        }
-        if (unicast_go_signals) {
-            trace_ctx_->descriptors[sub_device_id].num_traced_programs_needing_go_signal_unicast++;
-        }
-        // Update the expected number of workers dispatch must wait on
-        trace_ctx_->descriptors[sub_device_id].num_completion_worker_cores += num_workers;
-    } else {
-        expected_num_workers_completed_[*sub_device_id] += num_workers;
-    }
+    expected_num_workers_completed_[*sub_device_id] += num_workers;
     // From the dispatcher's perspective, binaries are now committed to DRAM
     mesh_workload.impl().set_program_binary_status(mesh_device_id, ProgramBinaryStatus::Committed);
     mesh_workload.set_last_used_command_queue_for_testing(this);
@@ -780,80 +743,6 @@ void FDMeshCommandQueue::write_go_signal_to_unused_sub_grids(
     }
 }
 
-void FDMeshCommandQueue::capture_program_trace_on_subgrid(
-    const MeshCoordinateRange& sub_grid,
-    ProgramCommandSequence& program_cmd_seq,
-    bool stall_first,
-    bool stall_before_program,
-    uint32_t program_runtime_id) {
-    auto dispatch_core_config = MetalContext::instance().get_dispatch_core_manager().get_dispatch_core_config();
-    CoreType dispatch_core_type = dispatch_core_config.get_core_type();
-
-#if defined(TRACY_ENABLE)
-    // Host Memory Intensive Path (when profiler is enabled): The launch messages across devices are unique, since
-    // the host_assigned_field in the launch_msg contains the physical device id (required by the performance profiler).
-    // Hence the trace per device must be uniquely captured.
-    for (const auto& coord : sub_grid) {
-        auto& sysmem_manager_for_trace = mesh_device_->get_device(coord)->sysmem_manager();
-        uint32_t sysmem_manager_offset = sysmem_manager_for_trace.get_issue_queue_write_ptr(id_);
-
-        auto device = this->mesh_device_->get_device(coord);
-        this->update_launch_messages_for_device_profiler(program_cmd_seq, program_runtime_id, device);
-        program_dispatch::write_program_command_sequence(
-            program_cmd_seq, sysmem_manager_for_trace, id_, dispatch_core_type, stall_first, stall_before_program);
-        auto mesh_trace_md = MeshTraceStagingMetadata{
-            MeshCoordinateRange(coord, coord),
-            coord,
-            sysmem_manager_offset,
-            sysmem_manager_for_trace.get_issue_queue_write_ptr(id_) - sysmem_manager_offset};
-        ordered_mesh_trace_md_.push_back(mesh_trace_md);
-    }
-#else
-    // Optimized Path (generic use-cases): Program dispatch commands across the entire sub-grid are identical.
-    // Capture once.
-    auto& sysmem_manager_for_trace = mesh_device_->get_device(sub_grid.start_coord())->sysmem_manager();
-    uint32_t sysmem_manager_offset = sysmem_manager_for_trace.get_issue_queue_write_ptr(id_);
-
-    program_dispatch::write_program_command_sequence(
-        program_cmd_seq, sysmem_manager_for_trace, id_, dispatch_core_type, stall_first, stall_before_program);
-    auto mesh_trace_md = MeshTraceStagingMetadata{
-        sub_grid,
-        sub_grid.start_coord(),
-        sysmem_manager_offset,
-        sysmem_manager_for_trace.get_issue_queue_write_ptr(id_) - sysmem_manager_offset};
-    ordered_mesh_trace_md_.push_back(mesh_trace_md);
-#endif
-}
-
-void FDMeshCommandQueue::capture_go_signal_trace_on_unused_subgrids(
-    const MeshCoordinateRange& active_grid,
-    const SubDeviceId& sub_device_id,
-    uint32_t expected_num_workers_completed,
-    bool mcast_go_signals,
-    bool unicast_go_signals) {
-    MeshCoordinateRange full_grid(mesh_device_->shape());
-    MeshCoordinateRangeSet unused_grids = subtract(full_grid, active_grid);
-    for (const auto& unused_grid : unused_grids.ranges()) {
-        auto& sysmem_manager_for_trace = mesh_device_->get_device(unused_grid.start_coord())->sysmem_manager();
-        uint32_t sysmem_manager_offset = sysmem_manager_for_trace.get_issue_queue_write_ptr(id_);
-        write_go_signal(
-            id_,
-            mesh_device_,
-            sub_device_id,
-            sysmem_manager_for_trace,
-            expected_num_workers_completed,
-            this->virtual_program_dispatch_core(),
-            mcast_go_signals,
-            unicast_go_signals);
-        auto mesh_trace_md = MeshTraceStagingMetadata{
-            unused_grid,
-            unused_grid.start_coord(),
-            sysmem_manager_offset,
-            sysmem_manager_for_trace.get_issue_queue_write_ptr(id_) - sysmem_manager_offset};
-        ordered_mesh_trace_md_.push_back(mesh_trace_md);
-    }
-}
-
 void FDMeshCommandQueue::enqueue_trace(const MeshTraceId& trace_id, bool blocking) {
     in_use_ = true;
     auto trace_inst = mesh_device_->get_mesh_trace(trace_id);
@@ -1004,6 +893,13 @@ void FDMeshCommandQueue::record_end() {
                 MetalContext::instance().get_dispatch_core_manager().get_dispatch_core_type(),
                 sub_device_id,
                 ProgramBinaryStatus::Committed);
+#if defined(TRACY_ENABLE)
+            for (auto& [is_multicast, original_launch_msg, launch_msg] :
+                 cached_program_command_sequence.launch_messages) {
+                launch_msg->kernel_config.host_assigned_id =
+                    tt_metal::detail::EncodePerDeviceProgramID(node.program_runtime_id, device->id());
+            }
+#endif
 
             // Issue dispatch commands for this program
             program_dispatch::write_program_command_sequence(
@@ -1064,7 +960,6 @@ void FDMeshCommandQueue::record_end() {
         expected_num_workers_completed_reset_,
         config_buffer_mgr_reset_);
 
-    ordered_mesh_trace_md_.clear();
     for (auto device : mesh_device_->get_devices()) {
         device->sysmem_manager().set_bypass_mode(/*enable*/ false, /*clear*/ true);
     }
