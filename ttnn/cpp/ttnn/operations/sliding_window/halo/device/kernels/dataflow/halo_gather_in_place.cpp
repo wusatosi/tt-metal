@@ -258,40 +258,41 @@ steps:
 */
 
 void kernel_main() {
-    constexpr uint32_t padding_config_cb_id = get_compile_time_arg_val(0);
-    constexpr uint32_t local_config_cb_id = get_compile_time_arg_val(1);
-    constexpr uint32_t remote_config_cb_id = get_compile_time_arg_val(2);
-    constexpr uint32_t remote_temp_cb_id = get_compile_time_arg_val(3);  // temp buffer for in place halo
-    constexpr uint32_t local_temp_cb_id = get_compile_time_arg_val(4);   // temp buffer for in place halo
-    constexpr uint32_t src_cb_id = get_compile_time_arg_val(5);          // the innput shard buffer
-    constexpr uint32_t in_cb_id = get_compile_time_arg_val(6);           // either the input shard or untilize output
-    constexpr uint32_t out_cb_id = get_compile_time_arg_val(7);          // output shard with padding and halo goes here
-    constexpr uint32_t pad_cb_id = get_compile_time_arg_val(8);          // cb for const pad val buffer
-    constexpr uint32_t pad_val_u32 = get_compile_time_arg_val(9);        // pad value to fill pad buffer with
-    constexpr uint32_t in_npages = get_compile_time_arg_val(10);         // number of sticks
-    constexpr uint32_t stick_nbytes = get_compile_time_arg_val(11);      // stick size in bytes (post untilize)
-    constexpr uint32_t is_block_sharded = get_compile_time_arg_val(12);
-    constexpr bool is_col_major = get_compile_time_arg_val(13) == 1;
-    constexpr uint32_t is_width_sharded = get_compile_time_arg_val(14);
-    constexpr uint32_t input_aligned_page_size = get_compile_time_arg_val(15);
-    constexpr uint32_t remote_read = get_compile_time_arg_val(16);  // Unused parameter
-    constexpr uint32_t num_active_cores = get_compile_time_arg_val(17);
-    constexpr uint32_t noc_TL_x = get_compile_time_arg_val(18);
-    constexpr uint32_t noc_TL_y = get_compile_time_arg_val(19);
-    constexpr uint32_t noc_BR_x = get_compile_time_arg_val(20);
-    constexpr uint32_t noc_BR_y = get_compile_time_arg_val(21);
-    constexpr uint32_t rectangular_x = get_compile_time_arg_val(22);
-    constexpr uint32_t rectangular_y = get_compile_time_arg_val(23);
-    constexpr uint32_t last_active_x = get_compile_time_arg_val(24);
-    constexpr uint32_t semaphore_id = get_compile_time_arg_val(25);
-    constexpr uint32_t in_out_buffer_start_delta = get_compile_time_arg_val(26);
+    constexpr uint32_t main_thread = get_compile_time_arg_val(0);
+    constexpr uint32_t padding_config_cb_id = get_compile_time_arg_val(1);
+    constexpr uint32_t local_config_cb_id = get_compile_time_arg_val(2);
+    constexpr uint32_t remote_config_cb_id = get_compile_time_arg_val(3);
+    constexpr uint32_t remote_temp_cb_id = get_compile_time_arg_val(4);  // temp buffer for in place halo
+    constexpr uint32_t local_temp_cb_id = get_compile_time_arg_val(5);   // temp buffer for in place halo
+    constexpr uint32_t src_cb_id = get_compile_time_arg_val(6);          // the innput shard buffer
+    constexpr uint32_t in_cb_id = get_compile_time_arg_val(7);           // either the input shard or untilize output
+    constexpr uint32_t out_cb_id = get_compile_time_arg_val(8);          // output shard with padding and halo goes here
+    constexpr uint32_t pad_cb_id = get_compile_time_arg_val(9);          // cb for const pad val buffer
+    constexpr uint32_t pad_val_u32 = get_compile_time_arg_val(10);       // pad value to fill pad buffer with
+    constexpr uint32_t in_npages = get_compile_time_arg_val(11);         // number of sticks
+    constexpr uint32_t stick_nbytes = get_compile_time_arg_val(12);      // stick size in bytes (post untilize)
+    constexpr uint32_t is_block_sharded = get_compile_time_arg_val(13);
+    constexpr bool is_col_major = get_compile_time_arg_val(14) == 1;
+    constexpr uint32_t is_width_sharded = get_compile_time_arg_val(15);
+    constexpr uint32_t input_aligned_page_size = get_compile_time_arg_val(16);
+    constexpr uint32_t remote_read = get_compile_time_arg_val(17);  // Unused parameter
+    constexpr uint32_t num_active_cores = get_compile_time_arg_val(18);
+    constexpr uint32_t noc_TL_x = get_compile_time_arg_val(19);
+    constexpr uint32_t noc_TL_y = get_compile_time_arg_val(20);
+    constexpr uint32_t noc_BR_x = get_compile_time_arg_val(21);
+    constexpr uint32_t noc_BR_y = get_compile_time_arg_val(22);
+    constexpr uint32_t rectangular_x = get_compile_time_arg_val(23);
+    constexpr uint32_t rectangular_y = get_compile_time_arg_val(24);
+    constexpr uint32_t last_active_x = get_compile_time_arg_val(25);
+    constexpr uint32_t semaphore_id = get_compile_time_arg_val(26);
+    constexpr uint32_t in_out_buffer_start_delta = get_compile_time_arg_val(27);
     constexpr uint32_t untilize_temp_cb_id =
-        get_compile_time_arg_val(27);  // temp buffer for in place untilize with wide tensors
-    constexpr uint32_t tile_cols = get_compile_time_arg_val(28);
-    constexpr uint32_t tile_rows = get_compile_time_arg_val(29);
-    constexpr uint32_t half_max_bandwidth_stick_size = get_compile_time_arg_val(30);
-    constexpr uint32_t sync_cb_id1 = get_compile_time_arg_val(31);
-    constexpr uint32_t sync_cb_id2 = get_compile_time_arg_val(32);
+        get_compile_time_arg_val(28);  // temp buffer for in place untilize with wide tensors
+    constexpr uint32_t tile_cols = get_compile_time_arg_val(29);
+    constexpr uint32_t tile_rows = get_compile_time_arg_val(30);
+    constexpr uint32_t half_max_bandwidth_stick_size = get_compile_time_arg_val(31);
+    constexpr uint32_t sync_cb_id1 = get_compile_time_arg_val(32);
+    constexpr uint32_t sync_cb_id2 = get_compile_time_arg_val(33);
 
     constexpr uint32_t elem_nbytes = sizeof(uint16_t);
     constexpr uint16_t pad_core_id = 0xFFFF;
@@ -312,14 +313,14 @@ void kernel_main() {
     // DPRINT << "in_base_l1_addr: " << in_base_l1_addr << ", out_base_l1_addr: " << out_base_l1_addr
     //        << ", untilize_temp_l1_addr: " << untilize_temp_l1_addr << ENDL();
 
-    if constexpr (local_config_cb_id) {
+    if constexpr (main_thread) {
         cb_reserve_back(src_cb_id, in_npages);
         cb_push_back(src_cb_id, in_npages);
     }
 
     // make sure untilized data is available
     // for wide tensors a temp CB must be used due to implementation of the untilize LLK function vs pack_untilize
-    if (untilize_temp_cb_id && local_config_cb_id) {
+    if (untilize_temp_cb_id && main_thread) {
         for (uint32_t i = 0; i < tile_rows; ++i) {
             cb_wait_front(untilize_temp_cb_id, tile_cols);
             cb_reserve_back(in_cb_id, tile_cols);
@@ -336,7 +337,7 @@ void kernel_main() {
     cb_wait_front(in_cb_id, in_npages);
 
     // copy remote sticks to temp buffer or their final destinations
-    if constexpr (remote_config_cb_id) {
+    if constexpr (main_thread) {
         // tt::data_movement::common::print_bf16_pages(in_base_l1_addr, 32, 224);
 
         const uint32_t temp_base_l1_addr = get_write_ptr(remote_temp_cb_id);
@@ -367,8 +368,7 @@ void kernel_main() {
         half_max_bandwidth_stick_size,
         local_temp_cb_id,
         sync_cb_id1,
-        0 != remote_config_cb_id>(
-        config_data, my_noc_x, my_noc_y, in_base_l1_addr, out_base_l1_addr, in_out_buffer_start_delta);
+        main_thread>(config_data, my_noc_x, my_noc_y, in_base_l1_addr, out_base_l1_addr, in_out_buffer_start_delta);
 
     noc_async_write_barrier();
 
@@ -394,7 +394,7 @@ void kernel_main() {
     noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_active_cores);
 
     // insert padding
-    if constexpr (padding_config_cb_id) {
+    if constexpr (!main_thread) {
         // construct the pad stick in its buffer
         cb_reserve_back(pad_cb_id, 1);
         const uint16_t pad_val = pad_val_u32;
@@ -420,7 +420,7 @@ void kernel_main() {
     }
 
     // copy remote sticks from temp buffer to final destinations
-    if constexpr (remote_config_cb_id && remote_temp_cb_id) {
+    if constexpr (main_thread) {
         const uint32_t temp_base_l1_addr = get_read_ptr(remote_temp_cb_id);
         uint32_t config_data_l1_addr = get_read_ptr(remote_config_cb_id);
         const tt_l1_ptr uint16_t* config_data = reinterpret_cast<const tt_l1_ptr uint16_t*>(config_data_l1_addr);
