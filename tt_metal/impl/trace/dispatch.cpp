@@ -212,6 +212,12 @@ void reset_worker_state_after_trace_execution(
     for (const auto& [id, desc] : trace_worker_descriptors) {
         calculator.add_dispatch_go_signal_mcast();
     }
+    for (const auto& [id, desc] : trace_worker_descriptors) {
+        if (MetalContext::instance().get_dispatch_query_manager().distributed_dispatcher()) {
+            calculator.add_dispatch_wait();
+        }
+        calculator.add_dispatch_wait();
+    }
 
 
     void* cmd_region = sysmem_manager.issue_queue_reserve(calculator.write_offset_bytes(), cq_id);
@@ -255,6 +261,34 @@ void reset_worker_state_after_trace_execution(
             num_noc_unicast_txns,
             noc_data_start_idx,
             dispatcher_for_go_signal);
+    }
+
+    // Wait to ensure that all workers have reset their read_ptr. dispatch_d will stall until all workers have completed
+    // this step, before sending kernel config data to workers or notifying dispatch_s that its safe to send the
+    // go_signal. Clear the dispatch <--> worker semaphore, since trace starts at 0.
+    for (const auto& [id, desc] : trace_worker_descriptors) {
+        auto index = *id;
+        uint32_t expected_num_workers = expected_num_workers_completed[index];
+        if (desc.num_traced_programs_needing_go_signal_multicast) {
+            expected_num_workers += device->num_worker_cores(HalProgrammableCoreType::TENSIX, id);
+        }
+        if (desc.num_traced_programs_needing_go_signal_unicast) {
+            expected_num_workers += device->num_virtual_eth_cores(id);
+        }
+
+        if (MetalContext::instance().get_dispatch_query_manager().distributed_dispatcher()) {
+            command_sequence.add_dispatch_wait(
+                CQ_DISPATCH_CMD_WAIT_FLAG_WAIT_STREAM | CQ_DISPATCH_CMD_WAIT_FLAG_CLEAR_STREAM,
+                0,
+                MetalContext::instance().dispatch_mem_map().get_dispatch_stream_index(index),
+                expected_num_workers,
+                1);
+        }
+        command_sequence.add_dispatch_wait(
+            CQ_DISPATCH_CMD_WAIT_FLAG_WAIT_STREAM | CQ_DISPATCH_CMD_WAIT_FLAG_CLEAR_STREAM,
+            0,
+            MetalContext::instance().dispatch_mem_map().get_dispatch_stream_index(index),
+            expected_num_workers);
     }
 
     TT_ASSERT(command_sequence.write_offset_bytes() == calculator.write_offset_bytes());
