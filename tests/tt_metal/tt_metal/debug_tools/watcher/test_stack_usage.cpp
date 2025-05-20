@@ -35,7 +35,7 @@ void RunOneTest(WatcherFixture* fixture, IDevice* device, unsigned usage, bool w
             return;
         bool overflow = !usage;
         char fraction[64];
-        snprintf (fraction, sizeof(fraction), "%d/%d", space - usage, space);
+        snprintf (fraction, sizeof(fraction), "%4u/%4u", space - usage, space);
         std::string msg;
 
         if (overflows.empty())
