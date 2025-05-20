@@ -858,6 +858,9 @@ void FDMeshCommandQueue::record_end() {
         allocator.allocate_trace_programs(this->mesh_device_, trace_nodes);
 
         auto& sysmem_manager_for_trace = mesh_device_->get_device(range.start_coord())->sysmem_manager();
+        for (uint32_t sub_device_id = 0; sub_device_id < mesh_device_->num_sub_devices(); sub_device_id++) {
+            (*this->worker_launch_message_buffer_state_)[sub_device_id].reset();
+        }
         DispatchArray<uint32_t> expected_workers_completed{};
         for (auto& node : trace_nodes) {
             auto sub_device_id = node.sub_device_id;
