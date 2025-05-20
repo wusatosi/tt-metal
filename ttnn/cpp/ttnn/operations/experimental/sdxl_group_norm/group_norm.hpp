@@ -13,7 +13,13 @@ namespace operations::experimental {
 
 struct SDXLGroupNormOperation {
     static ttnn::Tensor invoke(
-        QueueId queue_id, const Tensor& input_tensor, const std::optional<CoreRangeSet>& sub_core_grids = std::nullopt);
+        QueueId queue_id,
+        const Tensor& input_tensor,
+        const Tensor& weights,
+        const Tensor& bias,
+        const float eps = 1e-05,
+        const std::optional<DeviceComputeKernelConfig>& compute_kernel_config = std::nullopt,
+        const std::optional<CoreRangeSet>& sub_core_grids = std::nullopt);
 };
 
 }  // namespace operations::experimental

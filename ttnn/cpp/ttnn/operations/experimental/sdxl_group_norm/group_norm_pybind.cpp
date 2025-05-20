@@ -37,8 +37,19 @@ void bind_experimental_group_norm_operation(py::module& module) {
         ttnn::pybind_overload_t{
             [](const OperationType& self,
                const ttnn::Tensor& input_tensor,
-               const std::optional<CoreRangeSet>& sub_core_grids) { return self(input_tensor, sub_core_grids); },
+               const ttnn::Tensor& weights,
+               const ttnn::Tensor& bias,
+               const float eps,
+               const std::optional<DeviceComputeKernelConfig>& compute_kernel_config,
+               const std::optional<CoreRangeSet>& sub_core_grids) {
+                return self(input_tensor, weights, bias, eps, compute_kernel_config, sub_core_grids);
+            },
             py::arg("input_tensor").noconvert(),
+            py::kw_only(),
+            py::arg("weights").noconvert(),
+            py::arg("bias").noconvert(),
+            py::arg("eps") = 1e-05,
+            py::arg("compute_kernel_config") = std::nullopt,
             py::arg("sub_core_grids") = std::nullopt});
 }
 

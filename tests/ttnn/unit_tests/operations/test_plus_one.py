@@ -24,7 +24,15 @@ def test_plus_one(device, w, dtype):
     torch_output_tensor = torch_input_tensor + 1
 
     input_tensor = ttnn.from_torch(torch_input_tensor, dtype=dtype, device=device)
-    ttnn.experimental.sdxl_group_norm(input_tensor)
+    w = ttnn.from_torch(torch_input_tensor, dtype=dtype, device=device)
+    b = ttnn.from_torch(torch_input_tensor, dtype=dtype, device=device)
+    conf = ttnn.WormholeComputeKernelConfig(
+        math_fidelity=ttnn.MathFidelity.HiFi2,
+        math_approx_mode=False,
+        fp32_dest_acc_en=True,
+        packer_l1_acc=True,
+    )
+    ttnn.experimental.sdxl_group_norm(input_tensor, weights=w, bias=b, eps=1e-06, compute_kernel_config=conf)
     output_tensor = ttnn.to_torch(input_tensor)
     assert_with_pcc(torch_output_tensor, output_tensor, 0.9999)
 

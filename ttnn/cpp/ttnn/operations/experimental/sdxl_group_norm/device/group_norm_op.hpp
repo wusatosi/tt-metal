@@ -9,10 +9,13 @@
 #include "ttnn/common/queue_id.hpp"
 #include "ttnn/tensor/tensor.hpp"
 #include "ttnn/run_operation.hpp"
+#include "ttnn/operations/core/compute_kernel/compute_kernel_config.hpp"
 
 namespace ttnn::operations::experimental {
 
 struct SDXLGroupNorm {
+    const float eps;
+    const std::optional<DeviceComputeKernelConfig> compute_kernel_config;
     const std::optional<CoreRangeSet> sub_core_grids;
     void validate_with_output_tensors(
         const std::vector<Tensor>& input_tensors, const std::vector<std::optional<Tensor>>& output_tensors) const;
