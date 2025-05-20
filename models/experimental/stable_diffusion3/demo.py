@@ -33,7 +33,7 @@ from .tt import TtStableDiffusion3Pipeline
         ("large", 1024, 1024, 3.5, 28),  # , 333, 4096),
     ],
 )
-@pytest.mark.parametrize("device_params", [{"l1_small_size": 8192, "trace_region_size": 15210496}], indirect=True)
+@pytest.mark.parametrize("device_params", [{"l1_small_size": 16 * 1024, "trace_region_size": 15210496}], indirect=True)
 @pytest.mark.usefixtures("use_program_cache")
 def test_sd3(
     *, mesh_device: ttnn.MeshDevice, model_name, image_w, image_h, guidance_scale, num_inference_steps
@@ -48,6 +48,7 @@ def test_sd3(
         device=mesh_device,
         enable_t5_text_encoder=mesh_device.get_num_devices() >= 4,
         t5_text_encoder_cpu_fallback=mesh_device.get_num_devices() < 4,  # this alone does not enable T5
+        vae_cpu_fallback=True,  # TT-NN version of the VAE currently hangs with program cache enabled
         guidance_cond=guidance_cond,
     )
 
