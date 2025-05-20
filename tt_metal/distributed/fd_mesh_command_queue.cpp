@@ -970,61 +970,57 @@ void FDMeshCommandQueue::record_end() {
 
         auto& sysmem_manager_for_trace = mesh_device_->get_device(range.start_coord())->sysmem_manager();
         uint32_t expected_workers_completed = 0;
-        for (auto& node : this->trace_nodes_) {
-            for (auto& [device_range, node] : node.trace_nodes) {
-                if (!device_range.intersects(range)) {
-                    continue;
-                }
-                auto sub_device_id = node.sub_device_id;
-                auto& program = *node.program;
+        for (auto& node : trace_nodes) {
+            auto sub_device_id = node.sub_device_id;
+            auto& program = *node.program;
 
-                // Snapshot of expected workers from previous programs, used for dispatch_wait cmd generation.
-                // Compute the total number of workers this program uses
-                uint32_t num_workers = 0;
-                if (program.runs_on_noc_multicast_only_cores()) {
-                    num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
-                }
-                if (program.runs_on_noc_unicast_only_cores()) {
-                    num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
-                }
-
-                // Access the program dispatch-command cache
-                uint64_t command_hash = *mesh_device_->get_active_sub_device_manager_id();
-                auto& cached_program_command_sequence = program.get_trace_cached_program_command_sequences().at(command_hash);
-                auto& worker_launch_message_buffer_state = (*this->worker_launch_message_buffer_state_)[*sub_device_id];
-                // Update the generated dispatch commands based on the state of the CQ and the ring buffer
-                program_dispatch::update_traced_program_dispatch_commands(
-                    node,
-                    cached_program_command_sequence,
-                    worker_launch_message_buffer_state.get_mcast_wptr(),
-                    worker_launch_message_buffer_state.get_unicast_wptr(),
-                    expected_workers_completed,
-                this->virtual_program_dispatch_core(),
-                    MetalContext::instance().get_dispatch_core_manager().get_dispatch_core_type(),
-                    sub_device_id,
-                    ProgramBinaryStatus::Committed);
-
-                // Issue dispatch commands for this program
-                program_dispatch::write_program_command_sequence(
-                    cached_program_command_sequence,
-                    sysmem_manager_for_trace,
-                    this->id_,
-                    MetalContext::instance().get_dispatch_core_manager().get_dispatch_core_type(),
-                    node.dispatch_metadata.stall_first,
-                    node.dispatch_metadata.stall_before_program,
-                    node.dispatch_metadata.send_binary);
-
-                // Update wptrs for tensix and eth launch message in the device class
-                if (program.runs_on_noc_multicast_only_cores()) {
-                    worker_launch_message_buffer_state.inc_mcast_wptr(1);
-                }
-                if (program.runs_on_noc_unicast_only_cores()) {
-                    worker_launch_message_buffer_state.inc_unicast_wptr(1);
-                }
-                expected_workers_completed += num_workers;
+            // Snapshot of expected workers from previous programs, used for dispatch_wait cmd generation.
+            // Compute the total number of workers this program uses
+            uint32_t num_workers = 0;
+            if (program.runs_on_noc_multicast_only_cores()) {
+                num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::TENSIX, sub_device_id);
             }
+            if (program.runs_on_noc_unicast_only_cores()) {
+                num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
+            }
+
+            // Access the program dispatch-command cache
+            uint64_t command_hash = *mesh_device_->get_active_sub_device_manager_id();
+            auto& cached_program_command_sequence =
+                program.get_trace_cached_program_command_sequences().at(command_hash);
+            auto& worker_launch_message_buffer_state = (*this->worker_launch_message_buffer_state_)[*sub_device_id];
+            // Update the generated dispatch commands based on the state of the CQ and the ring buffer
+            program_dispatch::update_traced_program_dispatch_commands(
+                node,
+                cached_program_command_sequence,
+                worker_launch_message_buffer_state.get_mcast_wptr(),
+                worker_launch_message_buffer_state.get_unicast_wptr(),
+                expected_workers_completed,
+                this->virtual_program_dispatch_core(),
+                MetalContext::instance().get_dispatch_core_manager().get_dispatch_core_type(),
+                sub_device_id,
+                ProgramBinaryStatus::Committed);
+
+            // Issue dispatch commands for this program
+            program_dispatch::write_program_command_sequence(
+                cached_program_command_sequence,
+                sysmem_manager_for_trace,
+                this->id_,
+                MetalContext::instance().get_dispatch_core_manager().get_dispatch_core_type(),
+                node.dispatch_metadata.stall_first,
+                node.dispatch_metadata.stall_before_program,
+                node.dispatch_metadata.send_binary);
+
+            // Update wptrs for tensix and eth launch message in the device class
+            if (program.runs_on_noc_multicast_only_cores()) {
+                worker_launch_message_buffer_state.inc_mcast_wptr(1);
+            }
+            if (program.runs_on_noc_unicast_only_cores()) {
+                worker_launch_message_buffer_state.inc_unicast_wptr(1);
+            }
+            expected_workers_completed += num_workers;
         }
-        
+
         auto& bypass_data = sysmem_manager_for_trace.get_bypass_data();
         bypass_data.insert(
             bypass_data.end(),
@@ -1042,6 +1038,8 @@ void FDMeshCommandQueue::record_end() {
     for (const auto& [id, _] : trace_ctx_->descriptors) {
         trace_ctx_->sub_device_ids.push_back(id);
     }
+
+    trace_nodes_.clear();
 
     trace_id_ = std::nullopt;
     trace_ctx_ = nullptr;
