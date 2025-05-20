@@ -21,6 +21,7 @@
 #include "tt_metal/impl/dispatch/device_command.hpp"
 #include "tt_metal/impl/trace/dispatch.hpp"
 #include "dispatch/worker_config_buffer.hpp"
+#include "dispatch/device_command_calculator.hpp"
 
 namespace tt::tt_metal::trace_dispatch {
 
@@ -195,6 +196,75 @@ uint32_t compute_trace_cmd_size(uint32_t num_sub_devices) {
         hal.get_alignment(HalMemType::HOST);  // CQ_PREFETCH_CMD_EXEC_BUF
 
     return cmd_sequence_sizeB;
+}
+
+void reset_worker_state_after_trace_execution(
+    IDevice* device,
+    SystemMemoryManager& sysmem_manager,
+    uint8_t cq_id,
+    const DispatchArray<uint32_t>& expected_num_workers_completed,
+    CoreCoord dispatch_core,
+    const std::unordered_map<SubDeviceId, TraceWorkerDescriptor>& trace_worker_descriptors) {
+    DeviceCommandCalculator calculator;
+    if (MetalContext::instance().get_dispatch_query_manager().dispatch_s_enabled()) {
+        calculator.add_notify_dispatch_s_go_signal_cmd();
+    }
+    for (const auto& [id, desc] : trace_worker_descriptors) {
+        calculator.add_dispatch_go_signal_mcast();
+    }
+
+
+    void* cmd_region = sysmem_manager.issue_queue_reserve(calculator.write_offset_bytes(), cq_id);
+    HugepageDeviceCommand command_sequence(cmd_region, calculator.write_offset_bytes());
+
+    DispatcherSelect dispatcher_for_go_signal = DispatcherSelect::DISPATCH_MASTER;
+    if (MetalContext::instance().get_dispatch_query_manager().dispatch_s_enabled()) {
+        uint16_t index_bitmask = 0;
+        for (const auto& [id, desc] : trace_worker_descriptors) {
+            index_bitmask |= 1 << *id;
+        }
+        command_sequence.add_notify_dispatch_s_go_signal_cmd(false, index_bitmask);
+        dispatcher_for_go_signal = DispatcherSelect::DISPATCH_SUBORDINATE;
+    }
+
+    go_msg_t reset_launch_message_read_ptr_go_signal;
+    reset_launch_message_read_ptr_go_signal.signal = RUN_MSG_RESET_READ_PTR;
+    reset_launch_message_read_ptr_go_signal.master_x = (uint8_t)dispatch_core.x;
+    reset_launch_message_read_ptr_go_signal.master_y = (uint8_t)dispatch_core.y;
+
+    for (const auto& [id, desc] : trace_worker_descriptors) {
+        const auto& noc_data_start_idx = device->noc_data_start_index(
+            id,
+            desc.num_traced_programs_needing_go_signal_multicast,
+            desc.num_traced_programs_needing_go_signal_unicast);
+
+        const auto& num_noc_mcast_txns =
+            desc.num_traced_programs_needing_go_signal_multicast ? device->num_noc_mcast_txns(id) : 0;
+        const auto& num_noc_unicast_txns =
+            desc.num_traced_programs_needing_go_signal_unicast ? device->num_virtual_eth_cores(id) : 0;
+        auto index = *id;
+        reset_launch_message_read_ptr_go_signal.dispatch_message_offset =
+            MetalContext::instance().dispatch_mem_map().get_dispatch_message_update_offset(index);
+
+        // Wait to ensure that all kernels have completed. Then send the reset_rd_ptr go_signal.
+        command_sequence.add_dispatch_go_signal_mcast(
+            expected_num_workers_completed[index],
+            *reinterpret_cast<uint32_t*>(&reset_launch_message_read_ptr_go_signal),
+            MetalContext::instance().dispatch_mem_map().get_dispatch_stream_index(index),
+            num_noc_mcast_txns,
+            num_noc_unicast_txns,
+            noc_data_start_idx,
+            dispatcher_for_go_signal);
+    }
+
+    TT_ASSERT(command_sequence.write_offset_bytes() == calculator.write_offset_bytes());
+
+    sysmem_manager.issue_queue_push_back(command_sequence.write_offset_bytes(), cq_id);
+
+    sysmem_manager.fetch_queue_reserve_back(cq_id);
+
+    sysmem_manager.fetch_queue_write(command_sequence.write_offset_bytes(), cq_id, false);
+
 }
 
 void update_worker_state_post_trace_execution(

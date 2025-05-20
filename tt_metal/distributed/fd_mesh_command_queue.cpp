@@ -897,6 +897,7 @@ void FDMeshCommandQueue::record_end() {
             (*this->worker_launch_message_buffer_state_)[sub_device_id].reset();
         }
         DispatchArray<uint32_t> expected_workers_completed{};
+        std::unordered_map<SubDeviceId, TraceWorkerDescriptor> trace_worker_descriptors;
         for (auto& node : trace_nodes) {
             auto sub_device_id = node.sub_device_id;
             auto& program = *node.program;
@@ -954,12 +955,15 @@ void FDMeshCommandQueue::record_end() {
             // Update wptrs for tensix and eth launch message in the device class
             if (program.runs_on_noc_multicast_only_cores()) {
                 worker_launch_message_buffer_state.inc_mcast_wptr(1);
+                trace_worker_descriptors[sub_device_id].num_traced_programs_needing_go_signal_multicast++;
             }
             if (program.runs_on_noc_unicast_only_cores()) {
                 worker_launch_message_buffer_state.inc_unicast_wptr(1);
+                trace_worker_descriptors[sub_device_id].num_traced_programs_needing_go_signal_unicast++;
             }
             expected_workers_completed[*sub_device_id] += num_workers;
         }
+        #if 0
         program_dispatch::reset_worker_dispatch_state_on_device(
             mesh_device_,
             sysmem_manager_for_trace,
@@ -967,6 +971,12 @@ void FDMeshCommandQueue::record_end() {
             this->virtual_program_dispatch_core(),
             expected_workers_completed,
             /*reset_launch_msg_state=*/true);
+            #endif
+        trace_dispatch::reset_worker_state_after_trace_execution(
+            mesh_device_, sysmem_manager_for_trace, id_,
+            expected_workers_completed,
+            this->virtual_program_dispatch_core(),
+            trace_worker_descriptors);
 
         auto& bypass_data = sysmem_manager_for_trace.get_bypass_data();
         bypass_data.insert(
