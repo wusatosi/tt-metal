@@ -48,6 +48,8 @@
 #include "ttnn/operations/experimental/reduction/sort/sort_pybind.hpp"
 #include "ttnn/operations/experimental/gather/gather_pybind.hpp"
 
+#include "ttnn/operations/experimental/sdxl_group_norm/group_norm_pybind.hpp"
+
 namespace ttnn::operations::experimental {
 
 void py_module(py::module& module) {
@@ -103,6 +105,8 @@ void py_module(py::module& module) {
     reduction::detail::bind_cumsum_operation(module);
 
     gather::detail::bind_gather_operation(module);
+
+    sdxl_group_norm::detail::bind_experimental_group_norm_operation(module);
 
     // CCL ops
     auto m_experimental_ccl =
