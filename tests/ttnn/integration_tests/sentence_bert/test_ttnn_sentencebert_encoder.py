@@ -16,7 +16,7 @@ from models.experimental.sentence_bert.ttnn.ttnn_sentencebert_encoder import Ttn
 @pytest.mark.parametrize(
     "inputs",
     [
-        ["emrecan/bert-base-turkish-cased-mean-nli-stsb-tr", [8, 384, 768], [8, 1, 384, 384]],
+        ["emrecan/bert-base-turkish-cased-mean-nli-stsb-tr", [8, 384, 768], [8, 1, 1, 384]],
     ],
 )
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 79104}], indirect=True)

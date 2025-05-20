@@ -91,6 +91,6 @@ def preprocess_inputs(
         dtype=ttnn.bfloat16,
         device=device,
         layout=ttnn.TILE_LAYOUT,
-        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        memory_config=ttnn.L1_MEMORY_CONFIG,
     )
     return input_ids, token_type_ids, position_ids, attention_mask
