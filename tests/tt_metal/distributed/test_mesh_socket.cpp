@@ -84,11 +84,13 @@ chip_id_t get_intermediate_routing_chip(chip_id_t src_chip_id, chip_id_t dst_chi
         uint32_t src_chip_max_index = 0;
         for (int i = 0; i < route.size(); i++) {
             const auto& [chip, chan] = route[i];
+            std::cout << chip << " ";
             if (chip == src_chip_id) {
                 num_instances_of_src_chip++;
                 src_chip_max_index = i;
             }
         }
+        std::cout << std::endl;
         if (num_instances_of_src_chip > 2 or src_chip_max_index >= 2) {
             continue;
         }
@@ -1004,7 +1006,9 @@ std::shared_ptr<Program> create_sender_program(
     std::size_t data_size,
     const CoreCoord& sender_logical_coord,
     chip_id_t sender_physical_device_id,
-    chip_id_t recv_physical_device_id) {
+    chip_id_t recv_physical_device_id,
+    uint32_t link_idx = 0) {
+    std::cout << "Path from send to recv " << std::endl;
     const uint32_t intermed_physical_device_id_send_to_recv =
         get_intermediate_routing_chip(sender_physical_device_id, recv_physical_device_id);
     auto control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
@@ -1039,7 +1043,7 @@ std::shared_ptr<Program> create_sender_program(
     tt_fabric::append_fabric_connection_rt_args(
         sender_physical_device_id,
         intermed_physical_device_id_send_to_recv,
-        0,
+        link_idx,
         *sender_program,
         {sender_logical_coord},
         sender_rtas);
@@ -1211,10 +1215,13 @@ std::shared_ptr<Program> create_reduce_program(
     chip_id_t sender1_physical_device_id,
     chip_id_t reducer_physical_device_id,
     chip_id_t recv_physical_device_id) {
+    std::cout << "Path from reduce to send 0" << std::endl;
     const uint32_t intermed_physical_device_id_recv_to_send_0 =
         get_intermediate_routing_chip(reducer_physical_device_id, sender0_physical_device_id);
+    std::cout << "Path from reduce to send 1" << std::endl;
     const uint32_t intermed_physical_device_id_recv_to_send_1 =
         get_intermediate_routing_chip(reducer_physical_device_id, sender1_physical_device_id);
+    std::cout << "Path from reduce to recv" << std::endl;
     const uint32_t intermed_physical_device_id_send_to_recv =
         get_intermediate_routing_chip(reducer_physical_device_id, recv_physical_device_id);
 
@@ -1290,7 +1297,7 @@ std::shared_ptr<Program> create_reduce_program(
     tt_fabric::append_fabric_connection_rt_args(
         reducer_physical_device_id,
         intermed_physical_device_id_recv_to_send_1,
-        0,
+        1,
         *reduce_program,
         reduce_logical_coord,
         recv_rtas);
@@ -1496,7 +1503,8 @@ void test_multi_sender_single_recv(
         data_size,
         sender_logical_coord,
         sender_1_physical_device_id,
-        reducer_physical_device_id);
+        reducer_physical_device_id,
+        1);
     std::shared_ptr<Program> reduce_program = nullptr;
     std::shared_ptr<Program> sender_program_2 = nullptr;
     if (split_reducer) {
@@ -1733,7 +1741,7 @@ void run_single_connection_multi_device_socket_with_cbs(FixtureT* fixture) {
 template <typename FixtureT>
 void run_multi_sender_single_recv(FixtureT* fixture, bool split_reducer) {
     auto sender_0 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 0));
-    auto sender_1 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 3));
+    auto sender_1 = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(1, 2));
     auto reducer = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(0, 1));
     auto receiver = fixture->get_mesh_device()->create_submesh(MeshShape(1, 1), MeshCoordinate(1, 3));
 
