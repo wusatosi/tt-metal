@@ -120,8 +120,6 @@ void createWriter(
     tt::DataFormat data_format = tt::DataFormat::Bfp8_b;
     uint32_t src0_cb_index = tt::CB::c_in0;
     uint32_t src1_cb_index = tt::CB::c_in1;
-    uint32_t dst0_cb_index = tt::CB::c_in2;
-    uint32_t dst1_cb_index = tt::CB::c_in3;
     uint32_t header_cb_index = tt::CB::c_in4;
     uint32_t num_pages_per_packet = 1;
     uint32_t num_tiles = input_tensor.padded_shape().volume() / tt::constants::TILE_HW;
@@ -132,7 +130,7 @@ void createWriter(
 
     static constexpr auto num_packet_headers_storable = 8;
     static constexpr auto packet_header_size_bytes = sizeof(tt::tt_fabric::PacketHeader);
-    static constexpr auto num_tiles_per_buffer = 100;
+    static constexpr auto num_tiles_per_buffer = 200;
 
     tt::tt_metal::CircularBufferConfig cb_src0_config =
         tt::tt_metal::CircularBufferConfig(num_tiles_per_buffer * tile_size, {{src0_cb_index, data_format}})
@@ -144,16 +142,6 @@ void createWriter(
             .set_page_size(src1_cb_index, tile_size);
     tt::tt_metal::CBHandle cb_src1_workers = tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_src1_config);
 
-    tt::tt_metal::CircularBufferConfig cb_dst0_config =
-        tt::tt_metal::CircularBufferConfig(num_tiles_per_buffer * tile_size, {{dst0_cb_index, data_format}})
-            .set_page_size(dst0_cb_index, tile_size);
-    tt::tt_metal::CBHandle cb_dst0_workers = tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_dst0_config);
-
-    tt::tt_metal::CircularBufferConfig cb_dst1_config =
-        tt::tt_metal::CircularBufferConfig(num_tiles_per_buffer * tile_size, {{dst1_cb_index, data_format}})
-            .set_page_size(dst1_cb_index, tile_size);
-    tt::tt_metal::CBHandle cb_dst1_workers = tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_dst1_config);
-
     tt::tt_metal::CircularBufferConfig cb_reserved_packet_header_config =
         tt::tt_metal::CircularBufferConfig(
             num_packet_headers_storable * packet_header_size_bytes * 2, {{header_cb_index, tt::DataFormat::RawUInt32}})
@@ -162,7 +150,7 @@ void createWriter(
         tt::tt_metal::CreateCircularBuffer(program, writer_core, cb_reserved_packet_header_config);
 
     auto writer_kernel_config = tt::tt_metal::WriterDataMovementConfig{};
-    writer_kernel_config.compile_args = {src0_cb_index, src1_cb_index, dst0_cb_index, dst1_cb_index, header_cb_index};
+    writer_kernel_config.compile_args = {src0_cb_index, src1_cb_index, header_cb_index};
 
     auto writer_kernel_id = tt::tt_metal::CreateKernel(
         program,
