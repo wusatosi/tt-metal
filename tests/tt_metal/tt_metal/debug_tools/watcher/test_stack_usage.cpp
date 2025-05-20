@@ -43,7 +43,7 @@ void RunOneTest(WatcherFixture* fixture, IDevice* device, unsigned usage, bool w
         msg.append(cpu).append(" highest stack usage: ").append(fraction).append(", on core");
         usages.push_back(msg);
         msg.clear();
-        msg.append("running kernel ").append(path).append(overflow ? " (OVERFLOW)" : "  (Close to overflow)");
+        msg.append("running kernel ").append(path).append(overflow ? " (OVERFLOW)" : " (Close to overflow)");
         usages.push_back(msg);
     };
     
