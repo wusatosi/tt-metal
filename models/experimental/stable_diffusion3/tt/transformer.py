@@ -104,7 +104,7 @@ class TtSD3Transformer2DModel:
         self,
         parameters: TtSD3Transformer2DModelParameters | dict[str, torch.Tensor],
         *,
-        guidance_cond: int = 2,
+        batch_size: int,
         num_heads: int,
         device: ttnn.MeshDevice,
     ) -> None:
@@ -132,7 +132,7 @@ class TtSD3Transformer2DModel:
             self._time_text_embed = TtCombinedTimestepTextProjEmbeddings(
                 parameters.time_text_embed,
                 device=device,
-                batch_size=guidance_cond,
+                batch_size=batch_size,
             )
             self._context_embedder = TtLinear(parameters.context_embedder)
             self._transformer_blocks = [

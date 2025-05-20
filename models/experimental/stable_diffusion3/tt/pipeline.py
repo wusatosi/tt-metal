@@ -34,10 +34,10 @@ class TtStableDiffusion3Pipeline:
         *,
         checkpoint: str,
         device: ttnn.MeshDevice,
+        transformer_batch_size: int,
         enable_t5_text_encoder: bool = True,
         t5_text_encoder_cpu_fallback: bool = False,
         vae_cpu_fallback: bool = False,
-        guidance_cond: int,
     ) -> None:
         self._device = device
         device.enable_async(True)
@@ -108,7 +108,7 @@ class TtStableDiffusion3Pipeline:
         )
 
         self._tt_transformer = TtSD3Transformer2DModel(
-            parameters, guidance_cond=guidance_cond, num_heads=num_heads, device=self._device
+            parameters, batch_size=transformer_batch_size, num_heads=num_heads, device=self._device
         )
         self._num_channels_latents = torch_transformer.config.in_channels
         self._joint_attention_dim = torch_transformer.config.joint_attention_dim
@@ -399,7 +399,6 @@ class TtStableDiffusion3Pipeline:
 
         image_decoding_start_time = time.time()
 
-        # scaled_latents = 1 / self._vae_scaling_factor * self._trace.spatial_input_output + self._vae_shift_factor
         scaled_latents = 1 / self._vae_scaling_factor * latents_step + self._vae_shift_factor
 
         if isinstance(self._vae, TtVaeDecoder):

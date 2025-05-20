@@ -38,18 +38,13 @@ from .tt import TtStableDiffusion3Pipeline
 def test_sd3(
     *, mesh_device: ttnn.MeshDevice, model_name, image_w, image_h, guidance_scale, num_inference_steps
 ) -> None:  # , prompt_sequence_length, spatial_sequence_length,) -> None:
-    if guidance_scale > 1:
-        guidance_cond = 2
-    else:
-        guidance_cond = 1
-
     pipeline = TtStableDiffusion3Pipeline(
         checkpoint=f"stabilityai/stable-diffusion-3.5-{model_name}",
         device=mesh_device,
+        transformer_batch_size=2 if guidance_scale > 1 else 1,
         enable_t5_text_encoder=mesh_device.get_num_devices() >= 4,
         t5_text_encoder_cpu_fallback=mesh_device.get_num_devices() < 4,  # this alone does not enable T5
         vae_cpu_fallback=True,  # TT-NN version of the VAE currently hangs with program cache enabled
-        guidance_cond=guidance_cond,
     )
 
     pipeline.prepare(
