@@ -83,6 +83,7 @@ void RunOneTest(WatcherFixture* fixture, IDevice* device, unsigned usage, bool w
     // FIXME: Implement eth
 
     fixture->RunProgram(device, program);
+    sleep(1);
 
     EXPECT_TRUE(
         FileContainsAllStringsInOrder(
