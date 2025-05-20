@@ -836,6 +836,7 @@ void FDMeshCommandQueue::record_end() {
     }
     size_t max_trace_size = 0;
     std::set<SubDeviceId> sub_device_ids;
+    bool uses_ethernet_cores = false;
     for (const auto& range : device_ranges) {
 
         std::vector<TraceNode> trace_nodes;
@@ -876,6 +877,7 @@ void FDMeshCommandQueue::record_end() {
             }
             if (program.runs_on_noc_unicast_only_cores()) {
                 num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
+                uses_ethernet_cores = true;
             }
             fmt::println(stderr, "Enqueueing program on subdevice {} with expected workers completed {} and num wokers {}",
                          *sub_device_id,
@@ -949,7 +951,7 @@ void FDMeshCommandQueue::record_end() {
     trace_ctx_->sub_device_ids.reserve(sub_device_ids.size());
     for (auto& sub_device_id : sub_device_ids) {
         trace_ctx_->sub_device_ids.push_back(sub_device_id);
-        trace_ctx_->descriptors[sub_device_id] = TraceWorkerDescriptor{.num_traced_programs_needing_go_signal_multicast = launch_msg_buffer_num_entries, .num_traced_programs_needing_go_signal_unicast=launch_msg_buffer_num_entries};
+        trace_ctx_->descriptors[sub_device_id] = TraceWorkerDescriptor{.num_traced_programs_needing_go_signal_multicast = launch_msg_buffer_num_entries, .num_traced_programs_needing_go_signal_unicast= uses_ethernet_cores ? launch_msg_buffer_num_entries : 0};
     }
 
     trace_nodes_.clear();
