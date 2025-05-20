@@ -1032,7 +1032,7 @@ void FDMeshCommandQueue::record_end() {
         trace_ctx_->ordered_trace_data.push_back(MeshTraceData{range, std::move(bypass_data)});
 
     }
-    trace_ctx_->total_trace_size = max_trace_size;
+    trace_ctx_->total_trace_size = max_trace_size * sizeof(uint32_t);
 
     trace_ctx_->sub_device_ids.reserve(trace_ctx_->descriptors.size());
     for (const auto& [id, _] : trace_ctx_->descriptors) {
