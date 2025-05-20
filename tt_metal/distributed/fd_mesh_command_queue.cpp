@@ -795,6 +795,10 @@ void FDMeshCommandQueue::record_begin(const MeshTraceId& trace_id, const std::sh
 void FDMeshCommandQueue::record_end() {
     const auto& hal = MetalContext::instance().hal();
 
+
+    // At the beginning of the trace, expected_num_workers_completed are 0 on all devices on for each sub-device in the trace. launch_msg_rd_ptr will also be 0 for all core-types used on each subdevice in the trace.
+    // At the end of the trace, everthing should be the same.
+    // While running the traces, launch_msg_rd_ptr and expected_num_workers_completed may be different on different devices, unlike in normal program execution.
     #if 0
     std::vector<MeshCoordinateRange> unused_range{MeshCoordinateRange{mesh_device_->shape()}};
     for (auto& trace_node : trace_nodes_) {
