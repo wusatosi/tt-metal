@@ -316,6 +316,7 @@ def test_demo(
         visual_model = reference_model.visual
     processor = AutoProcessor.from_pretrained(model_args.model_name)
     num_tokens_generated_decode = []
+    num_image_tokens = []
 
     logger.info("Starting inference...")
     for batch_idx, input_prompts in enumerate(repeat_batch_prompts):
@@ -330,49 +331,25 @@ def test_demo(
             padding=True,
             return_tensors="pt",
         )
-        # DEBUG {
         merge_length = processor.image_processor.merge_size**2
-        num_image_tokens = [inputs.image_grid_thw[i].prod() // merge_length for i in range(batch_size)]
-        logger.info(f"num_image_tokens: {num_image_tokens}")
-        # } DEBUG
+        num_image_tokens.append([inputs.image_grid_thw[i].prod().item() // merge_length for i in range(batch_size)])
+        logger.info(f"num_image_tokens: {num_image_tokens[-1]}")
+
         # Vision prefill
         logger.info(f"Vision model prefill batch {batch_idx}")
-        # demo-2: inputs.pixel_values is tensor of shape torch.Size([14308, 1176]) --> values saved in pt_ref/pixel_values_demo_2.pt
-        # demo-2: inputs.image_grid_thw is list of 2 tensors of shape tensor([[  1,  98, 146]])
-        # # pv = torch.load("pt_ref/pixel_values_demo_2.pt")
-        # # torch.sum(inputs.pixel_values[-14308:,:] != pv)
-        # # tensor(0)
-        # # inputs.image_grid_thw
-        # # tensor([[  1,  64, 114],
-        # #         [  1,  98, 146]])
-        # [INFO] we are good with the inputs of demo 2!!!
+        profiler.start(f"vision_model_prefill", iteration=batch_idx)
         image_embeds = (
             visual_model(inputs.pixel_values, grid_thw=inputs.image_grid_thw)
             if "pixel_values" in inputs
             else torch.tensor([], dtype=torch.bfloat16)
         )
-        # demo-1: image_embeds is a tensor of shape torch.Size([1824, 2048]) --> values saved in pt_ref/image_embeds_demo_1.pt
-        # demo-2: image_embeds is a tensor of shape torch.Size([3577, 2048]) --> values saved in pt_ref/image_embeds_demo_2.pt
-        # # image_embeds.shape
-        # # torch.Size([5401, 2048])
-        # # ie_1 = torch.load("pt_ref/image_embeds_demo_1.pt", weights_only=False)
-        # # torch.sum(image_embeds[:1824,:] != ie_1)
-        # # tensor(0)
-        # # ie_2 = torch.load("pt_ref/image_embeds_demo_2.pt", weights_only=False)
-        # # torch.sum(image_embeds[1824:,:] != ie_2)
-        # # tensor(0)
-        # [INFO] same image for each user, image_embeds is a tensor of shape (batch_size * num_image_tokens, hidden_size): (2 * 3577, 2048)
-        # [INFO] different image for each user, image_embeds is a tensor of shape (sum(num_image_tokens), hidden_size): (5401, 2048)
+        profiler.end(f"vision_model_prefill", iteration=batch_idx)
 
         # Prepare text + vision inputs for decoder model
         logger.info(f"Prepare text + vision inputs for decoder model batch {batch_idx}")
         # FIXME: on-host embeddings - run as part of vision model prefill when merge_vision_tokens is ported to ttnn
         text_embeds = reference_model.model.language_model.embed_tokens(inputs.input_ids)
-        # DEBUG: doing merge_vision_tokens and multimodal_rope_from_hf on host one user after another and then compare the results to batched ones
-        input_embeds = merge_vision_tokens(
-            inputs.input_ids, text_embeds, image_embeds, reference_model.config
-        )  # DEBUG: does it work for batch_size > 1?
-        # input_embeds is a tensor of shape (batch_size, seq_len, hidden_size): (2, 3624, 2048)
+        input_embeds = merge_vision_tokens(inputs.input_ids, text_embeds, image_embeds, reference_model.config)
         pad_token_id = tokenizer.pad_token_id
         (
             input_prefill_pt,
@@ -388,8 +365,6 @@ def test_demo(
         cos, sin = multimodal_rope_from_hf(inputs, input_embeds, reference_model, model_args, pad_token_id=pad_token_id)
         model.rope_setup.set_cos_sin(cos, sin)
         profiler.end(f"preprocess_prefill_inputs", iteration=batch_idx)
-        # cos and sin should be potentially different for different users? Yes, we need to check them then
-        # # this checks out against the saved tensors under pt_ref/{cos,sin}_demo_1.pt and pt_ref/{cos,sin}_demo_2.pt
 
         # when doing repeating batches, set kv-caches to zero, to avoid context leaking
         if batch_idx != 0:
@@ -586,8 +561,16 @@ def test_demo(
         (num_tokens_generated_decode[0] - 1) / total_inference_decode_time * batch_size
     )  # Remove the compile time
 
+    vision_model_time = profiler.get_duration("vision_model_prefill")
+    vision_model_time_per_user = vision_model_time / batch_size
+    vision_model_t_u_s = sum(num_image_tokens[0]) / vision_model_time_per_user
+    vision_model_t_s = sum(num_image_tokens[0]) / vision_model_time
+
     measurements = {
         # Required measurements
+        "vision_model_prefill": vision_model_time,
+        "vision_model_prefill time per user": vision_model_time_per_user,
+        "vision_model_prefill time per user per token": vision_model_t_u_s,
         "compile_prefill": compile_prefill_time,
         "compile_decode": compile_decode_time,
         "inference_prefill": total_inference_prefill_time,
@@ -633,9 +616,14 @@ def test_demo(
     logger.info(f"Prefill compile time: {round(compile_prefill_time, 2)}s")
     logger.info(f"Decode compile time: {round(compile_decode_time, 2)}s")
     logger.info("")
-    logger.info(f"Average Time to First Token (TTFT): {round(avg_time_to_first_token*1000, 2)}ms")
+    logger.info(f"Vision model prefill time: {round(vision_model_time, 2)}s")
     logger.info(
-        f"Average speed: {round(avg_decode_iteration_time * 1000, 2)}ms @ {round(decode_tok_s_user, 2)} tok/s/user ({round(decode_tok_s, 2)} tok/s throughput)"
+        f"Vision model prefill speed: {round(vision_model_t_u_s, 2)} tok/s/user ({round(vision_model_t_s, 2)} tok/s)"
+    )
+    logger.info("")
+    logger.info(f"Text model average Time to First Token (TTFT): {round(avg_time_to_first_token*1000, 2)}ms")
+    logger.info(
+        f"Text model average speed: {round(avg_decode_iteration_time * 1000, 2)}ms @ {round(decode_tok_s_user, 2)} tok/s/user ({round(decode_tok_s, 2)} tok/s throughput)"
     )
 
     # Benchmark targets
