@@ -203,16 +203,6 @@ void FDMeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool
     TT_FATAL(
         mesh_workload.impl().get_program_binary_status(mesh_device_id) != ProgramBinaryStatus::NotSent,
         "Expected program binaries to be written to the MeshDevice.");
-    if (sysmem_manager.get_bypass_mode()) {
-        trace_nodes_.push_back(MeshTraceNode{});
-        auto& trace_node = trace_nodes_.back();
-        for (auto& [device_range, program] : mesh_workload.get_programs()) {
-            trace_node.trace_nodes.push_back(
-                std::pair<MeshCoordinateRange, TraceNode>(device_range, program_dispatch::create_trace_node(program.impl(), mesh_device_)));
-        }
-        return;
-    }
-
 
     // Compute number of workers being used for this workload.
     uint32_t num_workers = 0;
@@ -234,6 +224,19 @@ void FDMeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool
         num_virtual_eth_cores = mesh_device_->num_virtual_eth_cores(sub_device_id);
         num_workers += num_virtual_eth_cores;
     }
+
+    if (sysmem_manager.get_bypass_mode()) {
+        trace_nodes_.push_back(MeshTraceNode{});
+        auto& trace_node = trace_nodes_.back();
+        for (auto& [device_range, program] : mesh_workload.get_programs()) {
+            trace_node.trace_nodes.push_back(
+                std::pair<MeshCoordinateRange, TraceNode>(device_range, program_dispatch::create_trace_node(program.impl(), mesh_device_)));
+        }
+        trace_node.multicast_go_signals = mcast_go_signals;
+        trace_node.unicast_go_signals = unicast_go_signals;
+        return;
+    }
+
 
     program_dispatch::ProgramDispatchMetadata dispatch_metadata;
     uint32_t expected_num_workers_completed = sysmem_manager.get_bypass_mode()
@@ -1000,6 +1003,7 @@ void FDMeshCommandQueue::record_end() {
 
     trace_ctx_->sub_device_ids.reserve(sub_device_ids.size());
     for (auto& sub_device_id : sub_device_ids) {
+        fmt::println(stderr, "Adding subdevice {} to trace context", *sub_device_id);
         trace_ctx_->sub_device_ids.push_back(sub_device_id);
         trace_ctx_->descriptors[sub_device_id] = TraceWorkerDescriptor{.num_traced_programs_needing_go_signal_multicast = launch_msg_buffer_num_entries, .num_traced_programs_needing_go_signal_unicast= uses_ethernet_cores ? launch_msg_buffer_num_entries : 0};
     }

@@ -97,6 +97,8 @@ private:
 
     struct MeshTraceNode {
         std::vector<std::pair<MeshCoordinateRange, TraceNode>> trace_nodes;
+        bool multicast_go_signals{false};
+        bool unicast_go_signals{false};
     };
 
     // The following data structures are only popiulated when the MeshCQ is being used to trace workloads

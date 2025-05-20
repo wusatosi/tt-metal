@@ -489,6 +489,7 @@ TEST_F(MeshTraceTestSuite, DataCopyOnSubDevicesTrace) {
         ReplayTrace(mesh_device_.get(), 0, trace_id, false);
         fmt::println(stderr, "After replay trace {}", i);
 
+
         std::vector<uint32_t> src_vec(input_buf->size() / sizeof(uint32_t));
         std::iota(src_vec.begin(), src_vec.end(), i);
         // Block after this write on host, since the global semaphore update starting the
