@@ -1381,26 +1381,34 @@ void Cluster::initialize_control_plane() {
     // Default mode, auto select mesh graph descriptor. In future, we can add a way for user to specify custom
     // descriptors
     std::string mesh_graph_descriptor;
-    switch (this->cluster_type_) {
-        case tt::ClusterType::N150: mesh_graph_descriptor = "n150_mesh_graph_descriptor.yaml"; break;
-        case tt::ClusterType::N300: mesh_graph_descriptor = "n300_mesh_graph_descriptor.yaml"; break;
-        case tt::ClusterType::T3K: mesh_graph_descriptor = "t3k_mesh_graph_descriptor.yaml"; break;
-        case tt::ClusterType::GALAXY:
-            if (tt::tt_fabric::get_fabric_type(this->fabric_config_, this->cluster_type_) ==
-                tt::tt_fabric::FabricType::TORUS_2D) {
-                mesh_graph_descriptor = "quanta_galaxy_torus_2d_graph_descriptor.yaml";
-            } else {
-                mesh_graph_descriptor = "quanta_galaxy_mesh_graph_descriptor.yaml";
-            }
-            break;
-        case tt::ClusterType::TG: mesh_graph_descriptor = "tg_mesh_graph_descriptor.yaml"; break;
-        case tt::ClusterType::P100: mesh_graph_descriptor = "p100_mesh_graph_descriptor.yaml"; break;
-        case tt::ClusterType::P150: mesh_graph_descriptor = "p150_mesh_graph_descriptor.yaml"; break;
-        case tt::ClusterType::P150_X2: mesh_graph_descriptor = "p150_x2_mesh_graph_descriptor.yaml"; break;
-        case tt::ClusterType::P150_X4: mesh_graph_descriptor = "p150_x4_mesh_graph_descriptor.yaml"; break;
-        case tt::ClusterType::SIMULATOR_WORMHOLE_B0: mesh_graph_descriptor = "n150_mesh_graph_descriptor.yaml"; break;
-        case tt::ClusterType::SIMULATOR_BLACKHOLE: mesh_graph_descriptor = "p150_mesh_graph_descriptor.yaml"; break;
-        default: TT_THROW("Unknown cluster type"); // TODO: we could expose this as a custom mesh graph option
+    // TODO: Need better way for testing
+    auto custom_mesh_graph_descriptor = std::getenv("TT_METAL_CUSTOM_MESH_GRAPH_DESCRIPTOR");
+    if (custom_mesh_graph_descriptor) {
+        mesh_graph_descriptor = custom_mesh_graph_descriptor;
+    } else {
+        switch (this->cluster_type_) {
+            case tt::ClusterType::N150: mesh_graph_descriptor = "n150_mesh_graph_descriptor.yaml"; break;
+            case tt::ClusterType::N300: mesh_graph_descriptor = "n300_mesh_graph_descriptor.yaml"; break;
+            case tt::ClusterType::T3K: mesh_graph_descriptor = "t3k_mesh_graph_descriptor.yaml"; break;
+            case tt::ClusterType::GALAXY:
+                if (tt::tt_fabric::get_fabric_type(this->fabric_config_, this->cluster_type_) ==
+                    tt::tt_fabric::FabricType::TORUS_2D) {
+                    mesh_graph_descriptor = "quanta_galaxy_torus_2d_graph_descriptor.yaml";
+                } else {
+                    mesh_graph_descriptor = "quanta_galaxy_mesh_graph_descriptor.yaml";
+                }
+                break;
+            case tt::ClusterType::TG: mesh_graph_descriptor = "tg_mesh_graph_descriptor.yaml"; break;
+            case tt::ClusterType::P100: mesh_graph_descriptor = "p100_mesh_graph_descriptor.yaml"; break;
+            case tt::ClusterType::P150: mesh_graph_descriptor = "p150_mesh_graph_descriptor.yaml"; break;
+            case tt::ClusterType::P150_X2: mesh_graph_descriptor = "p150_x2_mesh_graph_descriptor.yaml"; break;
+            case tt::ClusterType::P150_X4: mesh_graph_descriptor = "p150_x4_mesh_graph_descriptor.yaml"; break;
+            case tt::ClusterType::SIMULATOR_WORMHOLE_B0:
+                mesh_graph_descriptor = "n150_mesh_graph_descriptor.yaml";
+                break;
+            case tt::ClusterType::SIMULATOR_BLACKHOLE: mesh_graph_descriptor = "p150_mesh_graph_descriptor.yaml"; break;
+            default: TT_THROW("Unknown cluster type");  // TODO: we could expose this as a custom mesh graph option
+        }
     }
     const std::filesystem::path mesh_graph_desc_path = std::filesystem::path(rtoptions_.get_root_dir()) /
                                                        "tt_metal/fabric/mesh_graph_descriptors" / mesh_graph_descriptor;
