@@ -969,7 +969,7 @@ void FDMeshCommandQueue::record_end() {
         allocator.allocate_trace_programs(this->mesh_device_, trace_nodes);
 
         auto& sysmem_manager_for_trace = mesh_device_->get_device(range.start_coord())->sysmem_manager();
-        uint32_t expected_workers_completed = 0;
+        DispatchArray<uint32_t> expected_workers_completed;
         for (auto& node : trace_nodes) {
             auto sub_device_id = node.sub_device_id;
             auto& program = *node.program;
@@ -995,7 +995,7 @@ void FDMeshCommandQueue::record_end() {
                 cached_program_command_sequence,
                 worker_launch_message_buffer_state.get_mcast_wptr(),
                 worker_launch_message_buffer_state.get_unicast_wptr(),
-                expected_workers_completed,
+                expected_workers_completed[*sub_device_id],
                 this->virtual_program_dispatch_core(),
                 MetalContext::instance().get_dispatch_core_manager().get_dispatch_core_type(),
                 sub_device_id,
@@ -1018,8 +1018,15 @@ void FDMeshCommandQueue::record_end() {
             if (program.runs_on_noc_unicast_only_cores()) {
                 worker_launch_message_buffer_state.inc_unicast_wptr(1);
             }
-            expected_workers_completed += num_workers;
+            expected_workers_completed[*sub_device_id] += num_workers;
         }
+        program_dispatch::reset_worker_dispatch_state_on_device(
+            mesh_device_,
+            sysmem_manager_for_trace,
+            id_,
+            this->virtual_program_dispatch_core(),
+            expected_workers_completed,
+            /*reset_launch_msg_state=*/true);
 
         auto& bypass_data = sysmem_manager_for_trace.get_bypass_data();
         bypass_data.insert(
