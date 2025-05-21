@@ -1551,9 +1551,10 @@ class ModelArgs:
                 logger.info(
                     f"Loading state param for dummy {self.model_name} from {self.LOCAL_HF_PARAMS[self.model_name]}"
                 )
-                config = AutoConfig.from_pretrained(self.LOCAL_HF_PARAMS[self.model_name]).to_dict()
+                self.hf_config = AutoConfig.from_pretrained(self.LOCAL_HF_PARAMS[self.model_name])
             else:
-                config = AutoConfig.from_pretrained(self.CKPT_DIR).to_dict()
+                self.hf_config = AutoConfig.from_pretrained(self.CKPT_DIR)
+            config = self.hf_config.to_dict()
 
         else:
             config_file = os.path.join(checkpoint_dir, "config.json")
@@ -1632,7 +1633,7 @@ class ModelArgs:
             assert self.checkpoint_type == CheckpointType.HuggingFace
             if self.from_hf_url:
                 # Special case Qwen2.5-VL models until they are fully integrated into a HF release
-                if "Qwen/Qwen2.5-VL" in self.model_name:
+                if "Qwen2.5-VL" in self.model_name:
                     from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
                         Qwen2_5_VLForConditionalGeneration as AutoModelForCausalLM,
                     )
