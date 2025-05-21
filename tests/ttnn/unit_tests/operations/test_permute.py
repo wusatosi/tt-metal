@@ -555,7 +555,8 @@ def test_permute_jd(device):
     output_tensor = ttnn.to_torch(output_tensor).bfloat16()
 
     print("shapes", torch_output.shape, output_tensor.shape)
-    print("tensors", torch_output, output_tensor)
+    print("torch tensors", torch_output[-1, 0, -32::])
+    print("ttnn tensors", output_tensor[-1, 0, -32::])
     # Set a tolerance threshold for floating point comparisons
     tolerance = 1e-6
 
