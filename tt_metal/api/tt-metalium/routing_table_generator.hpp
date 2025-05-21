@@ -38,6 +38,9 @@ public:
 
     std::uint32_t get_mesh_ns_size(mesh_id_t mesh_id) const { return this->mesh_graph_->get_mesh_ns_size(mesh_id); }
     std::uint32_t get_mesh_ew_size(mesh_id_t mesh_id) const { return this->mesh_graph_->get_mesh_ew_size(mesh_id); }
+    std::pair<std::uint32_t, std::uint32_t> cumulative_shape_across_fabric_meshes() const {
+        return this->mesh_graph_->cumulative_shape_across_fabric_meshes();
+    }
 
     RoutingTable get_intra_mesh_table() const { return this->intra_mesh_table_; }
     RoutingTable get_inter_mesh_table() const { return this->inter_mesh_table_; }

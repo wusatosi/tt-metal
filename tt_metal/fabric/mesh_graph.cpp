@@ -10,6 +10,8 @@
 #include <fstream>
 #include <iomanip>
 #include <optional>
+#include <unordered_set>
+#include <queue>
 
 #include "assert.hpp"
 #include "logger.hpp"
@@ -18,6 +20,62 @@
 namespace tt {
 enum class ARCH;
 }  // namespace tt
+
+namespace {
+
+using namespace tt::tt_fabric;
+
+uint32_t get_dim_size_across_all_meshes(
+    const std::unordered_map<mesh_id_t, std::vector<std::tuple<RoutingDirection, mesh_id_t>>>& adj_list,
+    mesh_id_t start_mesh,
+    const std::vector<std::pair<std::uint32_t, std::uint32_t>>& mesh_shapes,
+    RoutingDirection direction) {
+    // Perform BFS starting at start_mesh and compute the cumulative size across all meshes
+    // along the specified direction
+    std::unordered_set<mesh_id_t> visited;
+    std::queue<mesh_id_t> q;
+    q.push(start_mesh);
+
+    uint32_t dim_size = 0;
+    std::unordered_map<mesh_id_t, std::vector<RoutingDirection>> dirs_visited_per_node;
+    while (!q.empty()) {
+        auto node = q.front();
+        q.pop();
+
+        if (visited.count(node)) {
+            continue;
+        }
+        visited.insert(node);
+        if (direction == RoutingDirection::N || direction == RoutingDirection::S) {
+            dim_size += std::get<0>(mesh_shapes[node]);
+        } else {
+            dim_size += std::get<1>(mesh_shapes[node]);
+        }
+        if (adj_list.find(node) != adj_list.end()) {
+            for (const auto& [dir, neighbor] : adj_list.at(node)) {
+                if (!visited.count(neighbor) and
+                    (std::find(dirs_visited_per_node[node].begin(), dirs_visited_per_node[node].end(), dir) ==
+                     dirs_visited_per_node[node].end())) {
+                    q.push(neighbor);
+                    dirs_visited_per_node[node].push_back(dir);
+                }
+            }
+        }
+    }
+
+    return dim_size;
+}
+
+std::pair<std::uint32_t, std::uint32_t> get_cumulative_shape_across_meshes(
+    const std::unordered_map<mesh_id_t, std::vector<std::tuple<RoutingDirection, mesh_id_t>>>& ew_adj_list,
+    const std::unordered_map<mesh_id_t, std::vector<std::tuple<RoutingDirection, mesh_id_t>>>& ns_adj_list,
+    const std::vector<std::pair<std::uint32_t, std::uint32_t>>& mesh_shapes) {
+    return {
+        get_dim_size_across_all_meshes(ew_adj_list, 0, mesh_shapes, RoutingDirection::E),
+        get_dim_size_across_all_meshes(ns_adj_list, 0, mesh_shapes, RoutingDirection::N)};
+}
+
+}  // namespace
 
 namespace tt::tt_fabric {
 
@@ -297,6 +355,10 @@ void MeshGraph::initialize_from_yaml(const std::string& mesh_graph_desc_file_pat
         std::uint32_t chan_id = static_cast<uint32_t>(std::stoul(port_string.substr(1, port_string.size() - 1)));
         return {mesh_id, {port_direction, chan_id}};
     };
+
+    std::unordered_map<mesh_id_t, std::vector<std::tuple<RoutingDirection, mesh_id_t>>> ew_mesh_adj_list;
+    std::unordered_map<mesh_id_t, std::vector<std::tuple<RoutingDirection, mesh_id_t>>> ns_mesh_adj_list;
+
     for (const auto& mesh_connection : yaml["Graph"]) {
         TT_FATAL(mesh_connection.size() == 2, "MeshGraph: Expecting 2 elements in each Graph connection");
         const auto& [src_mesh_id, src_port_id] = convert_yaml_to_port_id(mesh_connection[0]);
@@ -304,7 +366,15 @@ void MeshGraph::initialize_from_yaml(const std::string& mesh_graph_desc_file_pat
         const auto& src_chip_id = mesh_edge_ports_to_chip_id[src_mesh_id].at(src_port_id);
         const auto& dst_chip_id = mesh_edge_ports_to_chip_id[dst_mesh_id].at(dst_port_id);
         this->add_to_connectivity(src_mesh_id, src_chip_id, dst_mesh_id, dst_chip_id, src_port_id.first);
+        if (src_port_id.first == RoutingDirection::E || src_port_id.first == RoutingDirection::W) {
+            ew_mesh_adj_list[src_mesh_id].push_back({src_port_id.first, dst_mesh_id});
+        } else if (src_port_id.first == RoutingDirection::N || src_port_id.first == RoutingDirection::S) {
+            ns_mesh_adj_list[src_mesh_id].push_back({src_port_id.first, dst_mesh_id});
+        }
     }
+
+    this->cumulative_shape_ =
+        get_cumulative_shape_across_meshes(ew_mesh_adj_list, ns_mesh_adj_list, this->mesh_shapes_);
 }
 
 void MeshGraph::print_connectivity() const {

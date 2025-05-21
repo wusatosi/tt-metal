@@ -39,7 +39,7 @@ public:
 
     std::vector<mesh_id_t> get_user_physical_mesh_ids() const;
     tt::tt_metal::distributed::MeshShape get_physical_mesh_shape(mesh_id_t mesh_id) const;
-
+    tt::tt_metal::distributed::MeshShape cumulative_shape_across_fabric_meshes() const;
     // Return valid ethernet channels on the specificed routing plane
     std::vector<chan_id_t> get_valid_eth_chans_on_routing_plane(
         mesh_id_t mesh_id, chip_id_t chip_id, routing_plane_id_t routing_plane_id) const;

@@ -77,6 +77,7 @@ public:
 
     std::uint32_t get_mesh_ns_size(mesh_id_t mesh_id) const { return mesh_shapes_[mesh_id].first; }
     std::uint32_t get_mesh_ew_size(mesh_id_t mesh_id) const { return mesh_shapes_[mesh_id].second; }
+    std::pair<std::uint32_t, std::uint32_t> cumulative_shape_across_fabric_meshes() const { return cumulative_shape_; }
 
 private:
     std::unordered_map<chip_id_t, RouterEdge> get_valid_connections(
@@ -92,6 +93,7 @@ private:
 
     ChipSpec chip_spec_;
     std::vector<std::pair<std::uint32_t, std::uint32_t>> mesh_shapes_;
+    std::pair<std::uint32_t, std::uint32_t> cumulative_shape_;
     IntraMeshConnectivity intra_mesh_connectivity_;
     InterMeshConnectivity inter_mesh_connectivity_;
 };

@@ -1056,6 +1056,11 @@ tt::tt_metal::distributed::MeshShape ControlPlane::get_physical_mesh_shape(mesh_
     return tt::tt_metal::distributed::MeshShape(x, y);
 };
 
+tt::tt_metal::distributed::MeshShape ControlPlane::cumulative_shape_across_fabric_meshes() const {
+    auto cumulative_shape_pair = this->routing_table_generator_->cumulative_shape_across_fabric_meshes();
+    return tt::tt_metal::distributed::MeshShape(std::get<0>(cumulative_shape_pair), std::get<1>(cumulative_shape_pair));
+};
+
 void ControlPlane::print_routing_tables() const {
     std::stringstream ss;
     ss << "Control Plane: IntraMesh Routing Tables" << std::endl;
