@@ -500,13 +500,15 @@ void EthernetKernel::read_binaries(IDevice* device) {
     const JitBuildState& build_state = BuildEnvManager::get_instance().get_kernel_build_state(
         device->build_id(), erisc_core_type, dm_class_idx, erisc_id);
     // TODO: fix when active eth supports relo
-    auto load_type = (this->config_.eth_mode == Eth::IDLE) ?
-        ll_api::memory::Loading::CONTIGUOUS_XIP : ll_api::memory::Loading::DISCRETE;
+    auto arch = MetalContext::instance().hal().get_arch();
+    auto load_type = (this->config_.eth_mode == Eth::IDLE /*or arch == tt::ARCH::BLACKHOLE*/)
+                         ? ll_api::memory::Loading::CONTIGUOUS_XIP
+                         : ll_api::memory::Loading::DISCRETE;
     ll_api::memory const& binary_mem = llrt::get_risc_binary(
         build_state.get_target_out_path(this->kernel_full_name_),
         load_type);
     if (tt::tt_metal::MetalContext::instance().rtoptions().get_erisc_iram_enabled() &&
-        this->config_.eth_mode != Eth::IDLE) {
+        this->config_.eth_mode != Eth::IDLE /*&& arch != tt::ARCH::BLACKHOLE*/) {
         // text_addr and some of span's addr point to IRAM base address.
         // However it need to be placed L1 kernel base address for FW to copy it to IRAM then kick off
         // The kernel can run with IRAM base address once it started.

@@ -1342,7 +1342,9 @@ FORCE_INLINE
 void noc_semaphore_wait(volatile tt_l1_ptr uint32_t* sem_addr, uint32_t val) {
     RECORD_NOC_EVENT(NocEventType::SEMAPHORE_WAIT);
 
-    WAYPOINT("NSW");
+    // WAYPOINT("NSW");
+    WATCHER_RING_BUFFER_PUSH((uint32_t)sem_addr);
+    WATCHER_RING_BUFFER_PUSH(val);
     do {
         invalidate_l1_cache();
     } while ((*sem_addr) != val);

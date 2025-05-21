@@ -61,24 +61,37 @@ FabricEriscDatamoverConfig::FabricEriscDatamoverConfig(Topology topology) {
         (4 * eth_channel_sync_size);  // pad extra bytes to match old EDM so handshake logic will still work
     this->edm_local_sync_address = termination_signal_address + field_size;
     this->edm_status_address = edm_local_sync_address + field_size;
+    std::cout << "handshake_addr: " << this->handshake_addr << std::endl;
+    std::cout << "edm_channel_ack_addr: " << this->edm_channel_ack_addr << std::endl;
+    std::cout << "termination_signal_address: " << this->termination_signal_address << std::endl;
+    std::cout << "edm_local_sync_address: " << this->edm_local_sync_address << std::endl;
+    std::cout << "edm_status_address: " << this->edm_status_address << std::endl;
 
     uint32_t buffer_address = edm_status_address + field_size;
     for (uint32_t i = 0; i < FabricEriscDatamoverConfig::num_receiver_channels; i++) {
         this->receiver_channels_counters_address[i] = buffer_address;
+        std::cout << "receiver_channels_counters_address[" << i << "]: " << this->receiver_channels_counters_address[i]
+                  << std::endl;
         buffer_address += receiver_channel_counters_size_bytes;
     }
     for (uint32_t i = 0; i < num_sender_channels; i++) {
         this->sender_channels_counters_address[i] = buffer_address;
+        std::cout << "sender_channels_counters_address[" << i << "]: " << this->sender_channels_counters_address[i]
+                  << std::endl;
         buffer_address += sender_channel_counters_size_bytes;
     }
 
     // Packet header history buffer(s)
     for (uint32_t i = 0; i < FabricEriscDatamoverConfig::num_receiver_channels; i++) {
         this->receivers_completed_packet_header_cb_address[i] = buffer_address;
+        std::cout << "receivers_completed_packet_header_cb_address[" << i
+                  << "]: " << this->receivers_completed_packet_header_cb_address[i] << std::endl;
         buffer_address += receiver_completed_packet_header_cb_size_bytes;
     }
     for (uint32_t i = 0; i < num_sender_channels; i++) {
         this->senders_completed_packet_header_cb_address[i] = buffer_address;
+        std::cout << "senders_completed_packet_header_cb_address[" << i
+                  << "]: " << this->senders_completed_packet_header_cb_address[i] << std::endl;
         buffer_address += sender_completed_packet_header_cb_size_bytes;
     }
 
@@ -93,24 +106,38 @@ FabricEriscDatamoverConfig::FabricEriscDatamoverConfig(Topology topology) {
         this->sender_channels_worker_conn_info_base_address[i] = buffer_address;
         buffer_address += sizeof(tt::tt_fabric::EDMChannelWorkerLocationInfo);
         this->sender_channels_local_flow_control_semaphore_address[i] = buffer_address;
+        std::cout << "sender_channels_local_flow_control_semaphore_address[" << i
+                  << "]: " << this->sender_channels_local_flow_control_semaphore_address[i] << std::endl;
         buffer_address += field_size;
         this->sender_channels_producer_terminate_connection_address[i] = buffer_address;
+        std::cout << "sender_channels_producer_terminate_connection_address[" << i
+                  << "]: " << this->sender_channels_producer_terminate_connection_address[i] << std::endl;
         buffer_address += field_size;
         // persistent mode field
         this->sender_channels_connection_semaphore_address[i] = buffer_address;
+        std::cout << "sender_channels_connection_semaphore_address[" << i
+                  << "]: " << this->sender_channels_connection_semaphore_address[i] << std::endl;
         buffer_address += field_size;
         // persistent mode field
         this->sender_channels_buffer_index_semaphore_address[i] = buffer_address;
+        std::cout << "sender_channels_buffer_index_semaphore_address[" << i
+                  << "]: " << this->sender_channels_buffer_index_semaphore_address[i] << std::endl;
         buffer_address += field_size;
     }
     // ----------- Receiver Channels
     for (uint32_t i = 0; i < num_downstream_edms; i++) {
         this->receiver_channels_local_buffer_index_address[i] = buffer_address;
+        std::cout << "receiver_channels_local_buffer_index_address[" << i
+                  << "]: " << this->receiver_channels_local_buffer_index_address[i] << std::endl;
         buffer_address += field_size;
         // persistent mode field
         this->receiver_channels_downstream_flow_control_semaphore_address[i] = buffer_address;
+        std::cout << "receiver_channels_downstream_flow_control_semaphore_address[" << i
+                  << "]: " << this->receiver_channels_downstream_flow_control_semaphore_address[i] << std::endl;
         buffer_address += field_size;
         this->receiver_channels_downstream_teardown_semaphore_address[i] = buffer_address;
+        std::cout << "receiver_channels_downstream_teardown_semaphore_address[" << i
+                  << "]: " << this->receiver_channels_downstream_teardown_semaphore_address[i] << std::endl;
         buffer_address += field_size;
     }
 

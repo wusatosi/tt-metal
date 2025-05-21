@@ -848,7 +848,7 @@ void Device::initialize_and_launch_firmware() {
         uint32_t virtual_non_worker_cores_idx = 0;
         for (tt::umd::CoreCoord core : eth_cores) {
             auto virtual_core = this->virtual_core_from_physical_core({core.x, core.y});
-            std::cout << "Virtual core: " << virtual_core.str() << std::endl;
+            std::cout << "Virtual core: " << virtual_core.str() << " physical core " << core.str() << std::endl;
             core_info->virtual_non_worker_cores[virtual_non_worker_cores_idx++] = {virtual_core.x, virtual_core.y, AddressableCoreType::ETH};
         }
 
@@ -864,11 +864,6 @@ void Device::initialize_and_launch_firmware() {
                 core_info->virtual_non_worker_cores[virtual_non_worker_cores_idx++] = {
                     virtual_core.x, virtual_core.y, AddressableCoreType::DRAM};
             }
-        }
-
-        for (uint32_t idx = 0; idx < MAX_VIRTUAL_NON_WORKER_CORES; idx++) {
-            std::cout << "Virtual non worker core: " << std::hex << (uint32_t)core_info->virtual_non_worker_cores[idx].x
-                      << ", " << (uint32_t)core_info->virtual_non_worker_cores[idx].y << std::dec << std::endl;
         }
     }
 

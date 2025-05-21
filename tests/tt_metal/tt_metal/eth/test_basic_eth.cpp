@@ -5,6 +5,7 @@
 #include <fmt/base.h>
 #include <gtest/gtest.h>
 #include <stddef.h>
+#include <tt-metalium/allocator.hpp>
 #include <tt-metalium/host_api.hpp>
 #include <tt-metalium/tt_metal.hpp>
 #include <cstdint>
@@ -295,6 +296,101 @@ bool noc_reader_and_writer_kernels(
 }  // namespace unit_tests::erisc::kernels
 
 namespace tt::tt_metal {
+
+TEST_F(CommandQueueSingleCardProgramFixture, InitStreamRegister) {
+    using namespace CMAKE_UNIQUE_NAMESPACE;
+    auto program = tt_metal::Program();
+    auto device = devices_.at(0);
+    auto eth_core = *(device->get_active_ethernet_cores(true).begin());
+    auto eth_noc_xy = device->ethernet_core_from_logical_core(eth_core);
+
+    uint32_t result_addr = tt::tt_metal::MetalContext::instance().hal().get_dev_addr(
+        HalProgrammableCoreType::ACTIVE_ETH, HalL1MemAddrType::UNRESERVED);
+
+    std::vector<uint32_t> all_zeros(1, 0);
+    llrt::write_hex_vec_to_core(device->id(), eth_noc_xy, all_zeros, result_addr);
+
+    CoreCoord logical_core(0, 0);
+    auto tensix_result_addr = device->allocator()->get_base_allocator_addr(tt_metal::HalMemType::L1);
+    auto tensix_xy = device->worker_core_from_logical_core(logical_core);
+
+    std::cout << "eth noc xy: " << eth_noc_xy.str() << std::endl;
+
+    std::cout << "result_addr " << std::hex << result_addr << std::dec << std::endl;
+
+    llrt::write_hex_vec_to_core(device->id(), tensix_xy, all_zeros, tensix_result_addr);
+
+    auto eth_kernel = tt_metal::CreateKernel(
+        program,
+        "tests/tt_metal/tt_metal/test_kernels/dataflow/unit_tests/erisc/init_stream_reg.cpp",
+        eth_core,
+        tt_metal::EthernetConfig{.noc = tt_metal::NOC::NOC_0});
+
+    std::vector<uint32_t> rt_args = {42, result_addr};
+    tt_metal::SetRuntimeArgs(program, eth_kernel, eth_core, rt_args);
+
+    // auto tensix_kernel = tt_metal::CreateKernel(
+    //     program,
+    //     "tests/tt_metal/tt_metal/test_kernels/dataflow/unit_tests/erisc/init_stream_reg.cpp",
+    //     logical_core,
+    //     tt_metal::DataMovementConfig{.noc = tt_metal::NOC::NOC_0});
+    // tt_metal::SetRuntimeArgs(program, tensix_kernel, logical_core, rt_args);
+
+    this->RunProgram(device, program);
+
+    // auto tensix_readback_vec = llrt::read_hex_vec_from_core(device->id(), tensix_xy, tensix_result_addr,
+    // sizeof(uint32_t)); EXPECT_EQ(tensix_readback_vec[0], 42);
+
+    auto readback_vec = llrt::read_hex_vec_from_core(device->id(), eth_noc_xy, result_addr, sizeof(uint32_t));
+    EXPECT_EQ(readback_vec[0], 42);
+}
+
+TEST_F(CommandQueueSingleCardProgramFixture, TensixInlineToEth) {
+    using namespace CMAKE_UNIQUE_NAMESPACE;
+    auto program = tt_metal::Program();
+    auto device = devices_.at(0);
+
+    std::vector<uint32_t> all_zeros(1, 0);
+
+    // uint32_t eth_addr = tt::tt_metal::MetalContext::instance().hal().get_dev_addr(
+    //         HalProgrammableCoreType::ACTIVE_ETH, HalL1MemAddrType::UNRESERVED);
+    uint32_t eth_addr = 0x21f20;
+
+    CoreCoord logical_tensix_core(0, 0);
+    auto tensix_xy = device->worker_core_from_logical_core(logical_tensix_core);
+
+    auto tensix_kernel = tt_metal::CreateKernel(
+        program,
+        "tests/tt_metal/tt_metal/test_kernels/dataflow/unit_tests/inline_write_to_eths.cpp",
+        logical_tensix_core,
+        tt_metal::DataMovementConfig{.noc = tt_metal::NOC::NOC_0});
+
+    std::vector<uint32_t> rt_args = {eth_addr};
+
+    for (auto eth_core : device->get_active_ethernet_cores(true)) {
+        auto eth_noc_xy = device->ethernet_core_from_logical_core(eth_core);
+        std::cout << "Creating kernel for eth core: " << eth_core.str() << " - " << eth_noc_xy.str() << std::endl;
+
+        llrt::write_hex_vec_to_core(device->id(), eth_noc_xy, all_zeros, eth_addr);
+
+        auto eth_kernel = tt_metal::CreateKernel(
+            program,
+            "tests/tt_metal/tt_metal/test_kernels/dataflow/unit_tests/erisc/ack_inline_write.cpp",
+            eth_core,
+            tt_metal::EthernetConfig{.noc = tt_metal::NOC::NOC_0});
+        tt_metal::SetRuntimeArgs(program, eth_kernel, eth_core, rt_args);
+    }
+
+    tt_metal::SetRuntimeArgs(program, tensix_kernel, logical_tensix_core, rt_args);
+
+    this->RunProgram(device, program);
+
+    for (auto eth_core : device->get_active_ethernet_cores(true)) {
+        auto eth_noc_xy = device->ethernet_core_from_logical_core(eth_core);
+        auto readback_vec = llrt::read_hex_vec_from_core(device->id(), eth_noc_xy, eth_addr, sizeof(uint32_t));
+        EXPECT_EQ(readback_vec[0], 39);
+    }
+}
 
 TEST_F(CommandQueueSingleCardProgramFixture, ActiveEthKernelsNocReadNoSend) {
     using namespace CMAKE_UNIQUE_NAMESPACE;

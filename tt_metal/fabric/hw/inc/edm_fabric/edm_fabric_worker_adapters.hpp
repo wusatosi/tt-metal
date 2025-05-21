@@ -14,6 +14,7 @@
 #include "tt_metal/hw/inc/utils/utils.h"
 #include "debug/assert.h"
 #include "debug/dprint.h"
+#include "debug/pause.h"
 #include <cstdint>
 #include <array>
 
@@ -73,6 +74,7 @@ struct WorkerToFabricEdmSenderImpl {
             (my_core_type == ProgrammableCoreType::TENSIX && (uint32_t)writer_send_sem_addr < 1499136) ||
             (my_core_type == ProgrammableCoreType::ACTIVE_ETH && (uint32_t)writer_send_sem_addr < 262144));
         ASSERT(edm_buffer_index_addr < 262144);
+        DPRINT << "edm_l1_sem_id " << (uint32_t)edm_l1_sem_id << ENDL();
         return WorkerToFabricEdmSenderImpl(
             is_persistent_fabric,
             direction,
@@ -111,6 +113,7 @@ struct WorkerToFabricEdmSenderImpl {
         uint8_t sync_noc_cmd_buf = write_at_cmd_buf) {
         this->direction = direction;
         this->edm_buffer_addr = edm_buffer_base_addr;
+        DPRINT << "connected_to_persistent_fabric " << (uint32_t)connected_to_persistent_fabric << ENDL();
         this->edm_buffer_slot_wrptr_addr = connected_to_persistent_fabric
                                                ? edm_l1_sem_id
                                                : get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(edm_l1_sem_id);
@@ -214,6 +217,7 @@ struct WorkerToFabricEdmSenderImpl {
             }
         } else {
             const auto first_rdptr = *this->from_remote_buffer_slot_rdptr_ptr;
+            // DPRINT << "First rdptr " << (uint32_t)first_rdptr << ENDL();
             auto buffer_ptr_wrap = 2 * this->num_buffers_per_channel;
             bool has_space = distance_behind(
                                  BufferPtr{static_cast<uint8_t>(first_rdptr)},
@@ -360,17 +364,18 @@ struct WorkerToFabricEdmSenderImpl {
     // !!! IMPORTANT !!!
     // Must be called alongside (before) close_finish().
     void close_start() {
+        DPRINT << "In close_start edm x-y " << (uint32_t)this->edm_noc_x << "-" << (uint32_t)this->edm_noc_y << ENDL();
         const auto dest_noc_addr_coord_only =
             get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_slot_wrptr_addr) &
             ~(uint64_t)NOC_COORDINATE_MASK;
 
         const uint64_t dest_edm_connection_state_addr = dest_noc_addr_coord_only | edm_connection_handshake_l1_addr;
-        WAYPOINT("DADA");
+        // WAYPOINT("DADA");
         noc_inline_dw_write(dest_edm_connection_state_addr, close_connection_request_value);
 
         // buffer index stored at location after handshake addr
         const uint64_t remote_buffer_index_addr = dest_noc_addr_coord_only | edm_buffer_index_addr;
-        WAYPOINT("SHAL");
+        // WAYPOINT("SHAL");
         noc_inline_dw_write(remote_buffer_index_addr, this->buffer_slot_wrptr);
     }
 
@@ -433,19 +438,20 @@ private:
     FORCE_INLINE void update_edm_buffer_slot_wrptr(uint8_t noc = noc_index) {
         if constexpr (stateful_api) {
             if constexpr (enable_ring_support) {
-                WAYPOINT("SHXX");
                 noc_inline_dw_write_with_state<true, false, true>(
                     this->buffer_slot_wrptr, this->edm_buffer_slot_wrptr_addr, this->sync_noc_cmd_buf, noc);
             } else {
-                WAYPOINT("IMZA");
                 noc_inline_dw_write_with_state<false, false, true>(
                     this->buffer_slot_wrptr, 0, this->sync_noc_cmd_buf, noc);
             }
         } else {
             const uint64_t noc_sem_addr =
                 get_noc_addr(this->edm_noc_x, this->edm_noc_y, this->edm_buffer_slot_wrptr_addr, noc);
-            WAYPOINT("BROL");
+            DPRINT << "not stateful api " << HEX() << noc_sem_addr << " value is " << (uint32_t)this->buffer_slot_wrptr
+                   << " using noc " << (uint32_t)noc << DEC() << ENDL();
+            // PAUSE();
             noc_inline_dw_write(noc_sem_addr, this->buffer_slot_wrptr, 0xf, noc);
+            // noc_async_write_barrier();
         }
     }
 
@@ -480,6 +486,7 @@ private:
 
     template <bool stateful_api = false, bool enable_ring_support = false>
     FORCE_INLINE void post_send_payload_increment_pointers(uint8_t noc = noc_index) {
+        WATCHER_RING_BUFFER_PUSH(0xfeed1234);
         this->advance_buffer_slot_wrptr();
         this->update_edm_buffer_slot_wrptr<stateful_api, enable_ring_support>(noc);
     }
@@ -494,6 +501,7 @@ private:
     template <EDM_IO_BLOCKING_MODE blocking_mode>
     FORCE_INLINE void send_payload_without_header_from_address_impl(uint32_t source_address, size_t size_bytes) {
         uint64_t buffer_address = this->compute_dest_buffer_slot_noc_addr();
+        DPRINT << "SPWHFAI ba: " << HEX() << buffer_address << DEC() << ENDL();
 
         // skip past the first part of the buffer which will be occupied by the packet header
         send_chunk_from_address<blocking_mode>(
@@ -502,6 +510,7 @@ private:
     template <EDM_IO_BLOCKING_MODE blocking_mode>
     FORCE_INLINE void send_payload_from_address_impl(uint32_t source_address, size_t size_bytes) {
         uint64_t buffer_address = this->compute_dest_buffer_slot_noc_addr();
+        DPRINT << "SPFAI ba: " << HEX() << buffer_address << DEC() << ENDL();
 
         ASSERT(size_bytes <= this->buffer_size_bytes);
         ASSERT(tt::tt_fabric::is_valid(

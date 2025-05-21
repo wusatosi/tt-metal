@@ -36,10 +36,13 @@ inline void setup_connection_and_headers(
         if constexpr (mcast_mode) {
             packet_header->to_chip_multicast(MulticastRoutingCommandHeader{1, static_cast<uint8_t>(hops)});
         } else {
+            DPRINT << "Setting up unicast header with hops " << (uint32_t)hops << ENDL();
             packet_header->to_chip_unicast(static_cast<uint8_t>(hops));
         }
     }
 
+    DPRINT << "Setting up packet header to " << HEX() << noc_dest_addr << DEC() << " with payload size "
+           << packet_payload_size_bytes << ENDL();
     packet_header->to_noc_unicast_write(NocUnicastCommandHeader{noc_dest_addr}, packet_payload_size_bytes);
 }
 
@@ -58,10 +61,17 @@ inline void send_packet(
     tt_l1_ptr uint32_t* last_word_addr =
         reinterpret_cast<tt_l1_ptr uint32_t*>(source_l1_buffer_address + packet_payload_size_bytes - 4);
 #endif
+    volatile tt::tt_fabric::LowLatencyRoutingFields& routing_type = packet_header->routing_fields;
+    uint32_t routing = routing_type.value & tt::tt_fabric::LowLatencyRoutingFields::FIELD_MASK;
+
+    DPRINT << "Routing is " << HEX() << routing << DEC() << ENDL();
+
     connection.wait_for_empty_write_slot();
     connection.send_payload_without_header_non_blocking_from_address(
         source_l1_buffer_address, packet_payload_size_bytes);
+    DPRINT << "Done send payload without header non blocking" << ENDL();
     connection.send_payload_blocking_from_address((uint32_t)packet_header, sizeof(PACKET_HEADER_TYPE));
+    DPRINT << "Done send payload blocking from address" << ENDL();
 }
 
 void set_mcast_header(
@@ -102,6 +112,7 @@ void kernel_main() {
     uint32_t fwd_dev_id = get_arg_val<uint32_t>(rt_args_idx++);
     uint32_t fwd_mesh_id = get_arg_val<uint32_t>(rt_args_idx++);
 
+    DPRINT << "rx_noc_encoding is " << HEX() << rx_noc_encoding << DEC() << ENDL();
     uint64_t noc_dest_addr = get_noc_addr_helper(rx_noc_encoding, target_address);
 
     tt::tt_fabric::WorkerToFabricEdmSender fwd_fabric_connection;
@@ -109,6 +120,8 @@ void kernel_main() {
 
     volatile tt_l1_ptr PACKET_HEADER_TYPE* fwd_packet_header;
     volatile tt_l1_ptr PACKET_HEADER_TYPE* bwd_packet_header;
+
+    DPRINT << "Packet header buffer address is " << HEX() << packet_header_buffer_address << DEC() << ENDL();
 
     if constexpr (mcast_mode) {
         uint32_t mcast_fwd_hops = get_arg_val<uint32_t>(rt_args_idx++);
@@ -138,6 +151,7 @@ void kernel_main() {
             bwd_fabric_connection, bwd_packet_header, mcast_bwd_hops, noc_dest_addr, packet_payload_size_bytes);
 
     } else {
+        WAYPOINT("UNIC");
         uint32_t unicast_hops = get_arg_val<uint32_t>(rt_args_idx++);
 
         fwd_fabric_connection =
@@ -199,6 +213,7 @@ void kernel_main() {
                 time_seed,
                 bwd_fabric_connection);
         } else {
+            DPRINT << "Sending packet " << i << " to " << HEX() << (uint64_t)noc_dest_addr << DEC() << ENDL();
             send_packet(
                 fwd_packet_header,
                 noc_dest_addr,
@@ -218,6 +233,7 @@ void kernel_main() {
         teardown_connection(fwd_fabric_connection);
         teardown_connection(bwd_fabric_connection);
     } else {
+        DPRINT << "Closing connection" << ENDL();
         teardown_connection(fwd_fabric_connection);
     }
 

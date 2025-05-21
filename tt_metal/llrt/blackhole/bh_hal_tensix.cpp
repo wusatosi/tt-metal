@@ -64,6 +64,8 @@ HalCoreInfoType create_tensix_mem_map() {
     mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::DEFAULT_UNRESERVED)] =
         MEM_L1_SIZE - mem_map_bases[static_cast<std::size_t>(HalL1MemAddrType::DEFAULT_UNRESERVED)];
 
+    std::cout << "Unreserved base: " << mem_map_bases[static_cast<std::size_t>(HalL1MemAddrType::DEFAULT_UNRESERVED)]
+              << std::endl;
     std::vector<std::vector<HalJitBuildConfig>> processor_classes(NumTensixDispatchClasses);
     std::vector<HalJitBuildConfig> processor_types;
     for (uint8_t processor_class_idx = 0; processor_class_idx < NumTensixDispatchClasses; processor_class_idx++) {

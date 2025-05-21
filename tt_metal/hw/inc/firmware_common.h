@@ -155,6 +155,11 @@ inline __attribute__((always_inline)) void disable_gathering() {
 
 inline __attribute__((always_inline)) void configure_l1_data_cache() {
 #if defined(ARCH_BLACKHOLE)
+    asm(R"ASM(
+            li t1, 0x8
+            csrrs zero, 0x7c0, t1
+             )ASM" ::
+            : "t1");
 #if defined(DISABLE_L1_DATA_CACHE)
     // Disables Blackhole's L1 cache by setting bit 3. Grayskull and Wormhole do not have L1 cache
     // L1 cache can be disabled by setting `TT_METAL_DISABLE_L1_DATA_CACHE_RISCVS` env var

@@ -14,7 +14,9 @@
 static constexpr size_t VIRTUAL_COORDS_START_X = 16;
 static constexpr size_t VIRTUAL_COORDS_START_Y = 16;
 FORCE_INLINE bool is_using_noc_coords(uint16_t noc_x, uint16_t noc_y) {
-    return noc_x < VIRTUAL_COORDS_START_X && noc_y < VIRTUAL_COORDS_START_Y;
+    return (bool)
+        COORDINATE_VIRTUALIZATION_ENABLED;  // TODO: Implement this function to check if the coordinates are virtual
+    // return noc_x < VIRTUAL_COORDS_START_X && noc_y < VIRTUAL_COORDS_START_Y;
 }
 
 FORCE_INLINE uint64_t

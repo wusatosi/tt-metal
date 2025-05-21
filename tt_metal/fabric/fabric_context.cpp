@@ -111,13 +111,19 @@ void FabricContext::set_num_fabric_initialized_routers(chip_id_t chip_id, size_t
     TT_FATAL(
         it == this->num_initialized_routers_.end(),
         "Error, tried to set num initialized routers again for the same device");
+    std::cout << "set_num_fabric_initialized_routers chip_id: " << chip_id << " num_routers: " << num_routers
+              << std::endl;
     this->num_initialized_routers_[chip_id] = num_routers;
 }
 
 uint32_t FabricContext::get_num_fabric_initialized_routers(chip_id_t chip_id) const {
+    std::cout << "num_initialized_routers_ " << this->num_initialized_routers_.size() << " chip_id: " << chip_id
+              << std::endl;
     auto it = this->num_initialized_routers_.find(chip_id);
     TT_FATAL(
-        it != this->num_initialized_routers_.end(), "Error, querying num initialized routers for an unknown device");
+        it != this->num_initialized_routers_.end(),
+        "Error, querying num initialized routers for an unknown device {}",
+        chip_id);
     return it->second;
 }
 

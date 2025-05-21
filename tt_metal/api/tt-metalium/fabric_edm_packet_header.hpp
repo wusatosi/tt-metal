@@ -191,6 +191,7 @@ struct PacketHeaderBase {
             noc_address_components.first.y,
             noc_address_components.second,
             edm_to_local_chip_noc);
+        DPRINT << "noc_addr is " << HEX() << noc_addr << DEC() << ENDL();
         NocUnicastCommandHeader modified_command_header = noc_unicast_command_header;
         modified_command_header.noc_address = noc_addr;
 
@@ -406,7 +407,7 @@ struct PacketHeader : public PacketHeaderBase<PacketHeader> {
     // Future changes will remove this padding and require the worker kernel to be aware of this bug
     // and pad their own CBs conditionally when reading from DRAM. It'll be up to the users to
     // manage this complexity.
-    uint8_t padding0[2];
+    uint8_t padding0[2];  // todo update for BH
 
     inline static uint32_t calculate_chip_unicast_routing_fields_value(uint8_t distance_in_hops) {
         return RoutingFields::LAST_CHIP_IN_MCAST_VAL | distance_in_hops;

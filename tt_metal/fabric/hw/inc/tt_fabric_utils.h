@@ -188,11 +188,11 @@ inline void notify_subordinate_routers(
             break;
         }
         if ((remaining_cores & (0x1 << i)) && (master_eth_chan != i)) {
-            WATCHER_RING_BUFFER_PUSH((uint32_t)noc_index);
-            WATCHER_RING_BUFFER_PUSH(i);
-            WATCHER_RING_BUFFER_PUSH((uint32_t)NOC_ADDR_NODE_ID_BITS);
-            WATCHER_RING_BUFFER_PUSH((uint32_t)NOC_COORD_REG_OFFSET);
-            WATCHER_RING_BUFFER_PUSH((uint32_t)eth_chan_to_noc_xy[noc_index][i]);
+            // WATCHER_RING_BUFFER_PUSH((uint32_t)noc_index);
+            // WATCHER_RING_BUFFER_PUSH(i);
+            // WATCHER_RING_BUFFER_PUSH((uint32_t)NOC_ADDR_NODE_ID_BITS);
+            // WATCHER_RING_BUFFER_PUSH((uint32_t)NOC_COORD_REG_OFFSET);
+            // WATCHER_RING_BUFFER_PUSH((uint32_t)eth_chan_to_noc_xy[noc_index][i]);
             uint64_t dest_addr = get_noc_addr_helper(eth_chan_to_noc_xy[noc_index][i], address);
             noc_inline_dw_write(dest_addr, notification);
             remaining_cores &= ~(0x1 << i);

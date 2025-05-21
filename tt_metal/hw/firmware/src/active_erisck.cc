@@ -25,8 +25,10 @@
 void kernel_launch(uint32_t kernel_base_addr) {
     extern uint32_t __kernel_init_local_l1_base[];
     extern uint32_t __fw_export_text_end[];
-    extern uint32_t __kernel_data_lma[];
-    do_crt1((uint32_t tt_l1_ptr*)((uint32_t)__kernel_data_lma));
+    // extern uint32_t __kernel_data_lma[];
+    // do_crt1((uint32_t tt_l1_ptr*)((uint32_t)__kernel_data_lma));
+    do_crt1((uint32_t tt_l1_ptr*)(kernel_base_addr + (uint32_t)__kernel_init_local_l1_base -
+                                  (uint32_t)__fw_export_text_end));
 
     // WATCHER_RING_BUFFER_PUSH((uint32_t)kernel_base_addr + (uint32_t)__kernel_init_local_l1_base -
     //                          (uint32_t)__fw_export_text_text);

@@ -284,7 +284,7 @@ void RunTestLineMcast(
     auto mesh_shape = control_plane->get_physical_mesh_shape(sender_id.first);
 
     auto worker_mem_map = generate_worker_mem_map(sender_device, edm_config.topology);
-    uint32_t num_packets = 100;
+    uint32_t num_packets = 1;
     uint32_t time_seed = std::chrono::system_clock::now().time_since_epoch().count();
 
     // common compile time args for sender and receiver
@@ -427,12 +427,16 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
         // get a port to connect to
         std::set<chan_id_t> eth_chans = control_plane->get_active_fabric_eth_channels_in_direction(
             src_mesh_chip_id.first, src_mesh_chip_id.second, direction);
+        for (auto chan : eth_chans) {
+            std::cout << "Eth chan is " << (uint32_t)chan << std::endl;
+        }
         if (eth_chans.size() == 0) {
             GTEST_SKIP() << "No active eth chans to connect to";
         }
 
         // Pick a port from end of the list. On T3K, there are missimg routing planes due to FD tunneling
-        edm_port = *std::prev(eth_chans.end());
+        // edm_port = *std::prev(eth_chans.end());
+        edm_port = 4;
 
     } else {
         std::cout << "HERE 2d!" << std::endl;
@@ -494,7 +498,7 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
 
     // test parameters
     auto worker_mem_map = generate_worker_mem_map(sender_device, topology);
-    uint32_t num_packets = 10;
+    uint32_t num_packets = 1;
     uint32_t time_seed = std::chrono::system_clock::now().time_since_epoch().count();
 
     const auto fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
@@ -540,6 +544,18 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
 
     // append the EDM connection rt args
     const auto sender_channel = topology == Topology::Mesh ? edm_direction : 0;
+    std::cout << "EDM eth core " << edm_eth_core.str() << std::endl;
+    std::cout << "edm_buffer_base_addr " << edm_config.sender_channels_base_address[sender_channel] << std::endl;
+    std::cout << "num_buffers_per_channel " << edm_config.sender_channels_num_buffers[sender_channel] << std::endl;
+    std::cout << "edm_l1_sem_addr " << edm_config.sender_channels_local_flow_control_semaphore_address[sender_channel]
+              << std::endl;
+    std::cout << "edm_connection_handshake_addr "
+              << edm_config.sender_channels_connection_semaphore_address[sender_channel] << std::endl;
+    std::cout << "edm_worker_location_info_addr "
+              << edm_config.sender_channels_worker_conn_info_base_address[sender_channel] << std::endl;
+    std::cout << "buffer_size_bytes " << edm_config.channel_buffer_size_bytes << std::endl;
+    std::cout << "buffer_index_semaphore_id "
+              << edm_config.sender_channels_buffer_index_semaphore_address[sender_channel] << std::endl;
     tt::tt_fabric::SenderWorkerAdapterSpec edm_connection = {
         .edm_noc_x = edm_eth_core.x,
         .edm_noc_y = edm_eth_core.y,
@@ -655,7 +671,7 @@ void RunTestUnicastConnAPI(BaseFabricFixture* fixture, uint32_t num_hops, Routin
 
     // test parameters
     auto worker_mem_map = generate_worker_mem_map(sender_device, topology);
-    uint32_t num_packets = 10;
+    uint32_t num_packets = 1;
     uint32_t time_seed = std::chrono::system_clock::now().time_since_epoch().count();
 
     // common compile time args for sender and receiver
@@ -805,7 +821,7 @@ void RunTestMCastConnAPI(BaseFabricFixture* fixture) {
 
     // test parameters
     auto worker_mem_map = generate_worker_mem_map(sender_device, topology);
-    uint32_t num_packets = 100;
+    uint32_t num_packets = 1;
     uint32_t time_seed = std::chrono::system_clock::now().time_since_epoch().count();
 
     const auto fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();

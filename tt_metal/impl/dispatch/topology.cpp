@@ -954,6 +954,8 @@ std::unique_ptr<Program> create_and_compile_2d_fabric_program(IDevice* device, F
     auto& fabric_context = control_plane->get_fabric_context();
 
     auto router_chans_and_direction = control_plane->get_active_fabric_eth_channels(mesh_id, chip_id);
+    std::cout << "Mesh id " << mesh_id << " chip id " << chip_id
+              << " active fabric eth channels: " << router_chans_and_direction.size() << std::endl;
     fabric_context.set_num_fabric_initialized_routers(device->id(), router_chans_and_direction.size());
     if (router_chans_and_direction.empty()) {
         return nullptr;
@@ -1226,6 +1228,7 @@ std::unique_ptr<Program> create_and_compile_tt_fabric_program(IDevice* device) {
     auto& fabric_context = control_plane->get_fabric_context();
 
     build_tt_fabric_program(device, fabric_program_ptr.get(), edm_builders);
+    std::cout << " edm builders size: " << edm_builders.size() << std::endl;
     fabric_context.set_num_fabric_initialized_routers(device->id(), edm_builders.size());
     if (edm_builders.empty()) {
         return nullptr;
@@ -1256,7 +1259,7 @@ std::unique_ptr<Program> create_and_compile_tt_fabric_program(IDevice* device) {
         ct_args.push_back(master_router_chan);
         ct_args.push_back(edm_builders.size());
         ct_args.push_back(router_channels_mask);
-    
+
         std::cout << "Fabric EDM ct args: " << std::endl;
         for (const auto& arg : ct_args) {
             std::cout << arg << "\t";
@@ -1284,8 +1287,10 @@ std::unique_ptr<Program> create_and_compile_tt_fabric_program(IDevice* device) {
 std::unique_ptr<Program> create_and_compile_fabric_program(IDevice* device) {
     auto fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
     if (tt_fabric::is_tt_fabric_config(fabric_config)) {
+        std::cout << "Creating and compiling TT fabric program" << std::endl;
         return create_and_compile_tt_fabric_program(device);
     } else if (tt_fabric::is_2d_fabric_config(fabric_config)) {
+        std::cout << "Creating and compiling 2D TT fabric program" << std::endl;
         return create_and_compile_2d_fabric_program(device, fabric_config);
     }
     return nullptr;

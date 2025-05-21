@@ -153,7 +153,15 @@ struct EdmChannelWorkerInterface {
     //
     // local_wrptr trails from_remote_wrptr
     // we have new data if they aren't equal
-    [[nodiscard]] FORCE_INLINE bool has_unsent_payload() { return local_wrptr.get_ptr() != *remote_producer_wrptr; }
+    [[nodiscard]] FORCE_INLINE bool has_unsent_payload() {
+        invalidate_l1_cache();
+        auto debug_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x21f20);
+        WATCHER_RING_BUFFER_PUSH(local_wrptr.get_ptr());
+        WATCHER_RING_BUFFER_PUSH(*debug_ptr);
+        WATCHER_RING_BUFFER_PUSH(0xfacefeed);
+        // return local_wrptr.get_ptr() != *debug_ptr;
+        return local_wrptr.get_ptr() != *remote_producer_wrptr;
+    }
     [[nodiscard]] FORCE_INLINE bool has_unacked_sends() { return local_ackptr.get_ptr() != local_wrptr.get_ptr(); }
 
     [[nodiscard]] FORCE_INLINE uint32_t get_worker_semaphore_address() const {
