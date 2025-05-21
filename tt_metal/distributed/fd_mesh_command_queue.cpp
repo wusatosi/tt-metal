@@ -924,7 +924,7 @@ void FDMeshCommandQueue::record_end() {
         for (uint32_t sub_device_id = 0; sub_device_id < mesh_device_->num_sub_devices(); sub_device_id++) {
             (*this->worker_launch_message_buffer_state_)[sub_device_id].reset();
         }
-        DispatchArray<uint32_t> expected_workers_completed{};
+        //DispatchArray<uint32_t> expected_workers_completed{};
         std::unordered_map<SubDeviceId, TraceWorkerDescriptor> trace_worker_descriptors;
         for (uint32_t sub_device_id = 0; sub_device_id < mesh_device_->num_sub_devices(); sub_device_id++) {
             for (uint32_t i = 0; i < unused_nodes[sub_device_id].unused_nodes_both_multicast_and_unicast + unused_nodes[sub_device_id].unused_nodes_multicast  + unused_nodes[sub_device_id].unused_nodes_unicast; i++) {
@@ -933,15 +933,16 @@ void FDMeshCommandQueue::record_end() {
                 write_go_signal(this->id_, this->mesh_device_, SubDeviceId{sub_device_id}, sysmem_manager_for_trace, expected_workers_completed[sub_device_id], this->virtual_program_dispatch_core(), multicast, unicast);
 
                 auto& worker_launch_message_buffer_state = (*this->worker_launch_message_buffer_state_)[sub_device_id];
+                auto& trace_worker_descriptor = trace_worker_descriptors[SubDeviceId{sub_device_id}];
                 if (multicast) {
-                    expected_workers_completed[sub_device_id] += mesh_device_->num_worker_cores(HalProgrammableCoreType::TENSIX, SubDeviceId{sub_device_id});
+                    trace_worker_descriptor.num_completion_worker_cores += mesh_device_->num_worker_cores(HalProgrammableCoreType::TENSIX, SubDeviceId{sub_device_id});
                     worker_launch_message_buffer_state.inc_mcast_wptr(1);
-                    trace_worker_descriptors[SubDeviceId{sub_device_id}].num_traced_programs_needing_go_signal_multicast++;
+                    trace_worker_descriptor.num_traced_programs_needing_go_signal_multicast++;
                 }
                 if (unicast) {
-                    expected_workers_completed[sub_device_id] += mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, SubDeviceId{sub_device_id});
+                    trace_worker_descriptor.num_completion_worker_cores+= mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, SubDeviceId{sub_device_id});
                     worker_launch_message_buffer_state.inc_unicast_wptr(1);
-                    trace_worker_descriptors[SubDeviceId{sub_device_id}].num_traced_programs_needing_go_signal_multicast++;
+                    trace_worker_descriptor.num_traced_programs_needing_go_signal_unicast++;
                 }
             }
         }
@@ -976,7 +977,9 @@ void FDMeshCommandQueue::record_end() {
                 cached_program_command_sequence,
                 worker_launch_message_buffer_state.get_mcast_wptr(),
                 worker_launch_message_buffer_state.get_unicast_wptr(),
-                expected_workers_completed[*sub_device_id],
+                trace_worker_descriptors[*sub_device_id].num_completion_worker_cores,
+ 
+ //expected_workers_completed[*sub_device_id],
                 this->virtual_program_dispatch_core(),
                 MetalContext::instance().get_dispatch_core_manager().get_dispatch_core_type(),
                 sub_device_id,
@@ -1008,7 +1011,8 @@ void FDMeshCommandQueue::record_end() {
                 worker_launch_message_buffer_state.inc_unicast_wptr(1);
                 trace_worker_descriptors[sub_device_id].num_traced_programs_needing_go_signal_unicast++;
             }
-            expected_workers_completed[*sub_device_id] += num_workers;
+            trace_worker_descriptors[*sub_device_id].num_completion_worker_cores += num_workers;
+ //           expected_workers_completed[*sub_device_id] += num_workers;
         }
         #if 0
         program_dispatch::reset_worker_dispatch_state_on_device(
@@ -1053,6 +1057,11 @@ void FDMeshCommandQueue::record_end() {
     trace_ctx_->descriptors = overall_trace_worker_descriptors.value();
 
     for (auto& [sub_device_id, trace_worker_descriptor] : trace_ctx_->descriptors) {
+        fmt::println(stderr, "Subdevice {} has {} multicast and {} unicast programs needing go signal, plus completion worker count {}",
+                     *sub_device_id,
+                     trace_worker_descriptor.num_traced_programs_needing_go_signal_multicast,
+                     trace_worker_descriptor.num_traced_programs_needing_go_signal_unicast,
+                    trace_worker_descriptor.completion_worker_count);
         trace_ctx_->sub_device_ids.push_back(sub_device_id);
     }
     #if 0
