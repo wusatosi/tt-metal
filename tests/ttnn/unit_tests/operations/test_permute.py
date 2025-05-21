@@ -537,3 +537,47 @@ def test_permute_5d_wyh(shape, perm, dtype, device):
     torch_output = torch.permute(torch_tensor, perm)
     assert torch_output.shape == output_tensor.shape
     assert_with_pcc(torch_output, output_tensor, 0.9999)
+
+
+def test_permute_jd(device):
+    torch.manual_seed(0)
+
+    shape = (1, 96 * 96, 32 * (228))
+    # torch_input = torch.arange(torch.prod(torch.tensor(shape))).reshape(shape).bfloat16()
+    torch_input = torch.full(shape, 1.0).bfloat16()
+    print(torch_input.shape)
+    # torch_input = torch.randint(-10, 10, shape).bfloat16()
+    torch_output = torch.transpose(torch_input, 0, 1)
+
+    input_tensor = ttnn.from_torch(torch_input, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device)
+    output_tensor = ttnn.transpose(input_tensor, 0, 1)
+    print(output_tensor)
+    output_tensor = ttnn.to_torch(output_tensor).bfloat16()
+
+    print("shapes", torch_output.shape, output_tensor.shape)
+    print("tensors", torch_output, output_tensor)
+    # Set a tolerance threshold for floating point comparisons
+    tolerance = 1e-6
+
+    # Find all indices where tensors differ by more than the tolerance
+    differences = torch.abs(torch_output - output_tensor)
+    inequalities = differences > tolerance
+
+    if inequalities.any():
+        mismatch_indices = torch.nonzero(inequalities, as_tuple=False)
+        total_mismatches = len(mismatch_indices)
+        print(f"Found {total_mismatches} mismatches between tensors (tolerance: {tolerance})")
+        max_to_print = min(10, total_mismatches)
+        for i in range(max_to_print):
+            idx = mismatch_indices[i]
+            idx_tuple = tuple(idx.tolist())
+            print(
+                f"Mismatch at index {idx_tuple}: torch_output = {torch_output[idx_tuple].item()}, output_tensor = {output_tensor[idx_tuple].item()}, difference = {differences[idx_tuple].item()}"
+            )
+        if total_mismatches > max_to_print:
+            print(f"... and {total_mismatches - max_to_print} more mismatches")
+    else:
+        print("Tensors are equal within tolerance")
+
+    assert torch_output.shape == output_tensor.shape
+    assert torch.all(torch_output == output_tensor)

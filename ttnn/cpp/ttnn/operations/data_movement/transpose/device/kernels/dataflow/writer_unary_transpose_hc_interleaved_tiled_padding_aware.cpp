@@ -5,7 +5,29 @@
 #include "dataflow_api.h"
 #include "cpp/ttnn/operations/data_movement/common/kernels/common.hpp"
 
+inline void print_full_tile(uint32_t cb_id, uint32_t tile_id = 0, bool untilize = false) {
+    DPRINT << "======" << ENDL();
+    for (uint16_t r = 0; r < 32; ++r) {
+        DPRINT << (uint)r << " : "
+               << TileSlice(
+                      cb_id,
+                      tile_id,
+                      SliceRange{
+                          .h0 = (uint8_t)r,
+                          .h1 = (uint8_t)(r + 1),
+                          .hs = (uint8_t)1,
+                          .w0 = (uint8_t)0,
+                          .w1 = (uint8_t)32,
+                          .ws = (uint8_t)1},
+                      true,
+                      untilize)
+               << ENDL();
+    }
+    DPRINT << "++++++" << ENDL();
+}
+
 void kernel_main() {
+    DPRINT << "USING WRITER_UNARY_TRANSPOSE_HC_INTERLEAVED_TILED_PADDING_AWARE" << ENDL();
     // Retrieve arguments
     uint32_t dst_addr = get_arg_val<uint32_t>(0);
     uint32_t start_tile_idx = get_arg_val<uint32_t>(1);
@@ -39,14 +61,17 @@ void kernel_main() {
     constexpr uint32_t H_t = H_p / TILE_HEIGHT;
     constexpr uint32_t C_t = C_p / TILE_HEIGHT;
 
+    DPRINT << "C: " << C << " H: " << H << " W: " << W << ENDL();
+    DPRINT << "C_t: " << C_t << " H_t: " << H_t << " W_t: " << W_t << ENDL();
     constexpr uint32_t SUBTILE_LINE_BYTES = FACE_WIDTH * element_size;
 
     // Initialize address generator
     const uint32_t tile_bytes = get_tile_size(cb_id_out0);
     const auto input_data_format = get_dataformat(cb_id_out0);
-
-    const InterleavedAddrGenFast<dst_is_dram, TILE_HW> s = {
-        .bank_base_address = dst_addr, .page_size = tile_bytes, .data_format = input_data_format};
+    DPRINT << "dst_is_dram: " << (uint32_t)dst_is_dram << " TILE_HW: " << TILE_HW << " tile_bytes: " << tile_bytes
+           << ENDL();
+    // auto s = // include <...get_interleaved_addr_gen...>
+    auto s = get_interleaved_addr_gen<dst_is_dram, /*page_size=*/tile_bytes>(dst_addr);
 
     // Calculate actual data height in the last tile
     constexpr uint32_t H_last_tile = H - (H_t - 1) * TILE_HEIGHT;
@@ -62,6 +87,7 @@ void kernel_main() {
     const uint32_t num_faces_wh = NUM_FACES_W * FACE_WIDTH;
 
     // Main single loop over all tiles
+    // DPRINT << "start_tile_idx: " << start_tile_idx << " end_tile_idx: " << end_tile_idx << ENDL();
     for (uint32_t tile_idx = start_tile_idx; tile_idx < end_tile_idx; ++tile_idx) {
         // Compute n, c, h, w from tile_idx
         uint32_t w = tile_idx % W_t;
@@ -89,16 +115,19 @@ void kernel_main() {
 
         // Synchronization and read address retrieval
         cb_wait_front(cb_id_out0, 1);
+        // print_full_tile(cb_id_out0, 0, true);
+        uint32_t original_l1_read_addr = get_read_ptr(cb_id_out0);
         uint32_t l1_read_addr = get_read_ptr(cb_id_out0);
 
         // Determine the number of faces in the height dimension
         uint8_t num_faces_h = (h == H_t - 1) ? remainder_faces_h : NUM_FACES_H;
+        // DPRINT << "N: " << n << " C: " << c << " H: " << h << " W: " << w << " num_faces_h: " << num_faces_h <<
+        // ENDL();
 
         // Precompute parts of linear_idx that remain constant within the inner loops
         // linear_idx = n * H * C_t * W_t + output_h_face_line * C_t * W_t + output_ct_index * W_t + w
         // We can precompute n * H * C_t * W_t + output_ct_index * W_t + w
         uint32_t base_linear_idx = n * H * C_t * W_t + output_ct_index * W_t + w;
-
         // Iterate over faces in the height dimension
         for (uint8_t face_h = 0; face_h < num_faces_h; ++face_h) {
             // Compute output_h_face once per face_h
@@ -131,9 +160,22 @@ void kernel_main() {
                     uint32_t linear_idx = base_linear_idx + output_h_face_line * C_t * W_t;
 
                     // Compute the write address
+
                     uint64_t write_noc_base_addr = get_noc_addr(linear_idx, s, offset);
 
                     // Perform asynchronous write
+                    if (h == 287 && w == 227) {
+                        // DPRINT << "output_h_face_line: " << output_h_face_line << " linear_idx: " << linear_idx << "
+                        // offset: " << offset << ENDL();
+                        DPRINT << "L1 Read Addr: " << l1_read_addr << " write_noc_base_addr: " << write_noc_base_addr
+                               << ENDL();
+                        for (uint32_t i = 0; i < (SUBTILE_LINE_BYTES / element_size); i++) {
+                            // if (BF16(((uint16_t *) l1_read_addr)[i]) == BF16((uint16_t)0)) {
+                            DPRINT << BF16(((uint16_t*)l1_read_addr)[i]) << " ";
+                            // }
+                        }
+                        DPRINT << ENDL();
+                    }
                     noc_async_write(l1_read_addr, write_noc_base_addr, SUBTILE_LINE_BYTES);
 
                     // Increment the read address
@@ -146,10 +188,10 @@ void kernel_main() {
                 }
             }
         }
+        DPRINT << "=====================" << ENDL();
 
         // Ensure all asynchronous writes are completed before proceeding
         noc_async_write_barrier();
-
         // Remove the processed tile from the front of the buffer
         cb_pop_front(cb_id_out0, 1);
     }
@@ -199,5 +241,11 @@ void kernel_main() {
         }
         noc_async_write_barrier();
         cb_pop_front(tt::CBIndex::c_1, 1);
+    }
+    for (uint32_t i = 2101248 - 32; i < 2101248; i++) {
+        DPRINT << "page i: " << i << " in output buffer" << ENDL();
+        noc_async_read(get_noc_addr(i, s, 0), get_read_ptr(cb_id_out0), 2048);
+        noc_async_read_barrier();
+        print_full_tile(cb_id_out0, 0, true);
     }
 }
