@@ -207,38 +207,38 @@ void copy_sticks_async_local(
                     // avoiding the slow stick by stick copy, however with larger
                     // stick sizes the stick by stick transfer is fast enough that it
                     // is more efficient than the double copy.
-                    if (length == 4) {
-                        // DPRINT << "HALF SIZE" << ENDL();
-                        uint32_t half_size = size / 2;
-                        if constexpr (main_thread) {
-                            noc_async_write(src_addr, temp_addr_write, half_size);
-                            noc_async_write_barrier();
-                            cb_reserve_back(sycn_cb_id, 1);
-                            cb_push_back(sycn_cb_id, 1);
-                            noc_async_write(temp_addr_read, dst_addr, half_size);
-                        } else {
-                            noc_async_write(src_addr + half_size, temp_addr_write + half_size, half_size);
-                            noc_async_write_barrier();
-                            cb_wait_front(sycn_cb_id, 1);
-                            cb_pop_front(sycn_cb_id, 1);
-                            noc_async_write(temp_addr_read + half_size, dst_addr + half_size, half_size);
-                        }
+                    // if (length == 4) {
+                    //     // DPRINT << "HALF SIZE" << ENDL();
+                    //     uint32_t half_size = size / 2;
+                    //     if constexpr (main_thread) {
+                    //         noc_async_write(src_addr, temp_addr_write, half_size);
+                    //         noc_async_write_barrier();
+                    //         cb_reserve_back(sycn_cb_id, 1);
+                    //         cb_push_back(sycn_cb_id, 1);
+                    //         noc_async_write(temp_addr_read, dst_addr, half_size);
+                    //     } else {
+                    //         noc_async_write(src_addr + half_size, temp_addr_write + half_size, half_size);
+                    //         noc_async_write_barrier();
+                    //         cb_wait_front(sycn_cb_id, 1);
+                    //         cb_pop_front(sycn_cb_id, 1);
+                    //         noc_async_write(temp_addr_read + half_size, dst_addr + half_size, half_size);
+                    //     }
+                    // } else {
+                    if constexpr (main_thread) {
+                        cb_reserve_back(local_temp_cb_id, 1);
+                        const uint32_t local_temp_addr = get_write_ptr(local_temp_cb_id);
+                        const uint64_t temp_addr = get_noc_addr(my_noc_x, my_noc_y, local_temp_addr);
+                        noc_async_write(src_addr, temp_addr, size);
+                        noc_async_write_barrier();
+                        cb_push_back(local_temp_cb_id, 1);
                     } else {
-                        if constexpr (main_thread) {
-                            cb_reserve_back(local_temp_cb_id, 1);
-                            const uint32_t local_temp_addr = get_write_ptr(local_temp_cb_id);
-                            const uint64_t temp_addr = get_noc_addr(my_noc_x, my_noc_y, local_temp_addr);
-                            noc_async_write(src_addr, temp_addr, size);
-                            noc_async_write_barrier();
-                            cb_push_back(local_temp_cb_id, 1);
-                        } else {
-                            cb_wait_front(local_temp_cb_id, 1);
-                            const uint32_t temp_addr = get_read_ptr(local_temp_cb_id);
-                            noc_async_write(temp_addr, dst_addr, size);
-                            noc_async_write_barrier();
-                            cb_pop_front(local_temp_cb_id, 1);
-                        }
+                        cb_wait_front(local_temp_cb_id, 1);
+                        const uint32_t temp_addr = get_read_ptr(local_temp_cb_id);
+                        noc_async_write(temp_addr, dst_addr, size);
+                        noc_async_write_barrier();
+                        cb_pop_front(local_temp_cb_id, 1);
                     }
+                    // }
                 } else {
                     if constexpr (main_thread) {
                         bool is_forward_copy = dst_local_idx > dst_relative_src;
