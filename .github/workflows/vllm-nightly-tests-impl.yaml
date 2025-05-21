@@ -29,6 +29,16 @@ jobs:
             co-owner-1_id: U08E1JCDVNX, # Pavle Petrovic
             co-owner-2_id: U08CEGF78ET, # Salar Hosseini Khorasgani
           },
+          {
+            name: "[TG] Llama-3.1-70B-Instruct",
+            arch: wormhole_b0,
+            model: "meta-llama/Llama-3.1-70B-Instruct",
+            server_timeout: 30,
+            benchmark_timeout: 10,
+            runner-label: config-tg,
+            co-owner-1_id: U08E1JCDVNX, # Pavle Petrovic
+            co-owner-2_id: U08CEGF78ET, # Salar Hosseini Khorasgani
+          },
         ]
     runs-on:
       - arch-${{ matrix.test-group.arch }}
@@ -93,7 +103,7 @@ jobs:
           if [[ "${{ matrix.test-group.runner-label }}" == "config-tg" ]]; then
             export MESH_DEVICE="TG"
             export TT_LLAMA_TEXT_VER="llama3_subdevices"
-            OVERRIDE_TT_CONFIG=(--override_tt_config '{"dispatch_core_axis": "col", "sample_on_device_mode": "all", "fabric_config": "FABRIC_1D"}')
+            OVERRIDE_TT_CONFIG=(--override-tt-config '{"dispatch_core_axis": "col", "sample_on_device_mode": "all", "fabric_config": "FABRIC_1D"}')
           fi
 
           # Set TT Cache path
