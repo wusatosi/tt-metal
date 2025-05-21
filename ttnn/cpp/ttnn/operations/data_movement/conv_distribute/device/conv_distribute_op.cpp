@@ -50,13 +50,10 @@ std::vector<ttnn::TensorSpec> ConvDistributeDeviceOperation::compute_output_spec
     auto input_tensor = input_tensors.at(0);
     auto input_shape = input_tensor.get_logical_shape();
     uint32_t num_cores = this->distributed_mem_config.shard_spec.value().num_cores();
+    uint32_t num_sticks_per_core = this->distributed_mem_config.shard_spec.value().shape[0];
     uint32_t num_channels = input_shape[3];
 
-    auto output_logical_shape = ttnn::Shape(
-        {1,
-         1,
-         this->block_size * (num_cores * this->num_blocks_per_core + this->num_cores_with_extra_block),
-         num_channels});
+    auto output_logical_shape = ttnn::Shape({1, 1, num_cores * num_sticks_per_core, num_channels});
 
     return {TensorSpec(
         output_logical_shape,

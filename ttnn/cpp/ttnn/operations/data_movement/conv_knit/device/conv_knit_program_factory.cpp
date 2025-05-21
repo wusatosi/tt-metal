@@ -12,7 +12,6 @@
 #include "tt-metalium/tt_backend_api_types.hpp"
 #include "ttnn/operations/data_movement/common/common.hpp"
 #include "ttnn/operations/math.hpp"
-#include "ttnn/operations/data_movement/utils/split_knit_utils.hpp"
 #include <cstdint>
 #include <tt-metalium/work_split.hpp>
 #include <tt-metalium/host_api.hpp>
@@ -125,9 +124,17 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
         output_unit_size,
         num_outputs_per_core_unpadded);
 
-    // Calculate uneven shard sizes for each core
-    std::vector<uint32_t> per_core_input_sticks =
-        calculate_shard_sizes(all_cores, input_width, num_blocks_per_core, num_cores_with_extra_block);
+    // Calculate per-core input blocks: all cores have (num_blocks_per_core + 1) blocks, but only the first
+    // num_cores_with_extra_block process the extra block
+    std::vector<uint32_t> per_core_blocks(num_cores, num_blocks_per_core);
+    for (uint32_t i = 0; i < num_cores_with_extra_block; ++i) {
+        per_core_blocks[i] += 1;
+    }
+    // Each block is block_size sticks (block_size == input_width)
+    std::vector<uint32_t> per_core_input_sticks(num_cores);
+    for (uint32_t i = 0; i < num_cores; ++i) {
+        per_core_input_sticks[i] = per_core_blocks[i] * input_width;
+    }
 
     uint32_t src_cb_index = tt::CBIndex::c_0;
     uint32_t out_cb_index = tt::CBIndex::c_1;
@@ -155,8 +162,10 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
     bool output_channels_aligned = num_output_channels % 16 == 0;
     bool channels_aligned = input_channels_aligned && output_channels_aligned && half_of_input_channels_aligned;
 
-    // For each core, set up kernels with the correct per-core shard size
+    // For each core, set up kernels with the correct per-core block count and skip logic
+
     for (uint32_t core_idx = 0; core_idx < num_cores; ++core_idx) {
+        uint32_t core_blocks = per_core_blocks[core_idx];
         uint32_t core_input_sticks = per_core_input_sticks[core_idx];
         uint32_t current_riscv_stick_starting_index = 0;
         std::vector<uint32_t> num_sticks_per_riscv;
@@ -177,6 +186,12 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
             core_input_sticks,
             num_sticks_per_riscv[0],
             current_riscv_stick_starting_index};
+
+        bool has_extra_block = (core_idx < num_cores_with_extra_block);
+        // If this core does NOT have the extra block, it should skip the final block (last input_width sticks)
+        uint32_t skip_final_block = (!has_extra_block && num_cores_with_extra_block > 0) ? 1 : 0;
+        uint32_t sticks_to_skip = skip_final_block ? input_width : 0;
+
         if (!channels_aligned) {
             std::map<std::string, std::string> defines;
             defines["FIRST_DM_KERNEL"] = "1";
@@ -237,6 +252,11 @@ operation::ProgramWithCallbacks conv_knit_multi_core(
                 "reader_writer_conv_knit_move_stick_height_sharded_channels_aligned.cpp",
                 {cores[core_idx]},
                 tt::tt_metal::WriterDataMovementConfig(kernel_compile_time_args));
+        }
+        // After all work is assigned, if this core does NOT have the extra block, increment starting index to skip the
+        // block This ensures the skipped block is not included in the work allocation for the RISCs
+        if (skip_final_block) {
+            current_riscv_stick_starting_index += sticks_to_skip;
         }
     }
 

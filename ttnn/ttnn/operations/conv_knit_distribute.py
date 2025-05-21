@@ -1,5 +1,4 @@
 import ttnn
-import pdb
 
 
 @ttnn.register_python_operation(name="ttnn.conv_knit_distribute")
@@ -63,7 +62,7 @@ def conv_knit_distribute(
         distributed_input = ttnn.move(distributed_input)
 
     output_tensor = ttnn.conv_knit(
-        input_tensor,
+        distributed_input,
         kernel_height,
         num_output_channels,
         input_width,

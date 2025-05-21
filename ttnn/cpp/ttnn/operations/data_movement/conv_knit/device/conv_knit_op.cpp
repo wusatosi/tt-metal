@@ -60,12 +60,18 @@ std::vector<ttnn::TensorSpec> ConvKnitDeviceOperation::compute_output_specs(
         input_tensor.memory_config().shard_spec.value().grid,
         input_tensor.memory_config().shard_spec.value());
 
-    const Shape output_logical_shape = ttnn::Shape(
-        {1, 1, input_shape.to_array_4D()[2] * this->kernel_height * this->kernel_height, this->num_output_channels});
+    // Calculate the number of valid (non-skipped) blocks and sticks
+    const auto& shard_spec = input_tensor.memory_config().shard_spec.value();
+    uint32_t num_cores = shard_spec.grid.num_cores();
+    uint32_t total_blocks = this->num_blocks_per_core * num_cores + this->num_cores_with_extra_block;
+    uint32_t total_sticks = total_blocks * this->input_width;
+
+    const Shape output_logical_shape =
+        ttnn::Shape({1, 1, total_sticks * this->kernel_height * this->kernel_height, this->num_output_channels});
     const Shape output_padded_shape = ttnn::Shape(
         {1,
          1,
-         input_shape.to_array_4D()[2] * this->kernel_height * this->kernel_height,
+         total_sticks * this->kernel_height * this->kernel_height,
          tt::round_up(this->num_output_channels, tt::constants::TILE_WIDTH)});  // ?
 
     log_info(tt::LogOp, "output_logical_shape: {}, output_padded_shape: {}", output_logical_shape, output_padded_shape);
