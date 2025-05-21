@@ -5,6 +5,7 @@
 #include "core/distributed/distributed.hpp"
 
 #include <core/ttnn_all_includes.hpp>
+#include <tt-metalium/distributed_context.hpp>
 #include <ttnn/operations/creation.hpp>
 #include <ttnn/operations/eltwise/binary/binary.hpp>
 
@@ -34,6 +35,54 @@ void synchronize_parameters(const serialization::NamedParameters& parameters) {
         if (tensor->is_grad_initialized()) {
             tensor->set_grad(synchronize_tensor(tensor->get_grad()));
         }
+    }
+}
+
+void send_all_tensors(const autograd::DistributedContext& ctx, std::vector<ttnn::Tensor>& tensors, Rank dest) {
+    std::vector<ttnn::Tensor> cpu_tensors;
+    cpu_tensors.reserve(tensors.size());
+
+    std::vector<tt::tt_metal::distributed::multihost::RequestPtr> requests;
+    requests.reserve(tensors.size());
+    int tag_counter = 0;
+    for (auto& tensor : tensors) {
+        cpu_tensors.push_back(tensor.cpu());
+
+        auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensors.back());
+        for (auto buffer : buffers) {
+            requests.push_back(ctx.isend(buffer, dest, Tag{tag_counter++}));
+        }
+    }
+
+    for (auto& request : requests) {
+        // what should i do with the status?
+        [[maybe_unused]] auto status = request->wait();
+    }
+}
+
+void receive_all_tensors(const autograd::DistributedContext& ctx, std::vector<ttnn::Tensor>& tensors, Rank source) {
+    std::vector<ttnn::Tensor> cpu_tensors;
+    cpu_tensors.reserve(tensors.size());
+
+    std::vector<tt::tt_metal::distributed::multihost::RequestPtr> requests;
+    requests.reserve(tensors.size());
+    int tag_counter = 0;
+    for (auto& tensor : tensors) {
+        cpu_tensors.push_back(tensor.cpu());
+
+        auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensors.back());
+        for (auto buffer : buffers) {
+            requests.push_back(ctx.irecv(buffer, source, Tag{tag_counter++}));
+        }
+    }
+
+    for (auto& request : requests) {
+        // what should i do with the status?
+        [[maybe_unused]] auto status = request->wait();
+    }
+
+    for (size_t i = 0; i < tensors.size(); ++i) {
+        ttnn::assign(cpu_tensors[i].to_device(tensors[i].device()), tensors[i]);
     }
 }
 

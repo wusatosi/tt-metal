@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
+#include <chrono>
+
 #include "core/distributed/distributed.hpp"
 #include "models/gpt2.hpp"
 
@@ -9,6 +11,33 @@
 namespace three_tier_arch {
 
 constexpr auto gpt2_tokenizer_file_name = "/gpt2-tokenizer.json";
+
+class Timer {
+public:
+    Timer(const std::string &name) : m_name(name) {
+    }
+
+    void start() {
+        m_start_time = std::chrono::high_resolution_clock::now();
+    }
+
+    void end() {
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - m_start_time);
+        auto duration_ms = static_cast<float>(duration.count());
+        total_time += duration_ms;
+        num_measurements++;
+
+        fmt::println("[{}] Time: {:.2f} ms, Average: {:.2f} ms", m_name, duration_ms, total_time / num_measurements);
+    }
+
+private:
+    float total_time{};
+    uint32_t num_measurements{};
+    string m_name;
+
+    std::chrono::high_resolution_clock::time_point m_start_time;
+};
 
 struct TrainingConfig {
     std::string project_name;

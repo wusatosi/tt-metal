@@ -24,11 +24,28 @@ void RemoteOptimizer::zero_grad() {
         }
     }
 }
+
 void RemoteOptimizer::step() {
+    auto rank = *ttml::autograd::ctx().get_distributed_context().rank();
+
+    static three_tier_arch::Timer remote_optimizer_step_timer(fmt::format("Rank {}, Remote optimizer step", rank));
+    static three_tier_arch::Timer send_gradients_timer(fmt::format("Rank {}, Send gradients", rank));
+    static three_tier_arch::Timer receive_weights_timer(fmt::format("Rank {}, Receive weights", rank));
+
     m_steps++;
+    remote_optimizer_step_timer.start();
+
+    send_gradients_timer.start();
     send_gradients();
+    send_gradients_timer.end();
+
+    receive_weights_timer.start();
     receive_weights();
+    receive_weights_timer.end();
+
+    remote_optimizer_step_timer.end();
 }
+
 ttml::serialization::StateDict RemoteOptimizer::get_state_dict() const {
     ttml::serialization::StateDict dict;
     dict["steps"] = m_steps;
@@ -46,15 +63,27 @@ void RemoteOptimizer::set_steps(size_t steps) {
 SortedParameters RemoteOptimizer::get_sorted_parameters() const {
     return m_sorted_parameters;
 }
+// void RemoteOptimizer::send_gradients() {
+//     auto& ctx = ttml::autograd::ctx();
+//     for (auto& [name, tensor_ptr] : m_sorted_parameters) {
+//         if (tensor_ptr->get_requires_grad() && tensor_ptr->is_grad_initialized()) {
+//             auto grad = tensor_ptr->get_grad();
+//             ttml::core::distributed::send_tensor(*m_distributed_ctx, grad, m_aggregator_rank);
+//         }
+//     }
+// }
+
 void RemoteOptimizer::send_gradients() {
-    auto& ctx = ttml::autograd::ctx();
+    std::vector<ttnn::Tensor> tensors;
+    tensors.reserve(m_sorted_parameters.size());
     for (auto& [name, tensor_ptr] : m_sorted_parameters) {
         if (tensor_ptr->get_requires_grad() && tensor_ptr->is_grad_initialized()) {
-            auto grad = tensor_ptr->get_grad();
-            ttml::core::distributed::send_tensor(*m_distributed_ctx, grad, m_aggregator_rank);
+            tensors.push_back(tensor_ptr->get_grad());
         }
     }
+    ttml::core::distributed::send_all_tensors(*m_distributed_ctx, tensors, m_aggregator_rank);
 }
+
 void RemoteOptimizer::receive_weights() {
     for (auto& [name, tensor_ptr] : m_sorted_parameters) {
         auto tensor = tensor_ptr->get_value();
@@ -62,6 +91,7 @@ void RemoteOptimizer::receive_weights() {
         tensor_ptr->set_value(tensor);
     }
 }
+
 void RemoteOptimizer::set_lr(float lr) {
 }
 float RemoteOptimizer::get_lr() const {
