@@ -930,10 +930,10 @@ void FDMeshCommandQueue::record_end() {
             for (uint32_t i = 0; i < unused_nodes[sub_device_id].unused_nodes_both_multicast_and_unicast + unused_nodes[sub_device_id].unused_nodes_multicast  + unused_nodes[sub_device_id].unused_nodes_unicast; i++) {
                 bool multicast = i < unused_nodes[sub_device_id].unused_nodes_both_multicast_and_unicast + unused_nodes[sub_device_id].unused_nodes_multicast;
                 bool unicast = i < unused_nodes[sub_device_id].unused_nodes_both_multicast_and_unicast || !multicast;
-                write_go_signal(this->id_, this->mesh_device_, SubDeviceId{sub_device_id}, sysmem_manager_for_trace, expected_workers_completed[sub_device_id], this->virtual_program_dispatch_core(), multicast, unicast);
+                auto& trace_worker_descriptor = trace_worker_descriptors[SubDeviceId{sub_device_id}];
+                write_go_signal(this->id_, this->mesh_device_, SubDeviceId{sub_device_id}, sysmem_manager_for_trace, trace_worker_descriptor.num_completion_worker_cores, this->virtual_program_dispatch_core(), multicast, unicast);
 
                 auto& worker_launch_message_buffer_state = (*this->worker_launch_message_buffer_state_)[sub_device_id];
-                auto& trace_worker_descriptor = trace_worker_descriptors[SubDeviceId{sub_device_id}];
                 if (multicast) {
                     trace_worker_descriptor.num_completion_worker_cores += mesh_device_->num_worker_cores(HalProgrammableCoreType::TENSIX, SubDeviceId{sub_device_id});
                     worker_launch_message_buffer_state.inc_mcast_wptr(1);
@@ -961,10 +961,12 @@ void FDMeshCommandQueue::record_end() {
                 num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
                 //uses_ethernet_cores = true;
             }
+            #if 0
             fmt::println(stderr, "Enqueueing program on subdevice {} with expected workers completed {} and num wokers {}",
                          *sub_device_id,
                          expected_workers_completed[*sub_device_id],
                          num_workers);
+                         #endif
 
             // Access the program dispatch-command cache
             uint64_t command_hash = *mesh_device_->get_active_sub_device_manager_id();
@@ -977,7 +979,7 @@ void FDMeshCommandQueue::record_end() {
                 cached_program_command_sequence,
                 worker_launch_message_buffer_state.get_mcast_wptr(),
                 worker_launch_message_buffer_state.get_unicast_wptr(),
-                trace_worker_descriptors[*sub_device_id].num_completion_worker_cores,
+                trace_worker_descriptors[sub_device_id].num_completion_worker_cores,
  
  //expected_workers_completed[*sub_device_id],
                 this->virtual_program_dispatch_core(),
@@ -1011,7 +1013,7 @@ void FDMeshCommandQueue::record_end() {
                 worker_launch_message_buffer_state.inc_unicast_wptr(1);
                 trace_worker_descriptors[sub_device_id].num_traced_programs_needing_go_signal_unicast++;
             }
-            trace_worker_descriptors[*sub_device_id].num_completion_worker_cores += num_workers;
+            trace_worker_descriptors[sub_device_id].num_completion_worker_cores += num_workers;
  //           expected_workers_completed[*sub_device_id] += num_workers;
         }
         #if 0
@@ -1061,7 +1063,7 @@ void FDMeshCommandQueue::record_end() {
                      *sub_device_id,
                      trace_worker_descriptor.num_traced_programs_needing_go_signal_multicast,
                      trace_worker_descriptor.num_traced_programs_needing_go_signal_unicast,
-                    trace_worker_descriptor.completion_worker_count);
+                    trace_worker_descriptor.num_completion_worker_cores);
         trace_ctx_->sub_device_ids.push_back(sub_device_id);
     }
     #if 0
