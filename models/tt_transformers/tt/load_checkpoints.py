@@ -121,6 +121,14 @@ def map_hf_to_meta_keys(loaded_weights):
             template_key = "model.layers.{layer}." + ".".join(parts[3:])
             if template_key in hf_to_meta:
                 meta_state_dict[hf_to_meta[template_key].format(layer=layer_num)] = tensor
+            else:
+                # FIXME: Qwen2-VL branch rewrites this function so nicely, use that instead when merged
+                guess = key.replace("model.layers.", "layers.")
+                guess = guess.replace(".mlp.", ".feed_forward.")
+                logger.warning(f"hf_to_meta does not know what to do with key {key}, applying {guess} instead")
+                meta_state_dict[guess] = tensor
+        else:
+            logger.warning(f"hf_to_meta does not know what to do with key {key}")
 
     return meta_state_dict
 
