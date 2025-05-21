@@ -14,11 +14,12 @@ from models.demos.t3000.mixtral8x7b.tt.mixtral_common import (
     set_model_args,
 )
 from models.demos.t3000.mixtral8x7b.tt.mixtral_decoder import TtTransformerBlock
-from models.demos.t3000.mixtral8x7b.tt.model_config import TtModelArgs
+from models.demos.t3000.mixtral8x7b.tt.model_config import TtModelArgs, get_ccl_config
 from models.utility_functions import comp_allclose, comp_pcc
 from ttnn import ConcatMeshToTensor, ReplicateTensorToMesh
 
 
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 @pytest.mark.parametrize(
     "seq_len",
     (
@@ -59,12 +60,14 @@ def test_mixtral_decoder_inference(t3k_mesh_device, use_program_cache, reset_see
     )
 
     # Initialize TT model
+    ccl_semaphore_handle, worker_sub_device_id = get_ccl_config(mesh_device)
     tt_model = TtTransformerBlock(
         mesh_device=t3k_mesh_device,
         state_dict=state_dict,
         args=model_args,
         layer_num=0,
         dtype=dtype,
+        ccl_semaphore_handle=ccl_semaphore_handle,
     )
 
     generation_start_pos = 0

@@ -14,7 +14,7 @@ from models.demos.t3000.mixtral8x7b.tt.mixtral_common import (
     preprocess_inputs_prefill,
 )
 from models.demos.t3000.mixtral8x7b.tt.mixtral_model import TtTransformer
-from models.demos.t3000.mixtral8x7b.tt.model_config import TtModelArgs
+from models.demos.t3000.mixtral8x7b.tt.model_config import TtModelArgs, get_ccl_config
 from models.perf.perf_utils import prep_perf_report
 from models.utility_functions import profiler
 from ttnn import ConcatMeshToTensor, ReplicateTensorToMesh
@@ -31,6 +31,7 @@ class Emb(torch.nn.Module):
 
 @pytest.mark.model_perf_t3000
 @pytest.mark.timeout(400)
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 @pytest.mark.parametrize(
     "generation_start_pos, expected_compile_time, expected_inference_time",
     (
@@ -84,6 +85,7 @@ def test_mixtral_model_perf(
 
     profiler.start("Mixtral_model_setup")
     # Load TTNN model
+    ccl_semaphore_handle, worker_sub_device_id = get_ccl_config(mesh_device)
     tt_model = TtTransformer(
         mesh_device=t3k_mesh_device,
         state_dict=state_dict,
@@ -91,6 +93,7 @@ def test_mixtral_model_perf(
         layers=list(range(model_args.n_layers)),
         start_pos_ids=[generation_start_pos] * model_args.max_batch_size,
         dtype=dtype,
+        ccl_semaphore_handle=ccl_semaphore_handle,
         rotary_on_host=False,
     )
     profiler.end("TtMixtral_model_setup")
@@ -130,6 +133,7 @@ def test_mixtral_model_perf(
 
 @pytest.mark.model_perf_t3000
 @pytest.mark.timeout(400)
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 @pytest.mark.parametrize(
     "prefill_seqlen, expected_compile_time, expected_inference_time",
     (
@@ -222,12 +226,14 @@ def test_mixtral_model_with_prefill_perf(
 
     profiler.start("Mixtral_model_setup")
     # Load TTNN model
+    ccl_semaphore_handle, worker_sub_device_id = get_ccl_config(mesh_device)
     tt_model = TtTransformer(
         mesh_device=t3k_mesh_device,
         state_dict=state_dict,
         args=model_args,
         layers=list(range(model_args.n_layers)),
         dtype=dtype,
+        ccl_semaphore_handle=ccl_semaphore_handle,
         start_pos_ids=decoding_pos,
     )
     profiler.end("TtMixtral_model_setup")

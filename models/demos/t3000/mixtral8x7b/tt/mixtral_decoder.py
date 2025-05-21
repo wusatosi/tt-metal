@@ -86,13 +86,13 @@ class TtTransformerBlock(LightweightModule):
             user_id,
             mode,
         )
-        ttnn.synchronize_device(self.mesh_device)
+        # ttnn.synchronize_device(self.mesh_device)
         hs_1SBH = ttnn.add(xs_1SBH, attn_1SBH)
         xs_1SBH.deallocate(True)
         attn_1SBH.deallocate(True)
         ffn_norm_1SBH = self.ffn_norm(hs_1SBH, mode)
         ffn_1SBH = self.feed_forward(ffn_norm_1SBH, mode=mode)
-        ttnn.synchronize_device(self.mesh_device)
+        # ttnn.synchronize_device(self.mesh_device)
         out_1SBH = ttnn.add(hs_1SBH, ffn_1SBH)
         hs_1SBH.deallocate(True)
         ffn_1SBH.deallocate(True)

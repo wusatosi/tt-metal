@@ -17,7 +17,7 @@ from models.demos.t3000.mixtral8x7b.tt.mixtral_common import (
     set_model_args,
 )
 from models.demos.t3000.mixtral8x7b.tt.mixtral_model import TtTransformer
-from models.demos.t3000.mixtral8x7b.tt.model_config import TtModelArgs
+from models.demos.t3000.mixtral8x7b.tt.model_config import TtModelArgs, get_ccl_config
 from models.utility_functions import comp_allclose, comp_pcc
 from ttnn import ConcatMeshToTensor, ReplicateTensorToMesh
 
@@ -31,6 +31,7 @@ class Emb(torch.nn.Module):
         return self.emb(x)
 
 
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 @pytest.mark.parametrize(
     "seq_len",
     (
@@ -90,6 +91,7 @@ def test_mixtral_model_inference_CI(t3k_mesh_device, use_program_cache, reset_se
         mesh_mapper=ReplicateTensorToMesh(t3k_mesh_device),
     )
     # Load TTNN model
+    ccl_semaphore_handle, worker_sub_device_id = get_ccl_config(mesh_device)
     tt_model = TtTransformer(
         mesh_device=t3k_mesh_device,
         state_dict=state_dict,
@@ -97,6 +99,7 @@ def test_mixtral_model_inference_CI(t3k_mesh_device, use_program_cache, reset_se
         layers=list(range(model_args.n_layers)),
         dtype=dtype,
         start_pos_ids=[seq_len for _ in range(batch)],  # Start position for decode mode
+        ccl_semaphore_handle=ccl_semaphore_handle,
         rotary_on_host=False,
     )
 

@@ -12,7 +12,7 @@ from models.demos.t3000.mixtral8x7b.reference.model import Transformer
 from models.demos.t3000.mixtral8x7b.reference.tokenizer import Tokenizer
 from models.demos.t3000.mixtral8x7b.tt.mixtral_common import prepare_inputs_ttnn
 from models.demos.t3000.mixtral8x7b.tt.mixtral_model import TtTransformer
-from models.demos.t3000.mixtral8x7b.tt.model_config import TtModelArgs
+from models.demos.t3000.mixtral8x7b.tt.model_config import TtModelArgs, get_ccl_config
 from models.utility_functions import comp_allclose, comp_pcc
 from ttnn import ConcatMeshToTensor
 
@@ -26,6 +26,7 @@ class Emb(torch.nn.Module):
         return self.emb(x)
 
 
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 @pytest.mark.parametrize(
     "batch",
     (
@@ -64,6 +65,7 @@ def test_mixtral_model_inference(t3k_mesh_device, use_program_cache, reset_seeds
     embd.load_state_dict({"emb.weight": state_dict["tok_embeddings.weight"]})
 
     # Load TTNN model
+    ccl_semaphore_handle, worker_sub_device_id = get_ccl_config(mesh_device)
     tt_model = TtTransformer(
         mesh_device=t3k_mesh_device,
         state_dict=state_dict,
@@ -71,6 +73,7 @@ def test_mixtral_model_inference(t3k_mesh_device, use_program_cache, reset_seeds
         layers=list(range(model_args.n_layers)),
         start_pos_ids=[generation_start_pos for _ in range(batch)],
         dtype=dtype,
+        ccl_semaphore_handle=ccl_semaphore_handle,
     )
 
     generation_length = iterations

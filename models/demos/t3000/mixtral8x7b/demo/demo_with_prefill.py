@@ -503,10 +503,10 @@ def test_mixtral8x7b_demo(t3k_mesh_device, use_program_cache, input_prompts, ins
     # Adjust the batch size based on the max prefill length
     if prefill_len >= 16 * 1024:
         batch_size = 4
-    elif prefill_len >= 8 * 1024:
-        batch_size = 8
     elif prefill_len >= 4 * 1024:
-        batch_size = 16
+        batch_size = 8
+    # elif prefill_len >= 4 * 1024:
+    #    batch_size = 16
     else:
         batch_size = 32
 

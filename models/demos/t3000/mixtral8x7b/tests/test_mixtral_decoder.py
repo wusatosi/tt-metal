@@ -9,11 +9,12 @@ import ttnn
 from models.demos.t3000.mixtral8x7b.reference.model import TransformerBlock, precompute_freqs_cis
 from models.demos.t3000.mixtral8x7b.tt.mixtral_common import get_single_rot_mat, prepare_inputs_ttnn
 from models.demos.t3000.mixtral8x7b.tt.mixtral_decoder import TtTransformerBlock
-from models.demos.t3000.mixtral8x7b.tt.model_config import TtModelArgs
+from models.demos.t3000.mixtral8x7b.tt.model_config import TtModelArgs, get_ccl_config
 from models.utility_functions import comp_allclose, comp_pcc
 from ttnn import ConcatMeshToTensor
 
 
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 @pytest.mark.parametrize(
     "batch",
     (
@@ -47,12 +48,14 @@ def test_mixtral_decoder_inference(t3k_mesh_device, use_program_cache, reset_see
     reference_model.load_state_dict(partial_state_dict)
 
     # Initialize TT model
+    ccl_semaphore_handle, worker_sub_device_id = get_ccl_config(mesh_device)
     tt_model = TtTransformerBlock(
         mesh_device=t3k_mesh_device,
         state_dict=state_dict,
         args=model_args,
         layer_num=0,
         dtype=dtype,
+        ccl_semaphore_handle=ccl_semaphore_handle,
     )
 
     current_rot_mat, rot_matrix = get_single_rot_mat(

@@ -19,7 +19,7 @@ from models.demos.t3000.mixtral8x7b.reference.tokenizer import Tokenizer
 from models.demos.t3000.mixtral8x7b.tt.mixtral_common import cache_attention, get_single_rot_mat, prepare_inputs_ttnn
 from models.demos.t3000.mixtral8x7b.tt.mixtral_embedding import TtMixtralEmbedding
 from models.demos.t3000.mixtral8x7b.tt.mixtral_model import TtTransformer
-from models.demos.t3000.mixtral8x7b.tt.model_config import TtModelArgs
+from models.demos.t3000.mixtral8x7b.tt.model_config import TtModelArgs, get_ccl_config
 from ttnn import ConcatMeshToTensor
 
 
@@ -94,6 +94,7 @@ def run_test_perplexity(
 
     # Load TTNN mixtral model
     logger.info("Loading weights to device...")
+    ccl_semaphore_handle, worker_sub_device_id = get_ccl_config(mesh_device)
     tt_model = TtTransformer(
         mesh_device=mesh_device,
         state_dict=state_dict,
@@ -101,6 +102,7 @@ def run_test_perplexity(
         layers=list(range(model_args.n_layers)),
         dtype=dtype,
         rotary_on_host=False,
+        ccl_semaphore_handle=ccl_semaphore_handle,
         start_pos_ids=[0] * batch_size,
     )
 
@@ -233,6 +235,7 @@ def run_test_perplexity(
 
 
 @pytest.mark.timeout(3600)
+@pytest.mark.parametrize("device_params", [{"fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True)
 @pytest.mark.parametrize(
     "llm_mode, max_seq_len, num_samples, expected_ppl, expected_top1, expected_top5",
     (

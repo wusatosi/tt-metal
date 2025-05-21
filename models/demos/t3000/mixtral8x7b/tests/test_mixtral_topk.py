@@ -11,7 +11,7 @@ from models.demos.t3000.mixtral8x7b.reference.model import Transformer
 from models.demos.t3000.mixtral8x7b.reference.tokenizer import Tokenizer
 from models.demos.t3000.mixtral8x7b.tt.mixtral_common import load_inputs, prepare_inputs_ttnn, preprocess_inputs
 from models.demos.t3000.mixtral8x7b.tt.mixtral_model import TtTransformer
-from models.demos.t3000.mixtral8x7b.tt.model_config import TtModelArgs
+from models.demos.t3000.mixtral8x7b.tt.model_config import TtModelArgs, get_ccl_config
 
 
 class Emb(torch.nn.Module):
@@ -72,12 +72,14 @@ def test_mixtral_model_inference(
     embd.load_state_dict({"emb.weight": state_dict["tok_embeddings.weight"]})
 
     # Load TTNN model
+    ccl_semaphore_handle, worker_sub_device_id = get_ccl_config(mesh_device)
     tt_model = TtTransformer(
         mesh_device=t3k_mesh_device,
         state_dict=state_dict,
         args=model_args,
         layers=list(range(model_args.n_layers)),
         dtype=dtype,
+        ccl_semaphore_handle=ccl_semaphore_handle,
         rotary_on_host=False,
         start_pos_ids=[generation_start_pos] * batch,
     )

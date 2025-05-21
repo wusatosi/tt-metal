@@ -169,7 +169,6 @@ class TtMixtralAttention(LightweightModule):
         D : head_dim (128)
         P : padded_layer_past_len
         """
-
         x_11BH = xs
         wo = self.wo
         layer_past = self.layer_past
@@ -417,12 +416,15 @@ class TtMixtralAttention(LightweightModule):
         if seq_len > 2048:  # Reshape back to intended shape
             output_11SH = ttnn.reshape(output_11SH, (1, 1, seq_len, -1))
         ttnn.synchronize_device(device=self.mesh_device)
+        print("before all gather in attention prefill")
+        print(" output_11SH shape ", output_11SH.shape)
         output_11BH_gathered = ttnn.experimental.all_gather_async(
             output_11SH,
             dim=1,
             num_links=1,
             multi_device_global_semaphore=self.ccl_semaphore_handle,
             topology=ttnn.Topology.Linear,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
         ttnn.synchronize_device(device=self.mesh_device)
         output_11SH.deallocate(True)

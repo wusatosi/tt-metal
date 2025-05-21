@@ -96,7 +96,7 @@ class TtTransformer(LightweightModule):
                     rot_mats = self.current_rot_mat
 
             x = layer(x, start_pos_ids, attn_masks, rot_mats, transformation_mats, user_id, mode)
-            ttnn.synchronize_device(self.mesh_device)
+            # ttnn.synchronize_device(self.mesh_device)
         if attn_masks is not None:
             attn_masks.deallocate(True)
 
