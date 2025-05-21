@@ -507,6 +507,9 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
         // get a port to connect to
         std::set<chan_id_t> eth_chans = control_plane->get_active_fabric_eth_channels_in_direction(
             src_mesh_chip_id.first, src_mesh_chip_id.second, direction);
+        // std::cout << "brosko get_active_fabric_eth_channels_in_direction for " << src_mesh_chip_id.first << " "
+        //           << src_mesh_chip_id.second << " " << direction << " returns " << eth_chans << std::endl;
+        std::cout << "brosko yeah we never reach this code " << std::endl;
         std::cout << "brosko direction " << direction << std::endl;
         if (eth_chans.size() == 0) {
             GTEST_SKIP() << "No active eth chans to connect to";
@@ -522,6 +525,11 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
         // In 2D routing the source and desitnation devices can be anywhere on the mesh.
         auto random_dev_list = get_random_numbers_from_range(0, devices.size() - 1, devices.size());
         std::cout << "brosko random_dev_list " << random_dev_list << std::endl;
+        std::cout << "brosko devices list ";
+        for (auto device : devices) {
+            std::cout << device->id() << " ";
+        }
+        std::cout << std::endl;
 
         // pick the first two in the list to be src and dst devices for the test.
         src_physical_device_id = devices[random_dev_list[0]]->id();

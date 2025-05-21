@@ -245,6 +245,7 @@ void DevicePool::initialize(
     bool skip = not tt::tt_metal::MetalContext::instance().get_cluster().is_galaxy_cluster();
     std::vector<chip_id_t> target_mmio_ids;
     for (const auto& device_id : device_ids) {
+        std::cout << "brosko DevicePool::initialize device_id " << device_id << std::endl;
         TT_FATAL(
             device_id < tt::tt_metal::MetalContext::instance().get_cluster().number_of_devices(),
             "Device index {} out of range. There are {} devices available.",
@@ -252,6 +253,7 @@ void DevicePool::initialize(
             tt::tt_metal::MetalContext::instance().get_cluster().number_of_devices());
         const auto& mmio_device_id =
             tt::tt_metal::MetalContext::instance().get_cluster().get_associated_mmio_device(device_id);
+        std::cout << "brosko DevicePool::initialize mmio_device_id " << mmio_device_id << std::endl;
         if (std::find(target_mmio_ids.begin(), target_mmio_ids.end(), mmio_device_id) == target_mmio_ids.end()) {
             target_mmio_ids.push_back(mmio_device_id);
         }
@@ -437,6 +439,7 @@ void DevicePool::add_devices_to_pool(const std::vector<chip_id_t>& device_ids) {
 
     for (const auto& device_id : devices_to_activate) {
         if (not this->is_device_active(device_id)) {
+            std::cout << "brosko DevicePool::add_devices_to_pool device_id " << device_id << std::endl;
             this->activate_device(device_id);
         }
     }
@@ -450,6 +453,7 @@ void DevicePool::add_devices_to_pool(const std::vector<chip_id_t>& device_ids) {
     if (use_max_eth_core_count_on_all_devices_) {
         std::size_t max_eth_core_count = 0;
         for (const auto& device : this->devices) {
+            std::cout << "brosko DevicePool looping devices " << device->id() << std::endl;
             max_eth_core_count = std::max(
                 MetalContext::instance()
                     .get_cluster()
