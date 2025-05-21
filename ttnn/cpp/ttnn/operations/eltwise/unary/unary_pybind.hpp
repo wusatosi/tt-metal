@@ -561,7 +561,7 @@ void bind_unary_operation_with_int_parameter(
         ttnn::pybind_overload_t{
             [](const unary_operation_t& self,
                const Tensor& input_tensor,
-               const int parameter,
+               const std::optional<int>& parameter,
                const std::optional<MemoryConfig>& memory_config,
                const std::optional<ttnn::Tensor>& output_tensor,
                QueueId queue_id) {
