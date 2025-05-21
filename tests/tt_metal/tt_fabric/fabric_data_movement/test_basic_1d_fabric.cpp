@@ -382,7 +382,83 @@ void RunTestLineMcast(
     }
 }
 
+// enum class RoutingDirection {
+//     N = 0,
+//     E = 2,
+//     S = 4,
+//     W = 8,
+//     C = 16,  // Centre, means that destination is same as source
+// };
+std::ostream& operator<<(std::ostream& os, const RoutingDirection& dir) {
+    switch (dir) {
+        case RoutingDirection::N: os << "NORTH"; break;
+        case RoutingDirection::E: os << "EAST"; break;
+        case RoutingDirection::S: os << "SOUTH"; break;
+        case RoutingDirection::W: os << "WEST"; break;
+        case RoutingDirection::C: os << "CENTRE"; break;
+        default: os << "UNKNOWN";
+    }
+    return os;
+}
+// enum class Topology { Ring = 0, Linear = 1, Mesh = 2 };
+
+std::ostream& operator<<(std::ostream& os, const Topology& topo) {
+    switch (topo) {
+        case Topology::Ring: os << "RING"; break;
+        case Topology::Linear: os << "LINEAR"; break;
+        case Topology::Mesh: os << "MESH"; break;
+        default: os << "UNKNOWN";
+    }
+    return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const std::pair<mesh_id_t, chip_id_t>& pair) {
+    os << "Mesh ID: " << pair.first << ", Chip ID: " << pair.second;
+    return os;
+}
+
+template <typename T>
+std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
+    os << "[";
+    for (const auto& item : vec) {
+        os << item << ", ";
+    }
+    os << "]";
+    return os;
+}
+
+// struct SenderWorkerAdapterSpec {
+//     size_t edm_noc_x = 0;
+//     size_t edm_noc_y = 0;
+//     size_t edm_buffer_base_addr = 0;
+//     size_t num_buffers_per_channel = 0;
+//     size_t edm_l1_sem_addr = 0;
+//     size_t edm_connection_handshake_addr = 0;
+//     size_t edm_worker_location_info_addr = 0;  // The EDM's location for `EDMChannelWorkerLocationInfo`
+//     size_t buffer_size_bytes = 0;
+//     size_t buffer_index_semaphore_id = 0;  // the semaphore ID on the EDM, not the worker
+//     bool persistent_fabric = false;
+//     eth_chan_directions edm_direction = eth_chan_directions::EAST;
+// };
+
+std::ostream& operator<<(std::ostream& os, const SenderWorkerAdapterSpec& spec) {
+    os << "EDM NOC X: " << spec.edm_noc_x << ", "
+       << "EDM NOC Y: " << spec.edm_noc_y << ", "
+       << "EDM Buffer Base Address: " << spec.edm_buffer_base_addr << ", "
+       << "Num Buffers Per Channel: " << spec.num_buffers_per_channel << ", "
+       << "EDM L1 Semaphore Address: " << spec.edm_l1_sem_addr << ", "
+       << "EDM Connection Handshake Address: " << spec.edm_connection_handshake_addr << ", "
+       << "EDM Worker Location Info Address: " << spec.edm_worker_location_info_addr << ", "
+       << "Buffer Size Bytes: " << spec.buffer_size_bytes << ", "
+       << "Buffer Index Semaphore ID: " << spec.buffer_index_semaphore_id << ", "
+       << "Persistent Fabric: " << (spec.persistent_fabric ? "true" : "false") << ", "
+       << "EDM Direction: " << static_cast<int>(spec.edm_direction);
+    return os;
+}
+
 void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDirection direction) {
+    std::cout << "brosko num_hops " << num_hops << std::endl;
+    std::cout << "brosko direction " << direction << std::endl;
     CoreCoord sender_logical_core = {0, 0};
     CoreCoord receiver_logical_core = {1, 0};
 
@@ -405,6 +481,7 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
 
     const auto& fabric_context = control_plane->get_fabric_context();
     const auto topology = fabric_context.get_fabric_topology();
+    std::cout << "brosko topology " << topology << std::endl;
     const auto& edm_config = fabric_context.get_fabric_router_config();
     uint32_t is_2d_fabric = topology == Topology::Mesh;
 
@@ -419,13 +496,18 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
                 fabric_hops)) {
             GTEST_SKIP() << "No path found between sender and receivers";
         }
+        std::cout << "brosko src_mesh_chip_id " << src_mesh_chip_id << std::endl;
+        std::cout << "brosko src_physical_device_id " << src_physical_device_id << std::endl;
         mesh_shape = control_plane->get_physical_mesh_shape(src_mesh_chip_id.first);
         dst_physical_device_id = physical_end_device_ids_by_dir[direction][num_hops - 1];
+        std::cout << "brosko dst_physical_device_id " << dst_physical_device_id << std::endl;
         dst_mesh_chip_id = end_mesh_chip_ids_by_dir[direction][num_hops - 1];
+        std::cout << "brosko dst_mesh_chip_id " << dst_mesh_chip_id << std::endl;
 
         // get a port to connect to
         std::set<chan_id_t> eth_chans = control_plane->get_active_fabric_eth_channels_in_direction(
             src_mesh_chip_id.first, src_mesh_chip_id.second, direction);
+        std::cout << "brosko direction " << direction << std::endl;
         if (eth_chans.size() == 0) {
             GTEST_SKIP() << "No active eth chans to connect to";
         }
@@ -439,6 +521,7 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
         // create a list of available deive ids in a random order
         // In 2D routing the source and desitnation devices can be anywhere on the mesh.
         auto random_dev_list = get_random_numbers_from_range(0, devices.size() - 1, devices.size());
+        std::cout << "brosko random_dev_list " << random_dev_list << std::endl;
 
         // pick the first two in the list to be src and dst devices for the test.
         src_physical_device_id = devices[random_dev_list[0]]->id();
@@ -446,9 +529,15 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
         src_mesh_chip_id = control_plane->get_mesh_chip_id_from_physical_chip_id(src_physical_device_id);
         dst_mesh_chip_id = control_plane->get_mesh_chip_id_from_physical_chip_id(dst_physical_device_id);
         mesh_shape = control_plane->get_physical_mesh_shape(src_mesh_chip_id.first);
+        std::cout << "brosko src_physical_device_id " << src_physical_device_id << std::endl;
+        std::cout << "brosko dst_physical_device_id " << dst_physical_device_id << std::endl;
+        std::cout << "brosko src_mesh_chip_id " << src_mesh_chip_id << std::endl;
+        std::cout << "brosko dst_mesh_chip_id " << dst_mesh_chip_id << std::endl;
 
         auto routers = control_plane->get_routers_to_chip(
             src_mesh_chip_id.first, src_mesh_chip_id.second, dst_mesh_chip_id.first, dst_mesh_chip_id.second);
+        std::cout << "brosko src_mesh_chip_id " << src_mesh_chip_id << std::endl;
+        std::cout << "brosko dst_mesh_chip_id " << dst_mesh_chip_id << std::endl;
         if (routers.size() == 0) {
             log_info(
                 tt::LogTest,
@@ -466,6 +555,9 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
             tt::tt_metal::MetalContext::instance().get_cluster().get_logical_ethernet_core_from_virtual(
                 src_physical_device_id, vritual_router);
         edm_port = logical_router.y;
+        std::cout << "brosko vritual_router " << vritual_router.str() << std::endl;
+        std::cout << "brosko logical_router " << logical_router.str() << std::endl;
+        std::cout << "brosko edm_port " << edm_port << std::endl;
     }
 
     tt::log_info(tt::LogTest, "mesh dimensions {:x}", mesh_shape.dims());
@@ -479,6 +571,8 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
         control_plane->get_eth_chan_direction(src_mesh_chip_id.first, src_mesh_chip_id.second, edm_port);
     CoreCoord edm_eth_core = tt::tt_metal::MetalContext::instance().get_cluster().get_virtual_eth_core_from_channel(
         src_physical_device_id, edm_port);
+    std::cout << "brosko edm_direction " << edm_direction << std::endl;
+    std::cout << "brosko edm_eth_core " << edm_eth_core.str() << std::endl;
 
     tt::log_info(tt::LogTest, "Using edm port {} in direction {}", edm_port, edm_direction);
 
@@ -486,6 +580,10 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
     auto* receiver_device = DevicePool::instance().get_active_device(dst_physical_device_id);
     CoreCoord sender_virtual_core = sender_device->worker_core_from_logical_core(sender_logical_core);
     CoreCoord receiver_virtual_core = receiver_device->worker_core_from_logical_core(receiver_logical_core);
+    std::cout << "brosko src_physical_device_id " << src_physical_device_id << std::endl;
+    std::cout << "brosko dst_physical_device_id " << dst_physical_device_id << std::endl;
+    std::cout << "brosko sender_virtual_core " << sender_virtual_core.str() << std::endl;
+    std::cout << "brosko receiver_virtual_core " << receiver_virtual_core.str() << std::endl;
 
     auto receiver_noc_encoding =
         tt::tt_metal::MetalContext::instance().hal().noc_xy_encoding(receiver_virtual_core.x, receiver_virtual_core.y);
@@ -497,6 +595,7 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
 
     const auto fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
 
+    std::cout << "brosko compile_time_args " << std::endl;
     // common compile time args for sender and receiver
     std::vector<uint32_t> compile_time_args = {
         worker_mem_map.test_results_address,
@@ -513,6 +612,7 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
 
     // Create the sender program
     auto sender_program = tt_metal::CreateProgram();
+    std::cout << "brosko sender_kernel " << sender_logical_core.str() << std::endl;
     auto sender_kernel = tt_metal::CreateKernel(
         sender_program,
         "tests/tt_metal/tt_metal/perf_microbenchmark/routing/kernels/tt_fabric_1d_tx.cpp",
@@ -535,6 +635,7 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
         dst_mesh_chip_id.second,
         dst_mesh_chip_id.first,
         num_hops};
+    std::cout << "brosko sender_runtime_args " << sender_runtime_args << std::endl;
 
     // append the EDM connection rt args
     const auto sender_channel = topology == Topology::Mesh ? edm_direction : 0;
@@ -550,6 +651,7 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
         .buffer_index_semaphore_id = edm_config.sender_channels_buffer_index_semaphore_address[sender_channel],
         .persistent_fabric = true,
         .edm_direction = edm_direction};
+    std::cout << "brosko edm_connection " << edm_connection << std::endl;
 
     auto worker_flow_control_semaphore_id = tt_metal::CreateSemaphore(sender_program, sender_logical_core, 0);
     auto worker_teardown_semaphore_id = tt_metal::CreateSemaphore(sender_program, sender_logical_core, 0);
@@ -565,9 +667,11 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
     tt_metal::SetRuntimeArgs(sender_program, sender_kernel, sender_logical_core, sender_runtime_args);
 
     std::vector<uint32_t> receiver_runtime_args = {worker_mem_map.packet_payload_size_bytes, num_packets, time_seed};
+    std::cout << "brosko receiver_runtime_args " << receiver_runtime_args << std::endl;
 
     // Create the receiver program for validation
     auto receiver_program = tt_metal::CreateProgram();
+    std::cout << "brosko receiver_kernel " << receiver_logical_core.str() << std::endl;
     auto receiver_kernel = tt_metal::CreateKernel(
         receiver_program,
         "tests/tt_metal/tt_metal/perf_microbenchmark/routing/kernels/tt_fabric_1d_rx.cpp",
@@ -579,11 +683,14 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
 
     tt_metal::SetRuntimeArgs(receiver_program, receiver_kernel, receiver_logical_core, receiver_runtime_args);
 
+    std::cout << "brosko RunProgram " << std::endl;
     // Launch sender and receiver programs and wait for them to finish
     fixture->RunProgramNonblocking(receiver_device, receiver_program);
     fixture->RunProgramNonblocking(sender_device, sender_program);
+    std::cout << "brosko Wait " << std::endl;
     fixture->WaitForSingleProgramDone(sender_device, sender_program);
     fixture->WaitForSingleProgramDone(receiver_device, receiver_program);
+    std::cout << "brosko wait end " << std::endl;
 
     // Validate the status and packets processed by sender and receiver
     std::vector<uint32_t> sender_status;
@@ -604,6 +711,7 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
         worker_mem_map.test_results_size_bytes,
         receiver_status,
         CoreType::WORKER);
+    std::cout << "brosko readl1 " << std::endl;
 
     EXPECT_EQ(sender_status[TT_FABRIC_STATUS_INDEX], TT_FABRIC_STATUS_PASS);
     EXPECT_EQ(receiver_status[TT_FABRIC_STATUS_INDEX], TT_FABRIC_STATUS_PASS);
