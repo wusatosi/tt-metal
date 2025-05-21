@@ -924,7 +924,6 @@ void FDMeshCommandQueue::record_end() {
         for (uint32_t sub_device_id = 0; sub_device_id < mesh_device_->num_sub_devices(); sub_device_id++) {
             (*this->worker_launch_message_buffer_state_)[sub_device_id].reset();
         }
-        //DispatchArray<uint32_t> expected_workers_completed{};
         std::unordered_map<SubDeviceId, TraceWorkerDescriptor> trace_worker_descriptors;
         for (uint32_t sub_device_id = 0; sub_device_id < mesh_device_->num_sub_devices(); sub_device_id++) {
             for (uint32_t i = 0; i < unused_nodes[sub_device_id].unused_nodes_both_multicast_and_unicast + unused_nodes[sub_device_id].unused_nodes_multicast  + unused_nodes[sub_device_id].unused_nodes_unicast; i++) {
@@ -946,6 +945,11 @@ void FDMeshCommandQueue::record_end() {
                 }
             }
         }
+        DispatchArray<uint32_t> starting_workers_completed{};
+        for (uint32_t sub_device_id = 0; sub_device_id < mesh_device_->num_sub_devices(); sub_device_id++) {
+            starting_workers_completed[sub_device_id] = trace_worker_descriptors[SubDeviceId{sub_device_id}].num_completion_worker_cores;
+        }
+
         for (auto& node : trace_nodes) {
             auto sub_device_id = node.sub_device_id;
             auto& program = *node.program;
@@ -994,6 +998,7 @@ void FDMeshCommandQueue::record_end() {
             }
 #endif
 
+            node.dispatch_metadata.sync_count += starting_workers_completed[*sub_device_id];
             // Issue dispatch commands for this program
             program_dispatch::write_program_command_sequence(
                 cached_program_command_sequence,
