@@ -174,7 +174,7 @@ void kernel_main() {
                             DPRINT << BF16(((uint16_t*)l1_read_addr)[i]) << " ";
                             // }
                         }
-                        DPRINT << ENDL();
+                        DPRINT << "=====================" << ENDL();
                     }
                     noc_async_write(l1_read_addr, write_noc_base_addr, SUBTILE_LINE_BYTES);
 
@@ -188,7 +188,6 @@ void kernel_main() {
                 }
             }
         }
-        DPRINT << "=====================" << ENDL();
 
         // Ensure all asynchronous writes are completed before proceeding
         noc_async_write_barrier();
