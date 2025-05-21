@@ -1056,12 +1056,15 @@ void FDMeshCommandQueue::record_end() {
         }
     }
     for (auto& range : unused_range) {
+        max_trace_size = std::max(max_trace_size, exec_buf_end.size());
         trace_ctx_->ordered_trace_data.push_back(MeshTraceData{range, exec_buf_end});
     }
     trace_ctx_->total_trace_size = max_trace_size * sizeof(uint32_t);
 
     trace_ctx_->sub_device_ids.reserve(sub_device_ids.size());
-    trace_ctx_->descriptors = overall_trace_worker_descriptors.value();
+    if (overall_trace_worker_descriptors) {
+        trace_ctx_->descriptors = overall_trace_worker_descriptors.value();
+    }
 
     for (auto& [sub_device_id, trace_worker_descriptor] : trace_ctx_->descriptors) {
         fmt::println(stderr, "Subdevice {} has {} multicast and {} unicast programs needing go signal, plus completion worker count {}",
