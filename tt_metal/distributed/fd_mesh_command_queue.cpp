@@ -229,8 +229,15 @@ void FDMeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool
         trace_nodes_.push_back(MeshTraceNode{});
         auto& trace_node = trace_nodes_.back();
         for (auto& [device_range, program] : mesh_workload.get_programs()) {
-            trace_node.trace_nodes.push_back(
-                std::pair<MeshCoordinateRange, TraceNode>(device_range, program_dispatch::create_trace_node(program.impl(), mesh_device_)));
+#if defined(TRACY_ENABLE)
+            for (auto& coord : device_range) {
+                trace_node.trace_nodes.push_back(
+                    std::pair<MeshCoordinateRange, TraceNode>(coord, program_dispatch::create_trace_node(program.impl(), mesh_device_)));
+            }
+#else
+            trace_node.trace_nodes.push_back(std::pair<MeshCoordinateRange, TraceNode>(
+                device_range, program_dispatch::create_trace_node(program.impl(), mesh_device_)));
+#endif
         }
         trace_node.multicast_go_signals = mcast_go_signals;
         trace_node.unicast_go_signals = unicast_go_signals;
@@ -993,6 +1000,8 @@ void FDMeshCommandQueue::record_end() {
 #if defined(TRACY_ENABLE)
             for (auto& [is_multicast, original_launch_msg, launch_msg] :
                  cached_program_command_sequence.launch_messages) {
+                auto device = mesh_device_->get_device(range.start_coord());
+                TT_ASSERT(range.start_coord() == range.end_coord());
                 launch_msg->kernel_config.host_assigned_id =
                     tt_metal::detail::EncodePerDeviceProgramID(node.program_runtime_id, device->id());
             }
