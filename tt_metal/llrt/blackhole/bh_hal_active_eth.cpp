@@ -15,7 +15,7 @@
 #include "blackhole/bh_hal_eth_asserts.hpp"
 #include "core_config.h"
 #include "dev_mem_map.h"
-#include "eth_l1_address_map.h"
+#include "eth_fw_api.h"
 #include "hal_types.hpp"
 #include "llrt/hal.hpp"
 #include <umd/device/tt_core_coordinates.h>
@@ -53,6 +53,14 @@ HalCoreInfoType create_active_eth_mem_map() {
     mem_map_bases[static_cast<std::size_t>(HalL1MemAddrType::RETRAIN_FORCE)] = MEM_RETRAIN_FORCE_ADDR;
     mem_map_bases[static_cast<std::size_t>(HalL1MemAddrType::FABRIC_ROUTER_CONFIG)] =
         MEM_ERISC_FABRIC_ROUTER_CONFIG_BASE;
+    mem_map_bases[static_cast<std::size_t>(HalL1MemAddrType::ETH_FW_MAILBOX_MSG)] =
+        MEM_SYSENG_ETH_MAILBOX_ADDR + offsetof(EthFwMailbox, msg);
+    mem_map_bases[static_cast<std::size_t>(HalL1MemAddrType::ETH_FW_MAILBOX_ARG0)] =
+        MEM_SYSENG_ETH_MAILBOX_ADDR + offsetof(EthFwMailbox, arg[0]);
+    mem_map_bases[static_cast<std::size_t>(HalL1MemAddrType::ETH_FW_MAILBOX_ARG1)] =
+        MEM_SYSENG_ETH_MAILBOX_ADDR + offsetof(EthFwMailbox, arg[1]);
+    mem_map_bases[static_cast<std::size_t>(HalL1MemAddrType::ETH_FW_MAILBOX_ARG2)] =
+        MEM_SYSENG_ETH_MAILBOX_ADDR + offsetof(EthFwMailbox, arg[2]);
 
     std::vector<std::uint32_t> mem_map_sizes;
     mem_map_sizes.resize(static_cast<std::size_t>(HalL1MemAddrType::COUNT));
@@ -76,12 +84,15 @@ HalCoreInfoType create_active_eth_mem_map() {
     mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::RETRAIN_FORCE)] = sizeof(uint32_t);
     mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::FABRIC_ROUTER_CONFIG)] =
         MEM_ERISC_FABRIC_ROUTER_CONFIG_SIZE;
+    mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::ETH_FW_MAILBOX_MSG)] = sizeof(uint32_t);
+    mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::ETH_FW_MAILBOX_ARG0)] = sizeof(uint32_t);
+    mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::ETH_FW_MAILBOX_ARG1)] = sizeof(uint32_t);
+    mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::ETH_FW_MAILBOX_ARG2)] = sizeof(uint32_t);
 
-    std::vector<std::vector<HalJitBuildConfig>> processor_classes(NumEthDispatchClasses - 1);
-    std::vector<HalJitBuildConfig> processor_types(1);
+    std::vector<std::vector<HalJitBuildConfig>> processor_classes(NumEthDispatchClasses);
+    std::vector<HalJitBuildConfig> processor_types(MaxDMProcessorsPerCoreType);
     for (std::size_t processor_class_idx = 0; processor_class_idx < processor_classes.size(); processor_class_idx++) {
-        // BH active ethernet runs idle erisc FW on the second ethernet
-        processor_types[0] = HalJitBuildConfig{
+        processor_types[static_cast<std::size_t>(EthProcessorTypes::DM0)] = HalJitBuildConfig{
             .fw_base_addr = MEM_AERISC_FIRMWARE_BASE,
             .local_init_addr = MEM_AERISC_INIT_LOCAL_L1_BASE_SCRATCH,
             .fw_launch_addr = SUBORDINATE_IERISC_RESET_PC,
@@ -89,6 +100,15 @@ HalCoreInfoType create_active_eth_mem_map() {
         };
         processor_classes[processor_class_idx] = processor_types;
     }
+
+    std::vector<uint32_t> fw_mailbox_addr(static_cast<std::size_t>(FWMailboxMsg::COUNT), 0);
+    fw_mailbox_addr[utils::underlying_type<FWMailboxMsg>(FWMailboxMsg::ETH_MSG_CALL)] = MEM_SYSENG_ETH_MSG_CALL;
+    fw_mailbox_addr[utils::underlying_type<FWMailboxMsg>(FWMailboxMsg::ETH_MSG_DONE)] = MEM_SYSENG_ETH_MSG_DONE;
+    fw_mailbox_addr[utils::underlying_type<FWMailboxMsg>(FWMailboxMsg::ETH_MSG_LINK_STATUS_CHECK)] =
+        MEM_SYSENG_ETH_MSG_LINK_STATUS_CHECK;
+    fw_mailbox_addr[utils::underlying_type<FWMailboxMsg>(FWMailboxMsg::ETH_MSG_RELEASE_CORE)] =
+        MEM_SYSENG_ETH_MSG_RELEASE_CORE;
+
     // TODO: Review if this should  be 2 (the number of eth processors)
     // Hardcode to 1 to keep size as before
     static_assert(llrt_common::k_SingleProcessorMailboxSize<EthProcessorTypes> <= MEM_AERISC_MAILBOX_SIZE);
@@ -98,6 +118,7 @@ HalCoreInfoType create_active_eth_mem_map() {
         processor_classes,
         mem_map_bases,
         mem_map_sizes,
+        fw_mailbox_addr,
         false /*supports_cbs*/,
         false /*supports_receiving_multicast_cmds*/};
 }
