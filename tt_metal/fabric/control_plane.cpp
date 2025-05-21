@@ -332,6 +332,16 @@ std::vector<chip_id_t> ControlPlane::get_mesh_physical_chip_ids(
     return physical_chip_ids;
 }
 
+template <typename T>
+std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
+    os << "[";
+    for (const auto& elem : vec) {
+        os << elem << ", ";
+    }
+    os << "]";
+    return os;
+}
+
 void ControlPlane::initialize_from_mesh_graph_desc_file(const std::string& mesh_graph_desc_file) {
     chip_id_t nw_chip_physical_id;
     std::uint32_t mesh_ns_size, mesh_ew_size;
@@ -369,10 +379,13 @@ void ControlPlane::initialize_from_mesh_graph_desc_file(const std::string& mesh_
         mesh_ns_size = routing_table_generator_->get_mesh_ns_size(/*mesh_id=*/0);
         mesh_ew_size = routing_table_generator_->get_mesh_ew_size(/*mesh_id=*/0);
         // Main board
+        std::cout << "brosko filling up 1 logical_mesh_chip_id_to_physical_chip_id_mapping_" << std::endl;
         this->logical_mesh_chip_id_to_physical_chip_id_mapping_.push_back(
             this->get_mesh_physical_chip_ids(mesh_ns_size, mesh_ew_size, nw_chip_physical_id));
         this->validate_mesh_connections(0);
+        std::cout << logical_mesh_chip_id_to_physical_chip_id_mapping_ << std::endl;
     } else if (mesh_graph_desc_filename == "t3k_split_mesh_graph_descriptor.yaml") {
+        std::cout << "brosko filling up 2 logical_mesh_chip_id_to_physical_chip_id_mapping_" << std::endl;
         this->logical_mesh_chip_id_to_physical_chip_id_mapping_.push_back({
             this->get_physical_chip_id_from_eth_coord({0, 0, 0, 0, 0}),
             this->get_physical_chip_id_from_eth_coord({0, 1, 0, 0, 0}),
@@ -385,18 +398,20 @@ void ControlPlane::initialize_from_mesh_graph_desc_file(const std::string& mesh_
             this->get_physical_chip_id_from_eth_coord({0, 2, 1, 0, 0}),
             this->get_physical_chip_id_from_eth_coord({0, 3, 1, 0, 0}),
         });
+        std::cout << logical_mesh_chip_id_to_physical_chip_id_mapping_ << std::endl;
         this->validate_mesh_connections(0);
         this->validate_mesh_connections(1);
-    } else if (
-        mesh_graph_desc_filename == "t3k_mesh_graph_descriptor.yaml" ||
-        mesh_graph_desc_filename == "n150_mesh_graph_descriptor.yaml" ||
-        mesh_graph_desc_filename == "n300_mesh_graph_descriptor.yaml") {
+    } else if (std::cout << "brosko filling up 3 logical_mesh_chip_id_to_physical_chip_id_mapping_" << std::endl;
+               mesh_graph_desc_filename == "t3k_mesh_graph_descriptor.yaml" ||
+               mesh_graph_desc_filename == "n150_mesh_graph_descriptor.yaml" ||
+               mesh_graph_desc_filename == "n300_mesh_graph_descriptor.yaml") {
         nw_chip_physical_id = this->get_physical_chip_id_from_eth_coord({0, 0, 0, 0, 0});
         mesh_ns_size = routing_table_generator_->get_mesh_ns_size(/*mesh_id=*/0);
         mesh_ew_size = routing_table_generator_->get_mesh_ew_size(/*mesh_id=*/0);
         // Main board
         this->logical_mesh_chip_id_to_physical_chip_id_mapping_.push_back(
             this->get_mesh_physical_chip_ids(mesh_ns_size, mesh_ew_size, nw_chip_physical_id));
+        std::cout << logical_mesh_chip_id_to_physical_chip_id_mapping_ << std::endl;
     } else {
         TT_THROW("Unsupported mesh graph descriptor file {}", mesh_graph_desc_file);
     }
@@ -727,11 +742,13 @@ void ControlPlane::write_routing_tables_to_chip(mesh_id_t mesh_id, chip_id_t chi
 }
 
 std::pair<mesh_id_t, chip_id_t> ControlPlane::get_mesh_chip_id_from_physical_chip_id(chip_id_t physical_chip_id) const {
+    std::cout << "brosko ControlPlane::get_mesh_chip_id_from_physical_chip_id for " << physical_chip_id << std::endl;
     for (mesh_id_t mesh_id = 0; mesh_id < logical_mesh_chip_id_to_physical_chip_id_mapping_.size(); ++mesh_id) {
         for (chip_id_t logical_mesh_chip_id = 0;
              logical_mesh_chip_id < logical_mesh_chip_id_to_physical_chip_id_mapping_[mesh_id].size();
              ++logical_mesh_chip_id) {
             if (logical_mesh_chip_id_to_physical_chip_id_mapping_[mesh_id][logical_mesh_chip_id] == physical_chip_id) {
+                std::cout << "brosko returning " << logical_mesh_chip_id << " for " << physical_chip_id << std::endl;
                 return {mesh_id, logical_mesh_chip_id};
             }
         }
