@@ -99,6 +99,7 @@ private:
         std::vector<std::pair<MeshCoordinateRange, TraceNode>> trace_nodes;
         bool multicast_go_signals{false};
         bool unicast_go_signals{false};
+        SubDeviceId sub_device_id;
     };
 
     // The following data structures are only popiulated when the MeshCQ is being used to trace workloads
