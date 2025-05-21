@@ -98,13 +98,18 @@ template <
     bool is_block_sharded,
     bool is_width_sharded,
     bool is_col_major,
-    bool main_thread>
+    bool main_thread,
+    bool padding_exists>
 void copy_sticks_async_from_temp(
     const tt_l1_ptr uint16_t* config_data,
     const uint16_t my_noc_x,
     const uint16_t my_noc_y,
     const uint32_t temp_base_l1_addr,
     const uint32_t out_base_l1_addr) {
+    if constexpr (!main_thread && padding_exists) {
+        return;
+    }
+
     int i = 0;
     int length = config_data[2];
     int remote_entry_count = 0;
@@ -126,7 +131,7 @@ void copy_sticks_async_from_temp(
             uint16_t nsticks = config_data[i + j + 2];
             uint32_t size = nsticks * stick_nbytes;
 
-            if (remote_entry_count % 2 != main_thread) {
+            if (remote_entry_count % 2 != main_thread || main_thread && padding_exists) {
                 uint16_t dst_local_idx = config_data[i + j + 1];
                 uint32_t dst_offset = dst_local_idx * stick_nbytes;
                 // DPRINT << "    dst_local_idx: " << dst_local_idx << ", nsticks: " << nsticks
@@ -279,40 +284,41 @@ steps:
 
 void kernel_main() {
     constexpr uint32_t main_thread = get_compile_time_arg_val(0);
-    constexpr uint32_t padding_config_cb_id = get_compile_time_arg_val(1);
-    constexpr uint32_t local_config_cb_id = get_compile_time_arg_val(2);
-    constexpr uint32_t remote_config_cb_id = get_compile_time_arg_val(3);
-    constexpr uint32_t remote_temp_cb_id = get_compile_time_arg_val(4);  // temp buffer for in place halo
-    constexpr uint32_t local_temp_cb_id = get_compile_time_arg_val(5);   // temp buffer for in place halo
-    constexpr uint32_t src_cb_id = get_compile_time_arg_val(6);          // the innput shard buffer
-    constexpr uint32_t in_cb_id = get_compile_time_arg_val(7);           // either the input shard or untilize output
-    constexpr uint32_t out_cb_id = get_compile_time_arg_val(8);          // output shard with padding and halo goes here
-    constexpr uint32_t pad_cb_id = get_compile_time_arg_val(9);          // cb for const pad val buffer
-    constexpr uint32_t pad_val_u32 = get_compile_time_arg_val(10);       // pad value to fill pad buffer with
-    constexpr uint32_t in_npages = get_compile_time_arg_val(11);         // number of sticks
-    constexpr uint32_t stick_nbytes = get_compile_time_arg_val(12);      // stick size in bytes (post untilize)
-    constexpr uint32_t is_block_sharded = get_compile_time_arg_val(13);
-    constexpr bool is_col_major = get_compile_time_arg_val(14) == 1;
-    constexpr uint32_t is_width_sharded = get_compile_time_arg_val(15);
-    constexpr uint32_t input_aligned_page_size = get_compile_time_arg_val(16);
-    constexpr uint32_t remote_read = get_compile_time_arg_val(17);  // Unused parameter
-    constexpr uint32_t num_active_cores = get_compile_time_arg_val(18);
-    constexpr uint32_t noc_TL_x = get_compile_time_arg_val(19);
-    constexpr uint32_t noc_TL_y = get_compile_time_arg_val(20);
-    constexpr uint32_t noc_BR_x = get_compile_time_arg_val(21);
-    constexpr uint32_t noc_BR_y = get_compile_time_arg_val(22);
-    constexpr uint32_t rectangular_x = get_compile_time_arg_val(23);
-    constexpr uint32_t rectangular_y = get_compile_time_arg_val(24);
-    constexpr uint32_t last_active_x = get_compile_time_arg_val(25);
-    constexpr uint32_t semaphore_id = get_compile_time_arg_val(26);
-    constexpr uint32_t in_out_buffer_start_delta = get_compile_time_arg_val(27);
+    constexpr uint32_t padding_exists = get_compile_time_arg_val(1);
+    constexpr uint32_t padding_config_cb_id = get_compile_time_arg_val(2);
+    constexpr uint32_t local_config_cb_id = get_compile_time_arg_val(3);
+    constexpr uint32_t remote_config_cb_id = get_compile_time_arg_val(4);
+    constexpr uint32_t remote_temp_cb_id = get_compile_time_arg_val(5);  // temp buffer for in place halo
+    constexpr uint32_t local_temp_cb_id = get_compile_time_arg_val(6);   // temp buffer for in place halo
+    constexpr uint32_t src_cb_id = get_compile_time_arg_val(7);          // the innput shard buffer
+    constexpr uint32_t in_cb_id = get_compile_time_arg_val(8);           // either the input shard or untilize output
+    constexpr uint32_t out_cb_id = get_compile_time_arg_val(9);          // output shard with padding and halo goes here
+    constexpr uint32_t pad_cb_id = get_compile_time_arg_val(10);         // cb for const pad val buffer
+    constexpr uint32_t pad_val_u32 = get_compile_time_arg_val(11);       // pad value to fill pad buffer with
+    constexpr uint32_t in_npages = get_compile_time_arg_val(12);         // number of sticks
+    constexpr uint32_t stick_nbytes = get_compile_time_arg_val(13);      // stick size in bytes (post untilize)
+    constexpr uint32_t is_block_sharded = get_compile_time_arg_val(14);
+    constexpr bool is_col_major = get_compile_time_arg_val(15) == 1;
+    constexpr uint32_t is_width_sharded = get_compile_time_arg_val(16);
+    constexpr uint32_t input_aligned_page_size = get_compile_time_arg_val(17);
+    constexpr uint32_t remote_read = get_compile_time_arg_val(18);  // Unused parameter
+    constexpr uint32_t num_active_cores = get_compile_time_arg_val(19);
+    constexpr uint32_t noc_TL_x = get_compile_time_arg_val(20);
+    constexpr uint32_t noc_TL_y = get_compile_time_arg_val(21);
+    constexpr uint32_t noc_BR_x = get_compile_time_arg_val(22);
+    constexpr uint32_t noc_BR_y = get_compile_time_arg_val(23);
+    constexpr uint32_t rectangular_x = get_compile_time_arg_val(24);
+    constexpr uint32_t rectangular_y = get_compile_time_arg_val(25);
+    constexpr uint32_t last_active_x = get_compile_time_arg_val(26);
+    constexpr uint32_t semaphore_id = get_compile_time_arg_val(27);
+    constexpr uint32_t in_out_buffer_start_delta = get_compile_time_arg_val(28);
     constexpr uint32_t untilize_temp_cb_id =
-        get_compile_time_arg_val(28);  // temp buffer for in place untilize with wide tensors
-    constexpr uint32_t tile_cols = get_compile_time_arg_val(29);
-    constexpr uint32_t tile_rows = get_compile_time_arg_val(30);
-    constexpr uint32_t half_max_bandwidth_stick_size = get_compile_time_arg_val(31);
-    constexpr uint32_t sync_cb_id1 = get_compile_time_arg_val(32);
-    constexpr uint32_t sync_cb_id2 = get_compile_time_arg_val(33);
+        get_compile_time_arg_val(29);  // temp buffer for in place untilize with wide tensors
+    constexpr uint32_t tile_cols = get_compile_time_arg_val(30);
+    constexpr uint32_t tile_rows = get_compile_time_arg_val(31);
+    constexpr uint32_t half_max_bandwidth_stick_size = get_compile_time_arg_val(32);
+    constexpr uint32_t sync_cb_id1 = get_compile_time_arg_val(33);
+    constexpr uint32_t sync_cb_id2 = get_compile_time_arg_val(34);
 
     constexpr uint32_t elem_nbytes = sizeof(uint16_t);
     constexpr uint16_t pad_core_id = 0xFFFF;
@@ -420,7 +426,7 @@ void kernel_main() {
     noc_semaphore_wait(semaphore_noc_addr_ptr, 2 * num_active_cores);
 
     // insert padding
-    if constexpr (!main_thread) {
+    if constexpr (!main_thread && padding_exists) {
         // construct the pad stick in its buffer
         cb_reserve_back(pad_cb_id, 1);
         const uint16_t pad_val = pad_val_u32;
@@ -452,7 +458,8 @@ void kernel_main() {
         is_block_sharded,
         is_width_sharded,
         is_col_major,
-        main_thread>(remote_config_data, my_noc_x, my_noc_y, temp_base_l1_addr, out_base_l1_addr);
+        main_thread,
+        padding_exists>(remote_config_data, my_noc_x, my_noc_y, temp_base_l1_addr, out_base_l1_addr);
 
     noc_async_read_barrier();
     noc_async_write_barrier();

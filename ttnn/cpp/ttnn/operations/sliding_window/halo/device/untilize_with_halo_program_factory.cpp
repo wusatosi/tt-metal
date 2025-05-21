@@ -316,6 +316,7 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core(
     Program& program,
     const Tensor& input_tensor,
     const uint32_t pad_val,
+    const bool padding_exists,
     const uint32_t ncores_nhw,
     const uint32_t ncores_c,
     const uint32_t max_out_nsticks_per_core,
@@ -572,11 +573,13 @@ operation::ProgramWithCallbacks inplace_untilize_with_halo_multi_core(
     int32_t sync_cb_id2 = cb_indices.get_next_cb_id();
     auto sync_cb2 = create_circular_buffer(program, all_cores, sync_cb_id2, tt::DataFormat::UInt16, 1, 2);
 
-    // printf("num_active_cores = %d\n", num_active_cores);
+    printf("num_active_cores = %d\n", num_active_cores);
+    printf("padding_exists = %d\n", padding_exists);
 
     // reader kernel
     std::vector<uint32_t> reader_ct_args = {
         true,  // main thread
+        padding_exists,
         cb_indices.padding_config_cb_id,
         cb_indices.local_config_cb_id,
         cb_indices.remote_config_cb_id,
