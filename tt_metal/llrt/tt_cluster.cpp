@@ -240,7 +240,7 @@ void Cluster::generate_cluster_descriptor() {
 
     if (this->arch_ == tt::ARCH::WORMHOLE_B0 and not this->is_galaxy_cluster()) {
         // Give UMD Limited access to eth cores 8 and 9 for Non-Galaxy Wormhole Clusters
-        for (const auto& mmio_device_id : this->driver_->get_target_mmio_device_ids()) {
+        for (const auto& mmio_device_id : driver_->get_target_mmio_device_ids()) {
             driver_->configure_active_ethernet_cores_for_mmio_device(mmio_device_id, {});
         }
     }
@@ -371,7 +371,7 @@ void Cluster::start_driver(tt_device_params &device_params) const {
     TT_FATAL(this->sdesc_per_chip_.size(), "Descriptor must be loaded. Try open_driver()");
 
     if (this->target_type_ == TargetDevice::Silicon && device_params.init_device) {
-        for (const auto mmio_device_id : this->driver_->get_target_mmio_device_ids()) {
+        for (const auto& mmio_device_id : driver_->get_target_mmio_device_ids()) {
             ll_api::configure_static_tlbs(
                 this->arch_, mmio_device_id, this->get_soc_desc(mmio_device_id), *this->driver_);
         }
@@ -987,7 +987,6 @@ void Cluster::disable_ethernet_cores_with_retrain() {
 void Cluster::reserve_ethernet_cores_for_tunneling() {
     const char *TT_METAL_SLOW_DISPATCH_MODE = std::getenv("TT_METAL_SLOW_DISPATCH_MODE");
     for (const auto& [assoc_mmio_device, devices] : this->cluster_desc_->get_chips_grouped_by_closest_mmio()) {
-        std::cout << "assoc_mmio_device: " << assoc_mmio_device << " devices size " << devices.size() << std::endl;
         for (const auto &chip_id : devices) {
             if (this->device_eth_routing_info_.find(chip_id) == this->device_eth_routing_info_.end()) {
                 this->device_eth_routing_info_.insert({chip_id, {}});
