@@ -26,7 +26,8 @@ struct TraceWorkerDescriptor {
     uint32_t num_traced_programs_needing_go_signal_unicast = 0;
     bool operator==(const TraceWorkerDescriptor& other) const {
         return num_completion_worker_cores == other.num_completion_worker_cores &&
-               num_traced_programs_needing_go_signal_multicast == other.num_traced_programs_needing_go_signal_multicast &&
+               num_traced_programs_needing_go_signal_multicast ==
+                   other.num_traced_programs_needing_go_signal_multicast &&
                num_traced_programs_needing_go_signal_unicast == other.num_traced_programs_needing_go_signal_unicast;
     }
 };

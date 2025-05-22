@@ -140,11 +140,11 @@ TEST_F(MeshTraceTestSuite, Sanity) {
         trace_ids.push_back(trace_id);
     }
 
-  //  for (int i = 0; i < num_iters; i++) {
+    //  for (int i = 0; i < num_iters; i++) {
 
-        for (int trace_idx = 0; trace_idx < num_traces; trace_idx++) {
-            ReplayTrace(mesh_device_.get(), 0, trace_ids[trace_idx], false);
-        }
+    for (int trace_idx = 0; trace_idx < num_traces; trace_idx++) {
+        ReplayTrace(mesh_device_.get(), 0, trace_ids[trace_idx], false);
+    }
     //}
     Finish(mesh_device_->mesh_command_queue());
 
@@ -488,7 +488,6 @@ TEST_F(MeshTraceTestSuite, DataCopyOnSubDevicesTrace) {
         fmt::println(stderr, "Before replay trace {}", i);
         ReplayTrace(mesh_device_.get(), 0, trace_id, false);
         fmt::println(stderr, "After replay trace {}", i);
-
 
         std::vector<uint32_t> src_vec(input_buf->size() / sizeof(uint32_t));
         std::iota(src_vec.begin(), src_vec.end(), i);

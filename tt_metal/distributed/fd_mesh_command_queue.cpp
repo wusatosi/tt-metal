@@ -231,8 +231,8 @@ void FDMeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool
         for (auto& [device_range, program] : mesh_workload.get_programs()) {
 #if defined(TRACY_ENABLE)
             for (auto& coord : device_range) {
-                trace_node.trace_nodes.push_back(
-                    std::pair<MeshCoordinateRange, TraceNode>(coord, program_dispatch::create_trace_node(program.impl(), mesh_device_)));
+                trace_node.trace_nodes.push_back(std::pair<MeshCoordinateRange, TraceNode>(
+                    coord, program_dispatch::create_trace_node(program.impl(), mesh_device_)));
             }
 #else
             trace_node.trace_nodes.push_back(std::pair<MeshCoordinateRange, TraceNode>(
@@ -244,7 +244,6 @@ void FDMeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool
         trace_node.sub_device_id = sub_device_id;
         return;
     }
-
 
     program_dispatch::ProgramDispatchMetadata dispatch_metadata;
     uint32_t expected_num_workers_completed = sysmem_manager.get_bypass_mode()
@@ -806,11 +805,11 @@ void FDMeshCommandQueue::record_begin(const MeshTraceId& trace_id, const std::sh
 void FDMeshCommandQueue::record_end() {
     const auto& hal = MetalContext::instance().hal();
 
-
-    // At the beginning of the trace, expected_num_workers_completed are 0 on all devices on for each sub-device in the trace. launch_msg_rd_ptr will also be 0 for all core-types used on each subdevice in the trace.
-    // At the end of the trace, everthing should be the same as when the trace started.
-    // While running the traces, launch_msg_rd_ptr and expected_num_workers_completed may be different on different devices, unlike in normal program execution.
-    #if 1
+// At the beginning of the trace, expected_num_workers_completed are 0 on all devices on for each sub-device in the
+// trace. launch_msg_rd_ptr will also be 0 for all core-types used on each subdevice in the trace. At the end of the
+// trace, everthing should be the same as when the trace started. While running the traces, launch_msg_rd_ptr and
+// expected_num_workers_completed may be different on different devices, unlike in normal program execution.
+#if 1
     std::vector<MeshCoordinateRange> unused_range{MeshCoordinateRange{mesh_device_->shape()}};
     for (auto& trace_node : trace_nodes_) {
         for (auto& [device_range, program] : trace_node.trace_nodes) {
@@ -826,26 +825,30 @@ void FDMeshCommandQueue::record_end() {
             }
             if (device_ranges_to_invalidate.size() > 0) {
                 uint32_t remove_index = 0;
-                unused_range.erase(std::remove_if(unused_range.begin(), unused_range.end(), [&](const MeshCoordinateRange& range) {
-                    if (remove_index >= device_ranges_to_invalidate.size()) {
-                        return false;
-                    }
-                    uint32_t idx = &range - &*unused_range.begin();
-                    if (idx == device_ranges_to_invalidate[remove_index]) {
-                        remove_index++;
-                        return true;
-                    }
-                    return false;
-                }), unused_range.end());
+                unused_range.erase(
+                    std::remove_if(
+                        unused_range.begin(),
+                        unused_range.end(),
+                        [&](const MeshCoordinateRange& range) {
+                            if (remove_index >= device_ranges_to_invalidate.size()) {
+                                return false;
+                            }
+                            uint32_t idx = &range - &*unused_range.begin();
+                            if (idx == device_ranges_to_invalidate[remove_index]) {
+                                remove_index++;
+                                return true;
+                            }
+                            return false;
+                        }),
+                    unused_range.end());
             }
         }
     }
-    #endif
+#endif
 
     std::vector<MeshCoordinateRange> device_ranges;
     for (auto& trace_node : trace_nodes_) {
         for (auto& [device_range, program] : trace_node.trace_nodes) {
-
             bool intersection_found = false;
             std::vector<MeshCoordinateRange> device_ranges_to_invalidate;
             for (auto& existing_range : device_ranges) {
@@ -866,8 +869,8 @@ void FDMeshCommandQueue::record_end() {
             // TODO handle partial non intersection with anything.
             if (intersection_found) {
                 for (auto& device_range : device_ranges_to_invalidate) {
-                    device_ranges.erase(std::remove(device_ranges.begin(), device_ranges.end(), device_range),
-                                        device_ranges.end());
+                    device_ranges.erase(
+                        std::remove(device_ranges.begin(), device_ranges.end(), device_range), device_ranges.end());
                 }
             } else {
                 device_ranges.push_back(device_range);
@@ -884,10 +887,9 @@ void FDMeshCommandQueue::record_end() {
     }
     size_t max_trace_size = 0;
     std::set<SubDeviceId> sub_device_ids;
-    //bool uses_ethernet_cores = false;
+    // bool uses_ethernet_cores = false;
     std::optional<std::unordered_map<SubDeviceId, TraceWorkerDescriptor>> overall_trace_worker_descriptors;
     for (const auto& range : device_ranges) {
-
         std::vector<TraceNode> trace_nodes;
         struct UnusedNodeData {
             uint32_t unused_nodes_both_multicast_and_unicast = 0;
@@ -919,7 +921,8 @@ void FDMeshCommandQueue::record_end() {
         }
         uint32_t worker_ringbuffer_start =
             hal.get_dev_addr(HalProgrammableCoreType::TENSIX, tt::tt_metal::HalL1MemAddrType::KERNEL_CONFIG);
-        uint32_t worker_ringbuffer_size = mesh_device_->allocator()->get_config().l1_unreserved_base - worker_ringbuffer_start;
+        uint32_t worker_ringbuffer_size =
+            mesh_device_->allocator()->get_config().l1_unreserved_base - worker_ringbuffer_start;
         SimpleTraceAllocator allocator{
             worker_ringbuffer_start,
             worker_ringbuffer_size,
@@ -933,20 +936,34 @@ void FDMeshCommandQueue::record_end() {
         }
         std::unordered_map<SubDeviceId, TraceWorkerDescriptor> trace_worker_descriptors;
         for (uint32_t sub_device_id = 0; sub_device_id < mesh_device_->num_sub_devices(); sub_device_id++) {
-            for (uint32_t i = 0; i < unused_nodes[sub_device_id].unused_nodes_both_multicast_and_unicast + unused_nodes[sub_device_id].unused_nodes_multicast  + unused_nodes[sub_device_id].unused_nodes_unicast; i++) {
-                bool multicast = i < unused_nodes[sub_device_id].unused_nodes_both_multicast_and_unicast + unused_nodes[sub_device_id].unused_nodes_multicast;
+            for (uint32_t i = 0; i < unused_nodes[sub_device_id].unused_nodes_both_multicast_and_unicast +
+                                         unused_nodes[sub_device_id].unused_nodes_multicast +
+                                         unused_nodes[sub_device_id].unused_nodes_unicast;
+                 i++) {
+                bool multicast = i < unused_nodes[sub_device_id].unused_nodes_both_multicast_and_unicast +
+                                         unused_nodes[sub_device_id].unused_nodes_multicast;
                 bool unicast = i < unused_nodes[sub_device_id].unused_nodes_both_multicast_and_unicast || !multicast;
                 auto& trace_worker_descriptor = trace_worker_descriptors[SubDeviceId{sub_device_id}];
-                write_go_signal(this->id_, this->mesh_device_, SubDeviceId{sub_device_id}, sysmem_manager_for_trace, trace_worker_descriptor.num_completion_worker_cores, this->virtual_program_dispatch_core(), multicast, unicast);
+                write_go_signal(
+                    this->id_,
+                    this->mesh_device_,
+                    SubDeviceId{sub_device_id},
+                    sysmem_manager_for_trace,
+                    trace_worker_descriptor.num_completion_worker_cores,
+                    this->virtual_program_dispatch_core(),
+                    multicast,
+                    unicast);
 
                 auto& worker_launch_message_buffer_state = (*this->worker_launch_message_buffer_state_)[sub_device_id];
                 if (multicast) {
-                    trace_worker_descriptor.num_completion_worker_cores += mesh_device_->num_worker_cores(HalProgrammableCoreType::TENSIX, SubDeviceId{sub_device_id});
+                    trace_worker_descriptor.num_completion_worker_cores +=
+                        mesh_device_->num_worker_cores(HalProgrammableCoreType::TENSIX, SubDeviceId{sub_device_id});
                     worker_launch_message_buffer_state.inc_mcast_wptr(1);
                     trace_worker_descriptor.num_traced_programs_needing_go_signal_multicast++;
                 }
                 if (unicast) {
-                    trace_worker_descriptor.num_completion_worker_cores+= mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, SubDeviceId{sub_device_id});
+                    trace_worker_descriptor.num_completion_worker_cores +=
+                        mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, SubDeviceId{sub_device_id});
                     worker_launch_message_buffer_state.inc_unicast_wptr(1);
                     trace_worker_descriptor.num_traced_programs_needing_go_signal_unicast++;
                 }
@@ -954,7 +971,8 @@ void FDMeshCommandQueue::record_end() {
         }
         DispatchArray<uint32_t> starting_workers_completed{};
         for (uint32_t sub_device_id = 0; sub_device_id < mesh_device_->num_sub_devices(); sub_device_id++) {
-            starting_workers_completed[sub_device_id] = trace_worker_descriptors[SubDeviceId{sub_device_id}].num_completion_worker_cores;
+            starting_workers_completed[sub_device_id] =
+                trace_worker_descriptors[SubDeviceId{sub_device_id}].num_completion_worker_cores;
         }
 
         for (auto& node : trace_nodes) {
@@ -970,14 +988,14 @@ void FDMeshCommandQueue::record_end() {
             }
             if (program.runs_on_noc_unicast_only_cores()) {
                 num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
-                //uses_ethernet_cores = true;
+                // uses_ethernet_cores = true;
             }
-            #if 0
+#if 0
             fmt::println(stderr, "Enqueueing program on subdevice {} with expected workers completed {} and num wokers {}",
                          *sub_device_id,
                          expected_workers_completed[*sub_device_id],
                          num_workers);
-                         #endif
+#endif
 
             // Access the program dispatch-command cache
             uint64_t command_hash = *mesh_device_->get_active_sub_device_manager_id();
@@ -991,8 +1009,8 @@ void FDMeshCommandQueue::record_end() {
                 worker_launch_message_buffer_state.get_mcast_wptr(),
                 worker_launch_message_buffer_state.get_unicast_wptr(),
                 trace_worker_descriptors[sub_device_id].num_completion_worker_cores,
- 
- //expected_workers_completed[*sub_device_id],
+
+                // expected_workers_completed[*sub_device_id],
                 this->virtual_program_dispatch_core(),
                 MetalContext::instance().get_dispatch_core_manager().get_dispatch_core_type(),
                 sub_device_id,
@@ -1028,14 +1046,11 @@ void FDMeshCommandQueue::record_end() {
                 trace_worker_descriptors[sub_device_id].num_traced_programs_needing_go_signal_unicast++;
             }
             trace_worker_descriptors[sub_device_id].num_completion_worker_cores += num_workers;
- //           expected_workers_completed[*sub_device_id] += num_workers;
+            //           expected_workers_completed[*sub_device_id] += num_workers;
         }
 
         auto& bypass_data = sysmem_manager_for_trace.get_bypass_data();
-        bypass_data.insert(
-            bypass_data.end(),
-            exec_buf_end.begin(),
-            exec_buf_end.end());
+        bypass_data.insert(bypass_data.end(), exec_buf_end.begin(), exec_buf_end.end());
 
         max_trace_size = std::max(max_trace_size, bypass_data.size());
 
@@ -1059,20 +1074,22 @@ void FDMeshCommandQueue::record_end() {
     }
 
     for (auto& [sub_device_id, trace_worker_descriptor] : trace_ctx_->descriptors) {
-        fmt::println(stderr, "Subdevice {} has {} multicast and {} unicast programs needing go signal, plus completion worker count {}",
-                     *sub_device_id,
-                     trace_worker_descriptor.num_traced_programs_needing_go_signal_multicast,
-                     trace_worker_descriptor.num_traced_programs_needing_go_signal_unicast,
-                    trace_worker_descriptor.num_completion_worker_cores);
+        fmt::println(
+            stderr,
+            "Subdevice {} has {} multicast and {} unicast programs needing go signal, plus completion worker count {}",
+            *sub_device_id,
+            trace_worker_descriptor.num_traced_programs_needing_go_signal_multicast,
+            trace_worker_descriptor.num_traced_programs_needing_go_signal_unicast,
+            trace_worker_descriptor.num_completion_worker_cores);
         trace_ctx_->sub_device_ids.push_back(sub_device_id);
     }
-    #if 0
+#if 0
     for (auto& sub_device_id : sub_device_ids) {
         fmt::println(stderr, "Adding subdevice {} to trace context", *sub_device_id);
         trace_ctx_->sub_device_ids.push_back(sub_device_id);
         trace_ctx_->descriptors[sub_device_id] = TraceWorkerDescriptor{.num_traced_programs_needing_go_signal_multicast = launch_msg_buffer_num_entries, .num_traced_programs_needing_go_signal_unicast= uses_ethernet_cores ? launch_msg_buffer_num_entries : 0};
     }
-    #endif
+#endif
 
     trace_nodes_.clear();
 
