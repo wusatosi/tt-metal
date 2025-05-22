@@ -917,13 +917,14 @@ void FDMeshCommandQueue::record_end() {
     // bool uses_ethernet_cores = false;
     std::optional<std::unordered_map<SubDeviceId, TraceWorkerDescriptor>> overall_trace_worker_descriptors;
     for (const auto& range : device_ranges) {
-        std::vector<TraceNode> trace_nodes;
+        std::vector<TraceNode*> trace_nodes;
         struct UnusedNodeData {
             uint32_t unused_nodes_both_multicast_and_unicast = 0;
             uint32_t unused_nodes_multicast = 0;
             uint32_t unused_nodes_unicast = 0;
         };
         DispatchArray<UnusedNodeData> unused_nodes;
+
         for (auto& node : trace_nodes_) {
             bool used = false;
             for (auto& [device_range, node] : node.trace_nodes) {
@@ -931,7 +932,7 @@ void FDMeshCommandQueue::record_end() {
                     continue;
                 }
                 TT_ASSERT(range == *device_range.intersection(range));
-                trace_nodes.push_back(node);
+                trace_nodes.push_back(&node);
                 used = true;
                 break;
             }
@@ -1002,7 +1003,8 @@ void FDMeshCommandQueue::record_end() {
                 trace_worker_descriptors[SubDeviceId{sub_device_id}].num_completion_worker_cores;
         }
 
-        for (auto& node : trace_nodes) {
+        for (auto* node_ptr : trace_nodes) {
+            auto& node = *node_ptr;
             auto sub_device_id = node.sub_device_id;
             auto& program = *node.program;
             sub_device_ids.insert(sub_device_id);
