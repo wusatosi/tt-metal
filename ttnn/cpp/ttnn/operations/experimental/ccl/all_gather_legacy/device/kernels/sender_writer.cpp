@@ -1,0 +1,128 @@
+#include "cpp/ttnn/operations/data_movement/common/kernels/common.hpp"
+#include "dataflow_api.h"
+#include <tt-metalium/buffer_types.hpp>
+#include "tt_metal/fabric/hw/inc/edm_fabric/fabric_connection_manager.hpp"
+#include "cpp/ttnn/operations/ccl/common/interpreter_backends/kernel_common/noc_addr.hpp"
+#include "minimal_ccl_common.hpp"
+#include <cstdint>
+#include <utility>
+
+FORCE_INLINE void send_packet(
+    uint64_t noc0_dest_noc_addr,
+    volatile PACKET_HEADER_TYPE* pkt_hdr_forward,
+    FabricConnectionManager& fabric_connection,
+    size_t& l1_read_addr,
+    uint32_t payload_size_bytes,
+    uint32_t step) {
+    const auto [dest_noc_xy, dest_addr] = get_noc_address_components(noc0_dest_noc_addr);
+    const size_t payload_l1_address = l1_read_addr;
+
+    pkt_hdr_forward->to_noc_unicast_write(
+        tt::tt_fabric::NocUnicastCommandHeader{noc0_dest_noc_addr}, payload_size_bytes);
+    pkt_hdr_backward->to_noc_unicast_write(
+        tt::tt_fabric::NocUnicastCommandHeader{noc0_dest_noc_addr}, payload_size_bytes);
+
+    if (step == 0) {
+        noc_async_write(
+            payload_l1_address, safe_get_noc_addr(dest_noc_xy.x, dest_noc_xy.y, dest_addr), payload_size_bytes);
+    }
+    if (fabric_connection.has_forward_connection()) {
+        fabric_connection.get_forward_connection().wait_for_empty_write_slot();
+        fabric_connection.get_forward_connection().send_payload_without_header_non_blocking_from_address(
+            l1_read_addr, payload_size_bytes);
+        fabric_connection.get_forward_connection().send_payload_flush_non_blocking_from_address(
+            (uint32_t)pkt_hdr_forward, sizeof(PACKET_HEADER_TYPE));
+    }
+    noc_async_writes_flushed();
+
+    l1_read_addr += payload_size_bytes;
+}
+
+void kernel_main() {
+    constexpr uint32_t cb0_id = get_compile_time_arg_val(0);               // src buffer id
+    constexpr uint32_t packet_header_cb_id = get_compile_time_arg_val(1);  // packet header buffer id
+    constexpr uint32_t tensor0_page_size = get_compile_time_arg_val(2);
+    constexpr uint32_t packet_size_in_pages = get_compile_time_arg_val(3);
+    constexpr uint32_t num_devices = get_compile_time_arg_val(4);
+    constexpr uint32_t num_tiles = get_compile_time_arg_val(5);  // num tiles per device
+    constexpr uint32_t ring_index = get_compile_time_arg_val(6);
+
+    uint32_t arg_idx = 0;
+    const size_t out_ready_sem_bank_addr = get_arg_val<uint32_t>(arg_idx++);  // global semaphore address
+    const auto receiver_base_address = get_arg_val<uint32_t>(arg_idx++);      // cb for receiver should be with fixed
+                                                                              // address
+    const uint8_t out_ready_sem_noc0_x = get_arg_val<uint32_t>(arg_idx++);    // nocx for receiver core
+    const uint8_t out_ready_sem_noc0_y = get_arg_val<uint32_t>(arg_idx++);    // noc y for receiver core
+
+    auto fabric_connection = FabricConnectionManager::build_from_args(arg_idx);
+
+    // set up packet header buffer
+    cb_reserve_back(packet_header_cb_id, 1);
+    auto packet_header_buffer_addr_forward = get_write_ptr(packet_header_cb_id);
+    cb_push_back(packet_header_cb_id, 1);
+    cb_reserve_back(packet_header_cb_id, 1);
+    auto packet_header_buffer_seminc = get_write_ptr(packet_header_cb_id);
+    cb_push_back(packet_header_cb_id, 1);
+
+    volatile PACKET_HEADER_TYPE* pkt_hdr_forward =
+        reinterpret_cast<volatile PACKET_HEADER_TYPE*>(packet_header_buffer_addr_forward);
+    pkt_hdr_forward->to_chip_unicast(1);  // 1 for num of hops
+
+    if (fabric_connection.is_logically_connected()) {
+        fabric_connection.open();
+    }
+
+    for (uint32_t step = 0; step < num_devices; step++) {
+        uint32_t tile_id = ((ring_index - step + num_devices) % num_devices) * num_tiles;
+        uint64_t noc0_dest_noc_addr = get_write_ptr(receiver_base_address);
+        uint32_t tile_id_end = start_tile_id + num_tiles;
+        while (tile_id < tile_id_end) {
+            DPRINT << "tile_id: " << tile_id << "\n";
+            cb_wait_front(cb0_id, packet_size_in_pages);
+            size_t l1_read_addr = get_read_ptr(cb0_id);
+            uint32_t num_pages_to_read = std::min(tile_id_end - tile_id, packet_size_in_pages);
+
+            uint32_t contig_pages_advanced = 1;  // always 1 for interleaved
+            for (uint32_t j = 0; j < num_pages_to_read; j += contig_pages_advanced) {
+                // write packet to destination
+                send_packet(
+                    noc0_dest_noc_addr,
+                    pkt_hdr_forward,
+                    fabric_connection,
+                    l1_read_addr,
+                    contig_pages_advanced * tensor0_page_size,
+                    step);
+                noc0_dest_noc_addr += contig_pages_advanced * tensor0_page_size;
+            }
+            tile_id++;
+        }
+        cb_pop_front(cb0_id, packet_size_in_pages);
+
+        // 2. unicast semaphore
+        cb_reserve_back(packet_header_cb_id, 1);
+        const uint32_t sem_header_addr = get_write_ptr(packet_header_cb_id);
+        cb_push_back(packet_header_cb_id, 1);
+
+        uint64_t out_ready_sem_noc_addr_in_pkt =
+            safe_get_noc_addr(out_ready_sem_noc0_x, out_ready_sem_noc0_y, out_ready_sem_bank_addr, 0);
+        auto* pkt_hdr = reinterpret_cast<PACKET_HEADER_TYPE*>(packet_header_buffer_seminc);
+        pkt_hdr->to_noc_unicast_atomic_inc(tt::tt_fabric::NocUnicastAtomicIncCommandHeader{
+            out_ready_sem_noc_addr_in_pkt,
+            static_cast<uint16_t>(1),  // increment 1
+            32});
+        // Write the mcast packet (forward)
+        if (fabric_connection.has_forward_connection()) {
+            fabric_connection.get_forward_connection().wait_for_empty_write_slot();
+            pkt_hdr->to_chip_unicast(1);
+            fabric_connection.get_forward_connection().send_payload_flush_blocking_from_address(
+                packet_header_buffer_seminc, sizeof(PACKET_HEADER_TYPE));
+        }
+    }
+    if (fabric_connection.is_logically_connected()) {
+        fabric_connection.close();
+    }
+
+    noc_async_write_barrier();
+
+    DPRINT << "DONE \n";
+}
