@@ -8,6 +8,10 @@
 #include "compute_kernel_api/pack_untilize.h"
 #include "compute_kernel_api/tilize.h"
 
+#include "dprint.h"
+#include "debug/dprint_pages.h"
+#include "debug/dprint_tensix.h"
+
 namespace NAMESPACE {
 void MAIN {
     uint32_t i = 0;
@@ -39,7 +43,7 @@ void MAIN {
 
     // untilize_init(input_cb_index, untilize_cb_index);
     pack_untilize_init<num_input_tiles_in_row>(input_cb_index, untilize_cb_index);
-    pack_reconfig_data_format(untilize_cb_index);
+    // pack_reconfig_data_format(untilize_cb_index);
 
     // print_cb_details(input_cb_index);
     // print_cb_details(untilize_cb_index);
@@ -65,16 +69,29 @@ void MAIN {
     // Unilize prev core's halo region - 1 row of tiles
     // untilize_block(prev_core_input_cb_index, num_input_tiles_per_block, untilize_cb_index);
 
+    // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
     // Untilize input
     cb_pop_front(input_cb_index, local_input_offset_rows_of_tiles * num_input_tiles_in_row);
+
+    // UNPACK(DPRINT  << "local_input_num_rows_of_tiles: " << local_input_num_rows_of_tiles << ENDL(););
+    // UNPACK(        DPRINT << num_input_tiles_in_row<< ENDL(); )
+
     for (uint32_t b = 0; b < local_input_num_rows_of_tiles; ++b) {
         cb_reserve_back(untilize_cb_index, num_input_tiles_in_row);
+
+        UNPACK((tt::compute::common::print_full_tile(input_cb_index, 0)));
 
         pack_untilize_block<num_input_tiles_in_row>(input_cb_index, 1, untilize_cb_index);
 
         cb_push_back(untilize_cb_index, num_input_tiles_in_row);
+
+        UNPACK((tt::compute::common::print_full_tile(untilize_cb_index, 0)));
+
         cb_pop_front(input_cb_index, num_input_tiles_in_row);
     }
+
+    // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     if (halo_next_enabled) {
         // not required since cb has same data format and untilize init already configured unpacker
