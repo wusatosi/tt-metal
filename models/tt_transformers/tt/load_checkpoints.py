@@ -125,7 +125,7 @@ def map_hf_to_meta_keys(loaded_weights):
                 # FIXME: Qwen2-VL branch rewrites this function so nicely, use that instead when merged
                 guess = key.replace("model.layers.", "layers.")
                 guess = guess.replace(".mlp.", ".feed_forward.")
-                logger.warning(f"hf_to_meta does not know what to do with key {key}, applying {guess} instead")
+                # logger.warning(f"hf_to_meta does not know what to do with key {key}, applying {guess} instead")
                 meta_state_dict[guess] = tensor
         else:
             logger.warning(f"hf_to_meta does not know what to do with key {key}")

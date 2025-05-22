@@ -23,6 +23,7 @@ from models.tt_transformers.tt.common import (
 )
 from models.tt_transformers.tt.generator import Generator, SamplingParams
 from models.tt_transformers.tt.model_config import DecodersPrecision, parse_decoder_json
+from models.tt_transformers.tt.moe_stream import MOEStream
 
 
 def load_and_cache_context(context_url, cache_dir, max_length=None):
@@ -512,6 +513,9 @@ def test_demo_text(
         page_params=page_params,
         paged_attention=paged_attention,
     )
+    # TODO: Expose tracability properly if we keep MOEStream
+    if isinstance(model[0].layers[0].feed_forward, MOEStream):
+        enable_trace = False
     generator = Generator(model, model_args, mesh_device, tokenizer=tokenizer)
 
     num_tokens_generated_decode = []

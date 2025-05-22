@@ -1458,6 +1458,9 @@ class ModelArgs:
         self.vision_patch_size = 14
         self.vision_in_channels = 3
 
+        # Experts params
+        self.experts_per_tok = params.get("experts_per_tok", None)
+
     @property
     def use_scaled_rope(self):
         return self.rope_scaling_factor is not None
@@ -1560,6 +1563,7 @@ class ModelArgs:
         layer_prefix = f"layers.{layer_num}." if layer_num is not None else ""
         module_map = {
             "MLP": "feed_forward",
+            "MOEStream": "feed_forward",
             "Attention": "attention",
             "TransformerBlock": "",
             "": "",  # If no module is given, just get layer prefix

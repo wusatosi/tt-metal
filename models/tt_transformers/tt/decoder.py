@@ -8,6 +8,7 @@ from models.tt_transformers.tt.attention import Attention
 from models.tt_transformers.tt.distributed_norm import DistributedNorm
 from models.tt_transformers.tt.mlp import MLP
 from models.tt_transformers.tt.model_config import TensorGroup
+from models.tt_transformers.tt.moe_stream import MOEStream
 
 
 class TransformerBlock(LightweightModule):
@@ -52,7 +53,9 @@ class TransformerBlock(LightweightModule):
             paged_attention_config=paged_attention_config,
             use_paged_kv_cache=use_paged_kv_cache,
         )
-        self.feed_forward = MLP(
+        has_experts = any(".experts." in key for key in state_dict.keys())
+        MLPType = MOEStream if has_experts else MLP
+        self.feed_forward = MLPType(
             mesh_device=mesh_device,
             args=args,
             state_dict=state_dict,
