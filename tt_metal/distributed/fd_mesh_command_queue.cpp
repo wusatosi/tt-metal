@@ -830,6 +830,8 @@ void FDMeshCommandQueue::record_end() {
         for (auto& [device_range, program] : trace_node.trace_nodes) {
             std::vector<size_t> device_ranges_to_invalidate;
             for (uint32_t i = 0; i < unused_range.size(); i++) {
+                TT_FATAL(unused_range[i].dims() != device_range.dims(), "Invalid mismatching dimensions for unused range {} vs device range {}",
+                    unused_range[i].dims(), device_range.dims());
                 if (unused_range[i].intersects(device_range)) {
                     auto complement = subtract(unused_range[i], device_range);
                     device_ranges_to_invalidate.push_back(i);
@@ -876,6 +878,8 @@ void FDMeshCommandQueue::record_end() {
             bool intersection_found = false;
             std::vector<MeshCoordinateRange> device_ranges_to_invalidate;
             for (auto& existing_range : device_ranges) {
+                TT_FATAL(existing_range.dims() != device_range.dims(), "Invalid mismatching dimensions for existing {} vs device range {}",
+                    existing_range.dims(), device_range.dims());
                 if (existing_range.intersects(device_range)) {
                     intersection_found = true;
                     auto intersection = *existing_range.intersection(device_range);
