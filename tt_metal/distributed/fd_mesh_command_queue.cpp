@@ -824,7 +824,7 @@ void FDMeshCommandQueue::record_end() {
 // trace. launch_msg_rd_ptr will also be 0 for all core-types used on each subdevice in the trace. At the end of the
 // trace, everthing should be the same as when the trace started. While running the traces, launch_msg_rd_ptr and
 // expected_num_workers_completed may be different on different devices, unlike in normal program execution.
-#if 1
+#if 0
     std::vector<MeshCoordinateRange> unused_range{MeshCoordinateRange{mesh_device_->shape()}};
     for (auto& trace_node : trace_nodes_) {
         for (auto& [device_range, program] : trace_node.trace_nodes) {
@@ -872,7 +872,7 @@ void FDMeshCommandQueue::record_end() {
     }
 #endif
 
-    std::vector<MeshCoordinateRange> device_ranges;
+    std::vector<MeshCoordinateRange> device_ranges{MeshCoordinateRange{mesh_device_->shape()}};
     for (auto& trace_node : trace_nodes_) {
         for (auto& [device_range, program] : trace_node.trace_nodes) {
             bool intersection_found = false;
@@ -894,7 +894,6 @@ void FDMeshCommandQueue::record_end() {
                     }
                 }
             }
-            // TODO handle partial non intersection with anything.
             if (intersection_found) {
                 for (auto& device_range : device_ranges_to_invalidate) {
                     device_ranges.erase(
@@ -1090,10 +1089,12 @@ void FDMeshCommandQueue::record_end() {
             TT_ASSERT(overall_trace_worker_descriptors == trace_worker_descriptors);
         }
     }
+    #if 0
     for (auto& range : unused_range) {
         max_trace_size = std::max(max_trace_size, exec_buf_end.size());
         trace_ctx_->ordered_trace_data.push_back(MeshTraceData{range, exec_buf_end});
     }
+    #endif
     trace_ctx_->total_trace_size = max_trace_size * sizeof(uint32_t);
 
     trace_ctx_->sub_device_ids.reserve(sub_device_ids.size());
