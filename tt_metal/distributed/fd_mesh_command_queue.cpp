@@ -972,12 +972,6 @@ void FDMeshCommandQueue::record_end() {
                 num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
                 // uses_ethernet_cores = true;
             }
-#if 0
-            fmt::println(stderr, "Enqueueing program on subdevice {} with expected workers completed {} and num wokers {}",
-                         *sub_device_id,
-                         expected_workers_completed[*sub_device_id],
-                         num_workers);
-#endif
 
             // Access the program dispatch-command cache
             uint64_t command_hash = *mesh_device_->get_active_sub_device_manager_id();
@@ -1049,13 +1043,6 @@ void FDMeshCommandQueue::record_end() {
     }
 
     for (auto& [sub_device_id, trace_worker_descriptor] : trace_ctx_->descriptors) {
-        fmt::println(
-            stderr,
-            "Subdevice {} has {} multicast and {} unicast programs needing go signal, plus completion worker count {}",
-            *sub_device_id,
-            trace_worker_descriptor.num_traced_programs_needing_go_signal_multicast,
-            trace_worker_descriptor.num_traced_programs_needing_go_signal_unicast,
-            trace_worker_descriptor.num_completion_worker_cores);
         trace_ctx_->sub_device_ids.push_back(sub_device_id);
     }
 
