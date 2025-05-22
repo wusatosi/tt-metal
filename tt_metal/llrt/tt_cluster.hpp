@@ -105,13 +105,13 @@ public:
 
     size_t number_of_devices() const { return this->driver_->get_target_device_ids().size(); }
 
-    const std::set<chip_id_t> all_chip_ids() const { return this->driver_->get_target_device_ids(); };
+    std::set<chip_id_t> all_chip_ids() const { return this->driver_->get_target_device_ids(); };
 
     size_t number_of_pci_devices() const { return this->driver_->get_target_mmio_device_ids().size(); }
 
     // TODO: UMD will eventually consolidate ethernet coordinates and unique ids, we can remove the ethernet coord
     // getter after that change is in
-    const std::unordered_map<chip_id_t, uint64_t> get_unique_chip_ids() const {
+    std::unordered_map<chip_id_t, uint64_t> get_unique_chip_ids() const {
         return this->cluster_desc_->get_chip_unique_ids();
     }
     std::unordered_map<chip_id_t, eth_coord_t> get_all_chip_ethernet_coordinates() const;
