@@ -245,16 +245,35 @@ void copy_sticks_async_local(
                     }
                     // }
                 } else {
+                    uint32_t half_stick = stick_nbytes / 2;
                     if constexpr (main_thread) {
                         bool is_forward_copy = dst_local_idx > dst_relative_src;
                         if (is_forward_copy) {  // dst data is being moved "in front" of the source data, reverse
                                                 // ordering of stick by stick copy is necessary
                             for (int16_t k = nsticks - 1; k >= 0; k--) {
-                                noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
+                                noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, half_stick);
                             }
                         } else {
                             for (uint16_t k = 0; k < nsticks; k++) {
-                                noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, stick_nbytes);
+                                noc_async_write(src_addr + k * stick_nbytes, dst_addr + k * stick_nbytes, half_stick);
+                            }
+                        }
+                    } else {
+                        bool is_forward_copy = dst_local_idx > dst_relative_src;
+                        if (is_forward_copy) {  // dst data is being moved "in front" of the source data, reverse
+                                                // ordering of stick by stick copy is necessary
+                            for (int16_t k = nsticks - 1; k >= 0; k--) {
+                                noc_async_write(
+                                    src_addr + k * stick_nbytes + half_stick,
+                                    dst_addr + k * stick_nbytes + half_stick,
+                                    half_stick);
+                            }
+                        } else {
+                            for (uint16_t k = 0; k < nsticks; k++) {
+                                noc_async_write(
+                                    src_addr + k * stick_nbytes + half_stick,
+                                    dst_addr + k * stick_nbytes + half_stick,
+                                    half_stick);
                             }
                         }
                     }
