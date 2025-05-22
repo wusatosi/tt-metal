@@ -98,8 +98,7 @@ void kernel_main() {
         // coalesce reads along weight_size_w
         uint32_t start_reader_idx;
         if constexpr (split_reader) {
-            start_reader_idx = 0;
-            start_reader_idx = act_block_h_datums_first_reader / 2;
+            start_reader_idx = (uint32_t)(packed_reader_indices_ptr[reader_idx] & 0xffff) + 1;
         }
 
         bool read_weights = true;
@@ -180,7 +179,7 @@ void kernel_main() {
 
             if constexpr (split_reader) {
                 // Increment reader index for next block in height dim
-                start_reader_idx = reader_idx + act_block_h_datums_first_reader_read;
+                start_reader_idx = reader_idx + (uint32_t)(packed_reader_indices_ptr[reader_idx] & 0xffff) + 1;
             }
         }  // out_num_blocks_h
     }  // out_num_blocks_w
