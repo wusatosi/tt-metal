@@ -831,7 +831,7 @@ void FDMeshCommandQueue::record_end() {
             std::vector<size_t> device_range_idxs_to_invalidate;
             for (size_t i = 0; i < device_ranges.size(); i++) {
                 auto& existing_range = device_ranges[i];
-                TT_FATAL(existing_range.dims() != device_range.dims(), "Invalid mismatching dimensions for existing {} vs device range {}",
+                TT_FATAL(existing_range.dims() == device_range.dims(), "Invalid mismatching dimensions for existing {} vs device range {}",
                     existing_range.dims(), device_range.dims());
                 if (existing_range.intersects(device_range)) {
                     intersection_found = true;
