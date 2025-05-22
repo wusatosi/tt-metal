@@ -824,54 +824,6 @@ void FDMeshCommandQueue::record_end() {
 // trace. launch_msg_rd_ptr will also be 0 for all core-types used on each subdevice in the trace. At the end of the
 // trace, everthing should be the same as when the trace started. While running the traces, launch_msg_rd_ptr and
 // expected_num_workers_completed may be different on different devices, unlike in normal program execution.
-#if 0
-    std::vector<MeshCoordinateRange> unused_range{MeshCoordinateRange{mesh_device_->shape()}};
-    for (auto& trace_node : trace_nodes_) {
-        for (auto& [device_range, program] : trace_node.trace_nodes) {
-            std::vector<size_t> device_ranges_to_invalidate;
-            for (uint32_t i = 0; i < unused_range.size(); i++) {
-                TT_FATAL(unused_range[i].dims() != device_range.dims(), "Invalid mismatching dimensions for unused range {} vs device range {}",
-                    unused_range[i].dims(), device_range.dims());
-                if (unused_range[i].intersects(device_range)) {
-                    auto complement = subtract(unused_range[i], device_range);
-                    device_ranges_to_invalidate.push_back(i);
-                    for (const auto& complement_range : complement.ranges()) {
-                        unused_range.push_back(complement_range);
-                    }
-                }
-            }
-            if (device_ranges_to_invalidate.size() > 0) {
-                #if 0
-                uint32_t remove_index = 0;
-                unused_range.erase(
-                    std::remove_if(
-                        unused_range.begin(),
-                        unused_range.end(),
-                        [&](const MeshCoordinateRange& range) {
-                            if (remove_index >= device_ranges_to_invalidate.size()) {
-                                return false;
-                            }
-                            uint32_t idx = &range - &*unused_range.begin();
-                            if (idx == device_ranges_to_invalidate[remove_index]) {
-                                remove_index++;
-                                return true;
-                            }
-                            return false;
-                        }),
-                    unused_range.end());
-                    #endif
-                unused_range.erase(
-                    remove_by_index(
-                        unused_range.begin(),
-                        unused_range.end(),
-                        device_ranges_to_invalidate.begin(),
-                        device_ranges_to_invalidate.end()),
-                    unused_range.end());
-            }
-        }
-    }
-#endif
-
     std::vector<MeshCoordinateRange> device_ranges{MeshCoordinateRange{mesh_device_->shape()}};
     for (auto& trace_node : trace_nodes_) {
         for (auto& [device_range, program] : trace_node.trace_nodes) {
@@ -1091,12 +1043,6 @@ void FDMeshCommandQueue::record_end() {
             TT_ASSERT(overall_trace_worker_descriptors == trace_worker_descriptors);
         }
     }
-    #if 0
-    for (auto& range : unused_range) {
-        max_trace_size = std::max(max_trace_size, exec_buf_end.size());
-        trace_ctx_->ordered_trace_data.push_back(MeshTraceData{range, exec_buf_end});
-    }
-    #endif
     trace_ctx_->total_trace_size = max_trace_size * sizeof(uint32_t);
 
     trace_ctx_->sub_device_ids.reserve(sub_device_ids.size());
