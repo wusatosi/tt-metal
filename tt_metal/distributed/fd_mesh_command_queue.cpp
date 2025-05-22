@@ -937,6 +937,7 @@ void FDMeshCommandQueue::record_end() {
                                          unused_nodes[sub_device_id].unused_nodes_multicast +
                                          unused_nodes[sub_device_id].unused_nodes_unicast;
                  i++) {
+                // Multicast + unicast at the beginning, then multicast-only, then unicast-only.
                 bool multicast = i < unused_nodes[sub_device_id].unused_nodes_both_multicast_and_unicast +
                                          unused_nodes[sub_device_id].unused_nodes_multicast;
                 bool unicast = i < unused_nodes[sub_device_id].unused_nodes_both_multicast_and_unicast || !multicast;
@@ -959,8 +960,7 @@ void FDMeshCommandQueue::record_end() {
                     trace_worker_descriptor.num_traced_programs_needing_go_signal_multicast++;
                 }
                 if (unicast) {
-                    uint32_t num_virtual_eth_cores = mesh_device_->num_virtual_eth_cores(SubDeviceId{sub_device_id});
-                    trace_worker_descriptor.num_completion_worker_cores += num_virtual_eth_cores;
+                    trace_worker_descriptor.num_completion_worker_cores += mesh_device_->num_virtual_eth_cores(SubDeviceId{sub_device_id});
                     worker_launch_message_buffer_state.inc_unicast_wptr(1);
                     trace_worker_descriptor.num_traced_programs_needing_go_signal_unicast++;
                 }
