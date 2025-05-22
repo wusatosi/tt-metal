@@ -14,12 +14,12 @@ def test_example(device):
 
     shape = [5 * 32, 32]
 
-    torch_input = torch.ones(shape, dtype=torch.bfloat16) * 2
-    torch_other = torch.zeros(shape, dtype=torch.bfloat16)
+    torch_input = torch.ones(shape, dtype=torch.bfloat16) * -1.7014118e38
+    torch_other = torch.zeros(shape, dtype=torch.bfloat16) * 0
 
-    expected_otput = torch_input * torch_other
+    expected_output = torch_input * torch_other
 
-    for x in range(100):
+    for x in range(1000):
         print("iter", x)
         tt_input = ttnn.from_torch(torch_input, layout=ttnn.TILE_LAYOUT, device=device)
         tt_other = ttnn.from_torch(torch_other, layout=ttnn.TILE_LAYOUT, device=device)
@@ -32,10 +32,8 @@ def test_example(device):
 
         actual_output = ttnn.to_torch(tt_output)
 
-        ret = torch.allclose(actual_output, expected_otput, atol=0, rtol=0)
+        ret = torch.allclose(actual_output, expected_output, atol=0, rtol=0)
         if not ret:
-            print("tt_input", tt_input)
-            print("tt_output1", tt_output1)
-            print("actual_output", actual_output)
-            print("expected_otput", expected_otput)
-        assert torch.allclose(actual_output, expected_otput, atol=0, rtol=0)
+            None
+            # print("actual_output", actual_output.to(torch.float32).flatten().tolist())
+        assert torch.allclose(actual_output, expected_output, atol=0, rtol=0)

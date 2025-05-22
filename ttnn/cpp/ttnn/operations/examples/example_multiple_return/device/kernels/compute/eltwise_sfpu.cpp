@@ -6,6 +6,7 @@
 #include "compute_kernel_api.h"
 #include "compute_kernel_api/eltwise_binary.h"
 #include "debug/dprint.h"
+#include "debug/dprint_pages.h"
 
 uint32_t cb_srca = 256;  // outside of any cbs
 uint32_t cb_srcb = 256;  // outside of any cbs
@@ -62,5 +63,8 @@ void MAIN {
     pack_tile(0, cb_out);
     cb_push_back(cb_out, onetile);
     tile_regs_release();
+
+    cb_wait_front(cb_out, 1);
+    UNPACK(tt::compute::common::print_full_tile(cb_out, 0, false);)
 }
 }  // namespace NAMESPACE
