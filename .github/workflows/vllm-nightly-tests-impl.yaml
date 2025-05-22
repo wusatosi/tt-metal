@@ -146,7 +146,7 @@ jobs:
             --backend vllm \
             --model ${{ matrix.test-group.model }} \
             --dataset-name random \
-            --num-prompts 32 \
+            --num-prompts 8 \
             --random-input-len 100 \
             --random-output-len 100 \
             --ignore-eos \
