@@ -155,6 +155,31 @@ jobs:
             --result-filename output/vllm_result.json \
             2>&1 | tee output/vllm_benchmark.log
 
+      - name: 🧹 Cleanup server process
+        if: always()
+        run: |
+          pid_file="./server.pid"
+          log_file="./output/vllm_server.log"
+
+          if [ -f "$pid_file" ]; then
+            pid=$(cat "$pid_file")
+            if kill -0 "$pid" 2>/dev/null; then
+              kill "$pid"
+              echo "✅ Server process with PID $pid terminated."
+              rm -f "$pid_file"
+            else
+              echo "❌ Server process already down!"
+              echo "----- vllm_server.log -----"
+              cat "$log_file"
+              exit 1
+            fi
+          else
+            echo "❌ PID file not found. Server may not have started correctly."
+            echo "----- vllm_server.log -----"
+            cat "$log_file"
+            exit 1
+          fi
+
       - name: Show report
         if: always()
         continue-on-error: true
