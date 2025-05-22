@@ -147,6 +147,7 @@ bool MeshBuffer::is_allocated() const {
     return true;
 }
 
+const MeshShape& MeshBuffer::shape() const { return buffers_.shape(); }
 MeshBuffer::~MeshBuffer() { deallocate(); }
 
 void MeshBuffer::deallocate() {

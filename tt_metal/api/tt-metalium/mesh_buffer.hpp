@@ -93,6 +93,8 @@ public:
     // destructor or the `deallocate` method deallocate the MeshBuffer.
     bool is_allocated() const;
 
+    const MeshShape& shape() const;
+
     // Deallocates the MeshBuffer.
     // TODO: Re-consider a need for explicit deallocation methods, as opposed to relying on RAII to clean up the
     // resources.

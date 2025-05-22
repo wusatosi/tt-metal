@@ -796,13 +796,19 @@ void DumpDeviceProfileResults(
     const std::optional<ProfilerOptionalMetadata>& metadata) {
 #if defined(TRACY_ENABLE)
     ZoneScoped;
+    auto device_id = device->id();
+    distributed::MeshShape original_mesh_device_shape;
+    if (auto mesh_buffer = tt_metal_device_profiler_map.at(device_id).output_dram_buffer.get_mesh_buffer()) {
+        auto mesh_device = mesh_buffer->device();
+        original_mesh_device_shape = mesh_device->shape();
+        mesh_device->reshape(mesh_buffer->shape());
+    }
     std::string name = fmt::format("Device Dump {}", device->id());
     ZoneName(name.c_str(), name.size());
     std::scoped_lock<std::mutex> lock(device_mutex);
     const auto& dispatch_core_config = get_dispatch_core_config();
     auto dispatch_core_type = dispatch_core_config.get_core_type();
     if (tt::tt_metal::MetalContext::instance().rtoptions().get_profiler_do_dispatch_cores()) {
-        auto device_id = device->id();
         auto device_num_hw_cqs = device->num_hw_cqs();
         for (const CoreCoord& core :
              tt::get_logical_dispatch_cores(device_id, device_num_hw_cqs, dispatch_core_config)) {
@@ -822,7 +828,6 @@ void DumpDeviceProfileResults(
             }
         } else {
             if (tt::tt_metal::MetalContext::instance().rtoptions().get_profiler_do_dispatch_cores()) {
-                auto device_id = device->id();
                 constexpr uint8_t maxLoopCount = 10;
                 constexpr uint32_t loopDuration_us = 10000;
                 auto device_num_hw_cqs = device->num_hw_cqs();
@@ -877,7 +882,6 @@ void DumpDeviceProfileResults(
             }
         }
         TT_FATAL(DprintServerIsRunning() == false, "Debug print server is running, cannot dump device profiler data");
-        auto device_id = device->id();
 
         if (tt_metal_device_profiler_map.find(device_id) != tt_metal_device_profiler_map.end()) {
             if (state != ProfilerDumpState::LAST_CLOSE_DEVICE) {
@@ -899,6 +903,10 @@ void DumpDeviceProfileResults(
                 tt_metal_device_profiler_map.at(device_id).pushTracyDeviceResults();
             }
         }
+    }
+    if (auto mesh_buffer = tt_metal_device_profiler_map.at(device_id).output_dram_buffer.get_mesh_buffer()) {
+        auto mesh_device = mesh_buffer->device();
+        mesh_device->reshape(original_mesh_device_shape);
     }
 #endif
 }
