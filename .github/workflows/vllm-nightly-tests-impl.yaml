@@ -97,7 +97,6 @@ jobs:
           if [[ "${{ matrix.test-group.runner-label }}" == "config-t3000" ]]; then
             export WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml
             export MESH_DEVICE="T3K"
-            export TT_LLAMA_TEXT_VER="tt_transformers"
           fi
 
           if [[ "${{ matrix.test-group.runner-label }}" == "config-tg" ]]; then
@@ -107,24 +106,9 @@ jobs:
           fi
 
           # Set TT Cache path
-          MODEL_ID="${{ matrix.test-group.model }}"
-          MODEL_NAME="${MODEL_ID/\//--}"
+          export HF_MODEL="${{ matrix.test-group.model }}"
+          MODEL_NAME="${HF_MODEL/\//--}"
           export TT_CACHE_PATH="$HF_HOME/tt_cache/$MODEL_NAME"
-
-          case "$MODEL_ID" in
-            "meta-llama/Llama-3.1-8B-Instruct")
-              MODEL_SNAPSHOT="hub/models--meta-llama--Llama-3.1-8B-Instruct/snapshots/0e9e39f249a16976918f6564b8830bc894c89659/"
-              ;;
-            "meta-llama/Llama-3.1-70B-Instruct")
-              MODEL_SNAPSHOT="hub/models--meta-llama--Llama-3.1-70B-Instruct/snapshots/1605565b47bb9346c5515c34102e054115b4f98b/"
-              ;;
-            *)
-              echo "❌ Unknown model: ${{ matrix.test-group.model }}"
-              exit 1
-              ;;
-          esac
-
-          export HF_MODEL="$HF_HOME/$MODEL_SNAPSHOT"
 
           # vLLM environment variables
           export VLLM_RPC_TIMEOUT=300000
@@ -162,7 +146,7 @@ jobs:
             --backend vllm \
             --model ${{ matrix.test-group.model }} \
             --dataset-name random \
-            --num-prompts 8 \
+            --num-prompts 32 \
             --random-input-len 100 \
             --random-output-len 100 \
             --ignore-eos \
