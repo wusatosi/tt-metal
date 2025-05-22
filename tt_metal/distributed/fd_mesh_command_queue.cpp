@@ -231,6 +231,7 @@ void FDMeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool
         auto& trace_node = trace_nodes_.back();
         for (auto& [device_range, program] : mesh_workload.get_programs()) {
 #if defined(TRACY_ENABLE)
+        // With trace enabled, each device has a different program runtime ID in the launch message, so we need to handle each device separately rather than grouping them.
             for (auto& coord : device_range) {
                 trace_node.trace_nodes.push_back(std::pair<MeshCoordinateRange, TraceNode>(
                     coord, program_dispatch::create_trace_node(program.impl(), mesh_device_, num_workers)));
@@ -803,9 +804,14 @@ void FDMeshCommandQueue::record_begin(const MeshTraceId& trace_id, const std::sh
     }
 }
 
+// Erase elements from the vector using the indices in the index vector.
+// The index vector is expected to be sorted and unique. Returns an iterator to one past the end of the new range.
 template <typename VecIt, typename IndexIt>
 static VecIt remove_by_index(VecIt begin, VecIt end, IndexIt index_begin, IndexIt index_end) {
-    return std::remove_if(begin, end, [&](auto& value) {
+    if (index_begin == index_end) {
+        return end;
+    }
+    return std::remove_if(std::next(begin, *index_begin), end, [&](auto& value) {
         if (index_begin == index_end) {
             return false;
         }
@@ -820,10 +826,13 @@ static VecIt remove_by_index(VecIt begin, VecIt end, IndexIt index_begin, IndexI
 void FDMeshCommandQueue::record_end() {
     const auto& hal = MetalContext::instance().hal();
 
-// At the beginning of the trace, expected_num_workers_completed are 0 on all devices on for each sub-device in the
-// trace. launch_msg_rd_ptr will also be 0 for all core-types used on each subdevice in the trace. At the end of the
-// trace, everthing should be the same as when the trace started. While running the traces, launch_msg_rd_ptr and
-// expected_num_workers_completed may be different on different devices, unlike in normal program execution.
+    // At the beginning of the trace, expected_num_workers_completed is 0 on all devices on for each sub-device in the
+    // trace. launch_msg_rd_ptr will also be 0 for all core-types used on each subdevice in the trace. At the end of the
+    // trace, all devices should have the same values for those (for the core-types and sub-devices that were used in the
+    // trace).  While executing the trace the devices may be out of sync, so we prepend dummy go messages to the trace to
+    // ensure they are equal at the end.
+
+    // Calculate device ranges that have an identical set of programs that run on them (including no programs at all).
     std::vector<MeshCoordinateRange> device_ranges{MeshCoordinateRange{mesh_device_->shape()}};
     for (auto& trace_node : trace_nodes_) {
         for (auto& [device_range, program] : trace_node.trace_nodes) {
@@ -871,6 +880,7 @@ void FDMeshCommandQueue::record_end() {
     for (const auto& range : device_ranges) {
         std::vector<TraceNode*> trace_nodes;
         std::vector<MeshTraceNode*> mesh_trace_nodes;
+        // Records the number of MeshTraceNodes that had no relevant program.
         struct UnusedNodeData {
             uint32_t unused_nodes_both_multicast_and_unicast = 0;
             uint32_t unused_nodes_multicast = 0;
@@ -918,6 +928,10 @@ void FDMeshCommandQueue::record_end() {
             (*this->worker_launch_message_buffer_state_)[sub_device_id].reset();
         }
         std::unordered_map<SubDeviceId, TraceWorkerDescriptor> trace_worker_descriptors;
+        // Output a GO signal for each unused mesh node, to ensure that the launch message buffer write pointer and
+        // number of expected workers matches across all devices. We do this at the beginning of the trace, becaue the
+        // last program in the trace may continue running after the trace ends, so we can't do adjustments after it.
+        // TODO: Use a single command to update the expected number of workers, rather than repeated commands.
         for (uint32_t sub_device_id = 0; sub_device_id < mesh_device_->num_sub_devices(); sub_device_id++) {
             for (uint32_t i = 0; i < unused_nodes[sub_device_id].unused_nodes_both_multicast_and_unicast +
                                          unused_nodes[sub_device_id].unused_nodes_multicast +
