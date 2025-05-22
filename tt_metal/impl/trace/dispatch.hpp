@@ -78,15 +78,6 @@ void issue_trace_commands(
 
 uint32_t compute_trace_cmd_size(uint32_t num_sub_devices);
 
-// Generate commands to reset the launch_msg_read_ptr and expected num workers completed to zero.
-void reset_worker_state_after_trace_execution(
-    IDevice* device,
-    SystemMemoryManager& sysmem_manager,
-    uint8_t cq_id,
-    const DispatchArray<uint32_t>& expected_num_workers_completed,
-    CoreCoord dispatch_core,
-    const std::unordered_map<SubDeviceId, TraceWorkerDescriptor>& trace_worker_descriptors);
-
 void update_worker_state_post_trace_execution(
     const std::unordered_map<SubDeviceId, TraceWorkerDescriptor>& trace_worker_descriptors,
     DispatchArray<LaunchMessageRingBufferState>& worker_launch_message_buffer_state,

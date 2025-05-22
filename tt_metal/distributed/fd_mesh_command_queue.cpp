@@ -1030,23 +1030,6 @@ void FDMeshCommandQueue::record_end() {
             trace_worker_descriptors[sub_device_id].num_completion_worker_cores += num_workers;
  //           expected_workers_completed[*sub_device_id] += num_workers;
         }
-        #if 0
-        program_dispatch::reset_worker_dispatch_state_on_device(
-            mesh_device_,
-            sysmem_manager_for_trace,
-            id_,
-            this->virtual_program_dispatch_core(),
-            expected_workers_completed,
-            /*reset_launch_msg_state=*/true);
-            #endif
-
-            #if 0
-        trace_dispatch::reset_worker_state_after_trace_execution(
-            mesh_device_, sysmem_manager_for_trace, id_,
-            expected_workers_completed,
-            this->virtual_program_dispatch_core(),
-            trace_worker_descriptors);
-            #endif
 
         auto& bypass_data = sysmem_manager_for_trace.get_bypass_data();
         bypass_data.insert(
