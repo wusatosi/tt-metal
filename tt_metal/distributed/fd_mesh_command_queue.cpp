@@ -867,7 +867,6 @@ void FDMeshCommandQueue::record_end() {
     }
     size_t max_trace_size = 0;
     std::set<SubDeviceId> sub_device_ids;
-    // bool uses_ethernet_cores = false;
     std::optional<std::unordered_map<SubDeviceId, TraceWorkerDescriptor>> overall_trace_worker_descriptors;
     for (const auto& range : device_ranges) {
         std::vector<TraceNode*> trace_nodes;
@@ -970,7 +969,6 @@ void FDMeshCommandQueue::record_end() {
             }
             if (program.runs_on_noc_unicast_only_cores()) {
                 num_workers += mesh_device_->num_worker_cores(HalProgrammableCoreType::ACTIVE_ETH, sub_device_id);
-                // uses_ethernet_cores = true;
             }
 
             // Access the program dispatch-command cache
