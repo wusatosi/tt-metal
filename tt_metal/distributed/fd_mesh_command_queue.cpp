@@ -919,7 +919,6 @@ void FDMeshCommandQueue::record_end() {
         }
         std::unordered_map<SubDeviceId, TraceWorkerDescriptor> trace_worker_descriptors;
         for (uint32_t sub_device_id = 0; sub_device_id < mesh_device_->num_sub_devices(); sub_device_id++) {
-            uint32_t num_virtual_eth_cores = mesh_device_->num_virtual_eth_cores(SubDeviceId{sub_device_id});
             for (uint32_t i = 0; i < unused_nodes[sub_device_id].unused_nodes_both_multicast_and_unicast +
                                          unused_nodes[sub_device_id].unused_nodes_multicast +
                                          unused_nodes[sub_device_id].unused_nodes_unicast;
@@ -946,6 +945,7 @@ void FDMeshCommandQueue::record_end() {
                     trace_worker_descriptor.num_traced_programs_needing_go_signal_multicast++;
                 }
                 if (unicast) {
+                    uint32_t num_virtual_eth_cores = mesh_device_->num_virtual_eth_cores(SubDeviceId{sub_device_id});
                     trace_worker_descriptor.num_completion_worker_cores += num_virtual_eth_cores;
                     worker_launch_message_buffer_state.inc_unicast_wptr(1);
                     trace_worker_descriptor.num_traced_programs_needing_go_signal_unicast++;
