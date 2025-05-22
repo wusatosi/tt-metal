@@ -297,6 +297,10 @@ void DevicePool::initialize_host(IDevice* dev) const {
         TT_ASSERT(dev->num_hw_cqs() == 1, "num_hw_cqs must be 1 in slow dispatch");
     }
 
+    // ClearNocData(dev->id());
+    // DprintServerAttach(dev->id());
+    // watcher_init(dev->id());
+
     // TODO: as optimization, investigate removing all this call for already initialized devivces
     if (!tt_metal::MetalContext::instance().rtoptions().get_skip_reset_cores_on_init()) {
         dev->reset_cores();
