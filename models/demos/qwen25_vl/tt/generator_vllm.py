@@ -197,9 +197,13 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
         kv_cache,  # [INFO] id(kv_cache) == id(self.kv_cache) due to allocate_kv_cache returning self.kv_cache
         prompt_lens,  # [INFO] prompt_lens is pre-padding number of tokens after text-image processing
     ):
-        # reconstruct the inputs that Qwen2.5-VL expects
-        # todo)) tokens are padded to the same length by appending 0s --> check to make sure this is OK
+        # [INFO] tokens are padded to the same length by appending 0s; change the padding to use pad_token_id
+        pad_token_id = self.tokenizer.pad_token_id
         padded_seq_len = tokens.shape[-1]
+        for i in range(tokens.shape[0]):  # for each user, fix their padding
+            tokens[i][prompt_lens[i] :] = pad_token_id
+
+        # reconstruct the inputs that Qwen2.5-VL expects
         inputs = CustomNamespace()
         inputs.input_ids = tokens.to(images[0].attention_mask.dtype)
         inputs.pixel_values = torch.concat([im.pixel_values for im in images], dim=0)
@@ -219,7 +223,6 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
         # FIXME: on-host embeddings - run as part of vision model prefill when merge_vision_tokens is ported to ttnn
         text_embeds = self.reference_model.model.language_model.embed_tokens(inputs.input_ids)
         input_embeds = merge_vision_tokens(inputs.input_ids, text_embeds, image_embeds, self.reference_model.config)
-        pad_token_id = self.tokenizer.pad_token_id
         (
             input_prefill_pt,
             decoding_pos,  # Position where decoding should start for each user
