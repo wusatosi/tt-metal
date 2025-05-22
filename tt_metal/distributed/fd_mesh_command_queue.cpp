@@ -226,6 +226,7 @@ void FDMeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool
     }
 
     if (sysmem_manager.get_bypass_mode()) {
+        TT_FATAL(!blocking, "Blocking is not supported in bypass mode.")
         trace_nodes_.push_back(MeshTraceNode{});
         auto& trace_node = trace_nodes_.back();
         for (auto& [device_range, program] : mesh_workload.get_programs()) {
@@ -1083,13 +1084,6 @@ void FDMeshCommandQueue::record_end() {
             trace_worker_descriptor.num_completion_worker_cores);
         trace_ctx_->sub_device_ids.push_back(sub_device_id);
     }
-#if 0
-    for (auto& sub_device_id : sub_device_ids) {
-        fmt::println(stderr, "Adding subdevice {} to trace context", *sub_device_id);
-        trace_ctx_->sub_device_ids.push_back(sub_device_id);
-        trace_ctx_->descriptors[sub_device_id] = TraceWorkerDescriptor{.num_traced_programs_needing_go_signal_multicast = launch_msg_buffer_num_entries, .num_traced_programs_needing_go_signal_unicast= uses_ethernet_cores ? launch_msg_buffer_num_entries : 0};
-    }
-#endif
 
     trace_nodes_.clear();
 
