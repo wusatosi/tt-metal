@@ -71,6 +71,7 @@ public:
     TensorLayout with_memory_config(MemoryConfig memory_config) const {
         TensorLayout result = *this;
         result.memory_config_ = std::move(memory_config);
+        result.initialize_alignment();
         return result;
     }
 

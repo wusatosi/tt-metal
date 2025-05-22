@@ -821,6 +821,46 @@ DeviceStorage to_device_mesh_buffer(
 }
 
 template <typename T>
+Tensor extend_host_tensor_contents(const Tensor& tensor, const TensorSpec& tensor_spec) {
+    const auto& input_buffer = host_buffer::get_as<T>(std::get<HostStorage>(tensor.get_storage()).buffer);
+    const auto input_buffer_size_bytes = input_buffer.size() * sizeof(T);
+
+    const auto& current_tensor_spec = tensor.tensor_spec();
+    TT_FATAL(
+        current_tensor_spec.compute_packed_buffer_size_bytes() == input_buffer_size_bytes,
+        "Expected tensor buffer size to match computed buffer size (was {} but expected {})",
+        input_buffer_size_bytes,
+        current_tensor_spec.compute_packed_buffer_size_bytes());
+
+    const auto output_buffer_size_bytes = tensor_spec.compute_packed_buffer_size_bytes();
+
+    TT_FATAL(
+        input_buffer_size_bytes < output_buffer_size_bytes,
+        "Expected input buffer size to be smaller than the output buffer size");
+
+    const size_t output_buffer_size = output_buffer_size_bytes / sizeof(T);
+    std::vector<T> output_buffer(output_buffer_size);
+
+    const auto physical_shape = current_tensor_spec.physical_shape();
+    tt::log_info("phys scahpe = {}", physical_shape);
+
+    const size_t num_pages = physical_shape.height();
+    const size_t input_page_size = input_buffer_size_bytes / num_pages;
+    const size_t input_stride = input_buffer_size_bytes / sizeof(T) / num_pages;
+    const size_t output_stride = output_buffer_size_bytes / sizeof(T) / num_pages;
+
+    size_t read_index = 0;
+    size_t write_index = 0;
+    for (uint32_t page = 0; page < num_pages; page++) {
+        std::memcpy(output_buffer.data() + write_index, input_buffer.begin() + read_index, input_page_size);
+        read_index += input_stride;
+        write_index += output_stride;
+    }
+
+    return Tensor(HostBuffer(output_buffer), tensor_spec);
+}
+
+template <typename T>
 Tensor to_device_mesh_tensor(
     const Tensor& tensor,
     distributed::MeshDevice* mesh_device,
@@ -835,10 +875,13 @@ Tensor to_device_mesh_tensor(
     TensorSpec tensor_spec(
         tensor.get_logical_shape(), tensor.get_tensor_spec().tensor_layout().with_memory_config(memory_config));
 
+    // Changing the sharding config can change the physical size of the tensor
+    const auto extended_tensor = extend_host_tensor_contents<T>(tensor, tensor_spec);
+
     auto mesh_buffer = allocate_mesh_buffer_on_device(mesh_device, tensor_spec);
-    DeviceStorage mesh_storage =
-        to_device_mesh_buffer<T>(tensor.get_storage(), mesh_buffer, tensor_spec, *tensor.tensor_attributes, cq_id);
-    return Tensor(std::move(mesh_storage), tensor_spec, tensor.get_distributed_tensor_config());
+    DeviceStorage mesh_storage = to_device_mesh_buffer<T>(
+        extended_tensor.get_storage(), mesh_buffer, tensor_spec, *extended_tensor.tensor_attributes, cq_id);
+    return Tensor(std::move(mesh_storage), tensor_spec, extended_tensor.get_distributed_tensor_config());
 }
 
 template <typename T>
