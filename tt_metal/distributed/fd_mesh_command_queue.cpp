@@ -967,9 +967,9 @@ void FDMeshCommandQueue::record_end() {
             }
         }
         DispatchArray<uint32_t> starting_workers_completed{};
-        for (uint32_t sub_device_id = 0; sub_device_id < mesh_device_->num_sub_devices(); sub_device_id++) {
-            starting_workers_completed[sub_device_id] =
-                trace_worker_descriptors[SubDeviceId{sub_device_id}].num_completion_worker_cores;
+        // SimpleTraceAllocator assumes the sync starts at 0, so keep track of the number of allocations to add.
+        for (auto& [sub_device_id, trace_worker_descriptor] : trace_worker_descriptors) {
+            starting_workers_completed[*sub_device_id] = trace_worker_descriptor.num_completion_worker_cores;
         }
 
         for (uint32_t node_idx = 0; node_idx < trace_nodes.size(); node_idx++) {
