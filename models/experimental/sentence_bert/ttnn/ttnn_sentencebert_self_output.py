@@ -23,6 +23,7 @@ class TtnnSentenceBertSelfOutput:
             bias=self.parameters.dense.bias,
             memory_config=ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG,
             program_config=query_key_value_matmul_program_config,
+            dtype=ttnn.bfloat8_b,
         )
         output = ttnn.reshard(output, input_tensor.memory_config())
         output = self.LayerNorm(

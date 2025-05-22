@@ -4,10 +4,7 @@
 
 import ttnn
 import torch
-from ttnn.model_preprocessing import (
-    preprocess_linear_bias,
-    preprocess_linear_weight,
-)
+from tt_lib.utils import pad_weight
 
 layernorm_program_config = ttnn.LayerNormShardedMultiCoreProgramConfig(
     compute_with_storage_grid_size=(8, 8),
@@ -46,7 +43,7 @@ query_key_value_matmul_program_config = ttnn.MatmulMultiCoreReuseMultiCastProgra
     out_subblock_w=6,
     per_core_M=12,
     per_core_N=12,
-    transpose_mcast=True,
+    transpose_mcast=False,
     fused_activation=None,
 )
 
@@ -54,22 +51,35 @@ query_key_value_matmul_program_config = ttnn.MatmulMultiCoreReuseMultiCastProgra
 def custom_preprocessor(torch_model, name):
     parameters = {}
     if hasattr(torch_model, "query") and hasattr(torch_model, "key") and hasattr(torch_model, "value"):
-        qkv_weight = torch.cat(
-            [
-                torch_model.query.weight,
-                torch_model.key.weight,
-                torch_model.value.weight,
-            ],
-            dim=0,
-        )
-        qkv_bias = torch.cat(
-            [torch_model.query.bias, torch_model.key.bias, torch_model.value.bias],
-            dim=0,
-        )
+        qw = torch_model.query.weight
+        kw = torch_model.key.weight
+        vw = torch_model.value.weight
+        qb = torch_model.query.bias
+        kb = torch_model.key.bias
+        vb = torch_model.value.bias
+        qw = torch.transpose(qw, -1, -2)
+        kw = torch.transpose(kw, -1, -2)
+        vw = torch.transpose(vw, -1, -2)
+        const_w_dims = qw.shape[:-1]
+        qw = qw.reshape([*const_w_dims, 6, -1])  # nums_attention_heads// 2
+        kw = kw.reshape(qw.shape)
+        vw = vw.reshape(qw.shape)
+        qkv_weight_torch = torch.cat((qw, kw, vw), -1).reshape([*const_w_dims, -1])
+        qkv_weight_torch = pad_weight(qkv_weight_torch)
+        const_b_dims = qb.shape[:-1]
+        qb = qb.reshape([*const_b_dims, 6, -1])  # nums_attention_heads// 2
+        kb = kb.reshape(qb.shape)
+        vb = vb.reshape(qb.shape)
+        qkv_bias_torch = torch.cat((qb, kb, vb), -1).reshape([*const_b_dims, -1])
+        qkv_bias_torch = pad_weight(qkv_bias_torch)
 
         parameters = {"query_key_value": {}}
-        parameters["query_key_value"]["weight"] = preprocess_linear_weight(qkv_weight, dtype=ttnn.bfloat16)
-        parameters["query_key_value"]["bias"] = preprocess_linear_bias(qkv_bias, dtype=ttnn.bfloat16)
+        parameters["query_key_value"]["weight"] = ttnn.from_torch(
+            qkv_weight_torch, dtype=ttnn.bfloat8_b, layout=ttnn.TILE_LAYOUT
+        )
+        parameters["query_key_value"]["bias"] = ttnn.from_torch(
+            qkv_bias_torch, dtype=ttnn.bfloat8_b, layout=ttnn.TILE_LAYOUT
+        )
 
     return parameters
 

@@ -4,6 +4,7 @@
 
 import ttnn
 from models.experimental.sentence_bert.ttnn.common import query_key_value_matmul_program_config
+import torch
 
 
 def p(x, a="x"):
@@ -93,7 +94,7 @@ class TtnnSentenceBertSelfAttention:
                 attention_probabilities,
                 value,
                 memory_config=ttnn.L1_MEMORY_CONFIG,
-                dtype=ttnn.bfloat16,  # pcc drops for fp8
+                dtype=ttnn.bfloat8_b,  # pcc drops for fp8
                 core_grid=ttnn.CoreGrid(y=8, x=8),
             )
             ttnn.deallocate(attention_probabilities)
@@ -119,50 +120,16 @@ class TtnnSentenceBertSelfAttention:
                 query,
                 key,
                 value,
-            ) = ttnn.transformer.split_query_key_value_and_split_heads(
+            ) = ttnn.experimental.split_query_key_value_and_split_heads(
                 query_key_value,
                 memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG,
+                compute_with_storage_grid_size=device.compute_with_storage_grid_size(),
                 num_heads=num_heads,
             )
-            # query = torch.load("/home/ubuntu/venkatesh_latest/tt-metal/models/experimental/sentence_bert/reference/query")
-            # query = ttnn.from_torch(query,dtype=ttnn.bfloat8_b,layout=ttnn.TILE_LAYOUT,device=device,memory_config=ttnn.L1_MEMORY_CONFIG)
-            # key = torch.load("/home/ubuntu/venkatesh_latest/tt-metal/models/experimental/sentence_bert/reference/key")
-            # key = key.transpose(-1, -2)
-            # key = ttnn.from_torch(key,dtype=ttnn.bfloat8_b,layout=ttnn.TILE_LAYOUT,device=device,memory_config=ttnn.L1_MEMORY_CONFIG)
-            # value = torch.load("/home/ubuntu/venkatesh_latest/tt-metal/models/experimental/sentence_bert/reference/value")
-            # value = ttnn.from_torch(value,dtype=ttnn.bfloat8_b,layout=ttnn.TILE_LAYOUT,device=device,memory_config=ttnn.L1_MEMORY_CONFIG)
-            # query = ttnn.to_memory_config(
-            # query,
-            # memory_config=ttnn.create_sharded_memory_config_(
-            #     (768,64),
-            #     core_grid=ttnn.CoreGrid(y=6, x=8),
-            #     strategy=ttnn.ShardStrategy.BLOCK,
-            #     orientation=ttnn.ShardOrientation.COL_MAJOR,
-            #     tile_layout=True,
-            # ),
-            # )
-            # key = ttnn.to_memory_config(key,
-            #     memory_config=ttnn.create_sharded_memory_config(
-            #     key.shape,
-            #     core_grid=ttnn.CoreGrid(y=6, x=8),
-            #     strategy=ttnn.ShardStrategy.BLOCK,
-            #     orientation=ttnn.ShardOrientation.COL_MAJOR,
-            #     )
-            # )
-            # value = ttnn.to_memory_config(value,
-            # memory_config=ttnn.create_sharded_memory_config(
-            #     value.shape,
-            #     core_grid=ttnn.CoreGrid(y=6, x=8),
-            #     strategy=ttnn.ShardStrategy.BLOCK,
-            #     orientation=ttnn.ShardOrientation.COL_MAJOR,
-            # )
-            # )
             p(query, "q")
             p(key, "k")
             p(value, "v")
             # ss
-            # torch.save(ttnn.to_torch(query),"/home/ubuntu/venkatesh_latest/tt-metal/models/experimental/sentence_bert/reference/output0")
-            # ttnn.deallocate(query_key_value)
 
             attention_scores = ttnn.matmul(
                 query,
@@ -172,13 +139,26 @@ class TtnnSentenceBertSelfAttention:
             )
             ttnn.deallocate(query)
             ttnn.deallocate(key)
-
+            # pad_shape = attention_scores.padded_shape
+            # attention_scores = attention_scores.reshape(pad_shape[0], 1, pad_shape[1] * pad_shape[2], pad_shape[3])
+            # freciprocal_of_sqrt_hidden_dim = 1 / math.sqrt(head_size)
+            p(attention_scores, "qkt")
+            # print("qkt shape after reshape is ",attention_scores.shape)
+            # print("args are ",freciprocal_of_sqrt_hidden_dim,ttnn.SoftmaxDefaultProgramConfig())
+            p(attention_mask, "attt mask")
+            # attention_probabilities = ttnn.scale_mask_softmax_in_place(
+            # attention_scores, freciprocal_of_sqrt_hidden_dim, attention_mask, program_config=ttnn.SoftmaxDefaultProgramConfig()
+            # )
+            # p(attention_probabilities,"attn prob")
             attention_probabilities = ttnn.transformer.attention_softmax_(
                 attention_scores,
                 attention_mask=attention_mask,
                 head_size=head_size,
             )
-
+            torch.save(
+                ttnn.to_torch(attention_probabilities),
+                "/home/ubuntu/venkatesh_latest/tt-metal/models/experimental/sentence_bert/ttnn/dumps/q_pipeline",
+            )
             context_layer = ttnn.matmul(
                 attention_probabilities,
                 value,

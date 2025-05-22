@@ -55,5 +55,5 @@ def test_ttnn_sentence_bert_self_output(device, inputs):
         ),
     )
     ttnn_out = ttnn_module(sharded_hidden_states, sharded_input_tens)
-    ttnn_out = ttnn.to_torch(ttnn_out)
+    ttnn_out = ttnn.to_torch(ttnn_out)  # .squeeze(dim=1)
     assert_with_pcc(reference_out, ttnn_out, 0.9998)

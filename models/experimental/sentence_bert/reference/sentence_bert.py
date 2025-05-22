@@ -138,12 +138,13 @@ class BertSelfAttention(nn.Module):
             value_layer = self.transpose_for_scores(self.value(hidden_states))
 
         query_layer = self.transpose_for_scores(mixed_query_layer)
+
         use_cache = past_key_value is not None
         if self.is_decoder:
             past_key_value = (key_layer, value_layer)
 
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
-
+        print("after matmvul,", attention_scores.shape)
         if self.position_embedding_type == "relative_key" or self.position_embedding_type == "relative_key_query":
             query_length, key_length = query_layer.shape[2], key_layer.shape[2]
             if use_cache:
@@ -169,10 +170,13 @@ class BertSelfAttention(nn.Module):
             attention_scores = attention_scores + attention_mask
 
         attention_probs = nn.functional.softmax(attention_scores, dim=-1)
-
+        torch.save(
+            attention_probs,
+            "/home/ubuntu/venkatesh_latest/tt-metal/models/experimental/sentence_bert/ttnn/dumps/q_pipeline_ref",
+        )
         if head_mask is not None:
             attention_probs = attention_probs * head_mask
-
+        print("after sotmax,", attention_probs.shape)
         context_layer = torch.matmul(attention_probs, value_layer)
 
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()

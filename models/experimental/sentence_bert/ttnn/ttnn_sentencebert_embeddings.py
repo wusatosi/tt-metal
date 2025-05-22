@@ -32,7 +32,6 @@ class TtnnSentenceBertEmbeddings:
             layout=ttnn.TILE_LAYOUT,
             memory_config=ttnn.L1_MEMORY_CONFIG,
         )
-        embeddings = word_embeddings + token_type_embeddings
 
         position_embeddings = self.position_embeddings(
             position_ids,
