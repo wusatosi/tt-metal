@@ -226,7 +226,7 @@ void FDMeshCommandQueue::enqueue_mesh_workload(MeshWorkload& mesh_workload, bool
     }
 
     if (sysmem_manager.get_bypass_mode()) {
-        TT_FATAL(!blocking, "Blocking is not supported in bypass mode.")
+        TT_FATAL(!blocking, "Blocking is not supported when recording a trace.");
         trace_nodes_.push_back(MeshTraceNode{});
         auto& trace_node = trace_nodes_.back();
         for (auto& [device_range, program] : mesh_workload.get_programs()) {
