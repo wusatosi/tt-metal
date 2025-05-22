@@ -234,7 +234,7 @@ void DevicePool::initialize(
     ZoneScoped;
     log_debug(tt::LogMetal, "DevicePool initialize");
     tt::tt_metal::MetalContext::instance().initialize(
-        dispatch_core_config, num_hw_cqs, {l1_bank_remap.begin(), l1_bank_remap.end()});
+        dispatch_core_config, num_hw_cqs, {l1_bank_remap.begin(), l1_bank_remap.end()}, worker_l1_size);
 
     if (_inst == nullptr) {
         static DevicePool device_pool{};
@@ -303,11 +303,11 @@ void DevicePool::initialize_host(IDevice* dev) const {
 
     // TODO: as optimization, investigate removing all this call for already initialized devivces
     if (!tt_metal::MetalContext::instance().rtoptions().get_skip_reset_cores_on_init()) {
-        dev->reset_cores();
+        // dev->reset_cores();
     }
-    dev->initialize_and_launch_firmware();
+    // dev->initialize_and_launch_firmware();
 
-    watcher_attach(dev->id());
+    // watcher_attach(dev->id());
 }
 
 void DevicePool::initialize_active_devices() const {

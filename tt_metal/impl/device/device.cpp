@@ -1016,7 +1016,7 @@ bool Device::initialize(
         max_alignment);
     this->initialize_default_sub_device_state(
         l1_small_size, trace_region_size, worker_l1_unreserved_start, l1_bank_remap);
-    this->generate_device_bank_to_noc_tables();
+    // this->generate_device_bank_to_noc_tables();
 
     // For minimal setup, don't initialize FW, watcher, dprint. They won't work if we're attaching to a hung chip.
     if (minimal)
@@ -1028,7 +1028,7 @@ bool Device::initialize(
     // If ERISC application firmware is activated before the launch messages are cleared, it can enter an undefined
     // state by reading a corrupted launch message. Routing firmware will never run in this case, causing UMD issued
     // transactions to hang.
-    this->clear_launch_messages_on_eth_cores();
+    // this->clear_launch_messages_on_eth_cores();
 
     return true;
 }
@@ -1047,8 +1047,9 @@ bool Device::close() {
     sub_device_manager_tracker_.reset(nullptr);
 
     // DprintServerDetach(this->id());
-    watcher_detach(this->id());
+    // watcher_detach(this->id());
 
+#if 0
     // Assert worker cores only for this device
     auto dispatch_cores = tt::tt_metal::get_virtual_dispatch_cores(this->id());
     auto routing_cores = tt::tt_metal::get_virtual_dispatch_routing_cores(this->id());
@@ -1081,6 +1082,7 @@ bool Device::close() {
                 tt_cxy_pair(this->id(), virtual_eth_core), reset_val);
         }
     }
+#endif
 
     // tt::tt_metal::MetalContext::instance().get_cluster().l1_barrier(id_);
 
