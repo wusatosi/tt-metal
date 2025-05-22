@@ -828,17 +828,17 @@ void FDMeshCommandQueue::record_end() {
     for (auto& trace_node : trace_nodes_) {
         for (auto& [device_range, program] : trace_node.trace_nodes) {
             bool intersection_found = false;
-            std::vector<MeshCoordinateRange> device_ranges_to_invalidate;
-            for (auto& existing_range : device_ranges) {
+            std::vector<size_t> device_range_idxs_to_invalidate;
+            for (size_t i = 0; i < device_ranges.size(); i++) {
+                auto& existing_range = device_ranges[i];
                 TT_FATAL(existing_range.dims() != device_range.dims(), "Invalid mismatching dimensions for existing {} vs device range {}",
                     existing_range.dims(), device_range.dims());
                 if (existing_range.intersects(device_range)) {
                     intersection_found = true;
                     auto intersection = *existing_range.intersection(device_range);
-                    if (intersection == existing_range) {
-                    } else {
+                    if (intersection != existing_range) {
                         auto complement = subtract(existing_range, intersection);
-                        device_ranges_to_invalidate.push_back(existing_range);
+                        device_range_idxs_to_invalidate.push_back(i);
                         for (const auto& complement_range : complement.ranges()) {
                             device_ranges.push_back(complement_range);
                         }
@@ -847,9 +847,10 @@ void FDMeshCommandQueue::record_end() {
                 }
             }
             if (intersection_found) {
-                for (auto& device_range : device_ranges_to_invalidate) {
-                    device_ranges.erase(
-                        std::remove(device_ranges.begin(), device_ranges.end(), device_range), device_ranges.end());
+                if (!device_range_idxs_to_invalidate.empty()) {
+                    device_ranges.erase(remove_by_index(
+                        device_ranges.begin(), device_ranges.end(), device_range_idxs_to_invalidate.begin(),
+                        device_range_idxs_to_invalidate.end()), device_ranges.end());
                 }
             } else {
                 device_ranges.push_back(device_range);
@@ -990,8 +991,6 @@ void FDMeshCommandQueue::record_end() {
                 worker_launch_message_buffer_state.get_mcast_wptr(),
                 worker_launch_message_buffer_state.get_unicast_wptr(),
                 trace_worker_descriptors[sub_device_id].num_completion_worker_cores,
-
-                // expected_workers_completed[*sub_device_id],
                 this->virtual_program_dispatch_core(),
                 MetalContext::instance().get_dispatch_core_manager().get_dispatch_core_type(),
                 sub_device_id,
@@ -1027,7 +1026,6 @@ void FDMeshCommandQueue::record_end() {
                 trace_worker_descriptors[sub_device_id].num_traced_programs_needing_go_signal_unicast++;
             }
             trace_worker_descriptors[sub_device_id].num_completion_worker_cores += num_workers;
-            //           expected_workers_completed[*sub_device_id] += num_workers;
         }
 
         auto& bypass_data = sysmem_manager_for_trace.get_bypass_data();
