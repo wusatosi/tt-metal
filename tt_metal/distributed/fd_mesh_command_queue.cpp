@@ -803,6 +803,20 @@ void FDMeshCommandQueue::record_begin(const MeshTraceId& trace_id, const std::sh
     }
 }
 
+template <typename VecIt, typename IndexIt>
+static VecIt remove_by_index(VecIt begin, VecIt end, IndexIt index_begin, IndexIt index_end) {
+    return std::remove_if(begin, end, [&](auto& value) {
+        if (index_begin == index_end) {
+            return false;
+        }
+        if (*index_begin == (&value - &*begin)) {
+            ++index_begin;
+            return true;
+        }
+        return false;
+    });
+}
+
 void FDMeshCommandQueue::record_end() {
     const auto& hal = MetalContext::instance().hal();
 
@@ -825,6 +839,7 @@ void FDMeshCommandQueue::record_end() {
                 }
             }
             if (device_ranges_to_invalidate.size() > 0) {
+                #if 0
                 uint32_t remove_index = 0;
                 unused_range.erase(
                     std::remove_if(
@@ -841,6 +856,14 @@ void FDMeshCommandQueue::record_end() {
                             }
                             return false;
                         }),
+                    unused_range.end());
+                    #endif
+                unused_range.erase(
+                    remove_by_index(
+                        unused_range.begin(),
+                        unused_range.end(),
+                        device_ranges_to_invalidate.begin(),
+                        device_ranges_to_invalidate.end()),
                     unused_range.end());
             }
         }
