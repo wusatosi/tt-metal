@@ -72,10 +72,17 @@ class YOLOv4PerformanceRunnerInfra:
         input_mem_config = ttnn.MemoryConfig(
             ttnn.types.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.types.BufferType.L1, shard_spec
         )
-        torch_input_tensor = torch_input_tensor.permute(0, 2, 3, 1)
-        torch_input_tensor = torch_input_tensor.reshape(1, 1, h * w * n, c)
+        if c == 3:
+            c = 16
+        input_mem_config = ttnn.create_sharded_memory_config(
+            [n, c, h, w],
+            ttnn.CoreGrid(x=8, y=8),
+            ttnn.ShardStrategy.HEIGHT,
+        )
+        # torch_input_tensor = torch_input_tensor.permute(0, 2, 3, 1)
+        # torch_input_tensor = torch_input_tensor.reshape(1, 1, h * w * n, c)
         tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
-        tt_inputs_host = ttnn.pad(tt_inputs_host, [1, 1, n * h * w, 16], [0, 0, 0, 0], 0)
+        # tt_inputs_host = ttnn.pad(tt_inputs_host, [1, 1, n * h * w, 16], [0, 0, 0, 0], 0)
         return tt_inputs_host, input_mem_config
 
     def setup_dram_sharded_input(self, device, torch_input_tensor=None, mesh_mapper=None, mesh_composer=None):
@@ -87,7 +94,7 @@ class YOLOv4PerformanceRunnerInfra:
             ),
             [
                 divup(tt_inputs_host.volume() // tt_inputs_host.shape[-1], (dram_grid_size.x * dram_grid_size.y)),
-                16,
+                tt_inputs_host.shape[-1],
             ],
             ttnn.ShardOrientation.ROW_MAJOR,
         )

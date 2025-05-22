@@ -42,6 +42,19 @@ class TtYOLOv4:
         self.device = device
 
     def __call__(self, input_tensor):
+        N, C, H, W = input_tensor.shape
+        min_channels = 16
+        if C < min_channels:
+            channel_padding_needed = min_channels - C
+            nchw = ttnn.pad(input_tensor, ((0, 0), (0, channel_padding_needed), (0, 0), (0, 0)), value=0.0)
+        else:
+            nchw = input_tensor
+        nhwc = ttnn.permute(nchw, (0, 2, 3, 1))  # NCHW -> NHWC
+        ttnn.deallocate(nchw)
+        ttnn.deallocate(input_tensor)
+        nchw = ttnn.reallocate(nhwc)
+        input_tensor = ttnn.reshape(nhwc, [1, 1, nhwc.shape[0] * nhwc.shape[1] * nhwc.shape[2], nhwc.shape[-1]])
+
         d1 = self.down1(input_tensor)
         d2 = self.down2(d1)
         ttnn.deallocate(d1)
