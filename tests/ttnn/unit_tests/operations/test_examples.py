@@ -34,6 +34,5 @@ def test_example(device):
 
         ret = torch.allclose(actual_output, expected_output, atol=0, rtol=0)
         if not ret:
-            None
-            # print("actual_output", actual_output.to(torch.float32).flatten().tolist())
+            print("actual_output", actual_output.to(torch.float32).flatten().tolist())
         assert torch.allclose(actual_output, expected_output, atol=0, rtol=0)
