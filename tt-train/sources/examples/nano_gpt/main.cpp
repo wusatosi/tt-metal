@@ -803,6 +803,20 @@ int main(int argc, char **argv) {
                     save_training_state(config.model_path, model, scheduler, "transformer", "adamw");
                 }
 
+                auto profiler = std::getenv("TT_METAL_DEVICE_PROFILER");
+                auto DumpDeviceProfiler = [](ttnn::IDevice *device) {
+                    ProfilerOptionalMetadata prof_metadata(
+                        tt::tt_metal::op_profiler::runtime_id_to_opname_.export_map());
+                    tt::tt_metal::detail::DumpDeviceProfileResults(
+                        device, tt::tt_metal::ProfilerDumpState::NORMAL, prof_metadata);
+                };
+                if (profiler != nullptr) {
+                    fmt::println("Device profiler enabled, dumping results.");
+                    for (auto &dev : device->get_devices()) {
+                        DumpDeviceProfiler(dev);
+                    }
+                }
+
                 if (global_step >= config.max_steps) {
                     break;
                 }

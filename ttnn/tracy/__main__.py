@@ -163,6 +163,7 @@ def main():
                 trySystem = False
                 try:
                     progname = args[0]
+                    print(progname)
                     sys.path.insert(0, os.path.dirname(progname))
                     with io.open_code(progname) as fp:
                         code = compile(fp.read(), progname, "exec")
@@ -174,7 +175,9 @@ def main():
                         "__package__": None,
                         "__cached__": None,
                     }
-                except ValueError as exc:
+                except ValueError:
+                    trySystem = True
+                except FileNotFoundError:
                     trySystem = True
                 if trySystem:
                     subprocess.run(progname, shell=True, check=True)

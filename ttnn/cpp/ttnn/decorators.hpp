@@ -152,19 +152,23 @@ private:
             "Primitive Operation must implement invoke() method to be invoked.");
         ZoneScopedN("Run primitive ttnn operation");
         ZoneName(static_cast<const char*>(cpp_fully_qualified_name.data.data()), cpp_fully_qualified_name.size());
+        fmt::println("Running operation_t::invoke in prim op invoke!");
         auto [operation_attributes, tensors_args] = operation_t::invoke(std::forward<decltype(args)>(args)...);
+        fmt::println("Running device operation detail invoke in prim op invoke!");
         return ttnn::device_operation::detail::invoke<operation_t>(queue_id, operation_attributes, tensors_args);
     }
 
     template <typename... args_t>
         requires(PrimitiveOperationConcept<operation_t>)
     auto invoke(args_t&&... args) const {
+        ZoneScopedN("invoke 162");
         return invoke(DefaultQueueId, std::forward<args_t>(args)...);
     }
 
     template <typename... args_t>
         requires(CompositeOperationConcept<operation_t>)
     auto invoke(args_t&&... args) const {
+        ZoneScopedN("invoke 169");
         return invoke_composite(std::forward<args_t>(args)...);
     }
 

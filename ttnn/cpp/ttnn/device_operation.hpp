@@ -577,7 +577,10 @@ typename device_operation_t::tensor_return_value_t invoke(
     QueueId cq_id,
     const typename device_operation_t::operation_attributes_t& operation_attributes,
     const typename device_operation_t::tensor_args_t& tensor_args) {
+    fmt::println("Scoping run device op");
     ZoneScopedN("Run Device Operation");
+    fmt::println("Scoped run device op");
+    TracyMessageL("Run Device Operation");
 
     // TODO: Add GraphTracker::instance().track_device_operation to track device operations specifically?
     tt::tt_metal::GraphTracker::instance().track_function_start(get_operation_name<device_operation_t>(operation_attributes), operation_attributes, tensor_args);
