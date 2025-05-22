@@ -20,19 +20,6 @@ namespace tt::tt_metal::distributed {
 // that can be written out to DRAM.
 // 3. Commit to Mesh: Write assembled trace to DRAM buffer.
 
-// Data structure containing MeshTrace staging information
-// For each MeshWorkload in the trace, this contains:
-//   - The device_range each program in the MeshWorkload runs on
-//   - The sysmem_manager coordinate the associated dispatch commands are stored in
-//   - The offset and size of the dispatch commands in the sysmem_manager
-//     staging vector
-struct MeshTraceStagingMetadata {
-    MeshCoordinateRange device_range = MeshCoordinateRange(MeshShape(0, 0));
-    MeshCoordinate sysmem_manager_coord = MeshCoordinate(0, 0);
-    std::size_t offset = 0;
-    std::size_t size = 0;
-};
-
 // Finalized/Consolidated dispatch commands on a device_range, corresponding
 // to a trace
 struct MeshTraceData {
@@ -53,9 +40,6 @@ public:
     // Trace data per logical Device in a Mesh.
     std::vector<MeshTraceData> ordered_trace_data;
     uint32_t total_trace_size = 0;
-    // Once the trace is captured/staged inside the sysmem_managers on a MeshDevice, assemble all
-    // dispatch commands related to the MeshTrace
-    void assemble_dispatch_commands(MeshDevice* device, const std::vector<MeshTraceStagingMetadata>& mesh_trace_md);
 };
 
 // Ties a MeshTraceDescriptor (host side state) to a MeshBuffer (device side state)
