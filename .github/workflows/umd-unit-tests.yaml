@@ -51,3 +51,6 @@ jobs:
       - name: Run UMD unit tests
         timeout-minutes: ${{ inputs.timeout }}
         run: build/test/umd/${{ inputs.arch }}/unit_tests
+      - name: Run UMD unit tests 2
+        timeout-minutes: ${{ inputs.timeout }}
+        run: build/test/umd/api/api_tests
