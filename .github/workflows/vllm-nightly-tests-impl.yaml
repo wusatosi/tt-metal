@@ -118,6 +118,9 @@ jobs:
             "${OVERRIDE_TT_CONFIG[@]}" \
             > ./output/vllm_server.log 2>&1 &
 
+          # Store server's pid for cleanup
+          echo $! > ./server.pid
+
       - name: ⏰ Wait for server to be ready
         run: |
           echo "Waiting for server..."
