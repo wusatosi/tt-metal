@@ -20,7 +20,7 @@
             "content": [
                 {
                     "type": "image",
-                    "image": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg"
+                    "image": "file://models/sample_data/demo.jpeg"
                 },
                 {
                     "type": "text",

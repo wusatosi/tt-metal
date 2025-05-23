@@ -6,6 +6,7 @@
 import ttnn
 import torch
 from types import SimpleNamespace
+from typing import Union
 
 from models.demos.qwen25_vl.tt.generator import Generator as QwenVLGenerator
 
@@ -13,11 +14,9 @@ from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
     Qwen2_5_VLForConditionalGeneration as Ref_Qwen2_5_VLForConditionalGeneration,
 )
 from transformers import AutoProcessor
-from qwen_vl_utils import process_vision_info
 
 from models.demos.qwen25_vl.tt.common import (
     PagedAttentionConfig,
-    sample_host,
     preprocess_inputs_prefill,
     merge_vision_tokens,
     multimodal_rope_from_hf,
@@ -27,6 +26,7 @@ from models.demos.qwen25_vl.tt.model_config import VisionModelArgs
 
 from models.tt_transformers.tt.model_config import ModelArgs, ModelOptimizations
 
+from vllm.inputs import INPUT_REGISTRY, DecoderOnlyInputs, EncoderDecoderInputs, InputContext
 from vllm.model_executor.models.interfaces import SupportsMultiModal
 
 
@@ -46,9 +46,9 @@ def initialize_vllm_text_transformer(
         optimizations=optimizations,
         max_seq_len=max_seq_len,
     )
-    # assert tt_model_args.model_name.replace("-", "") in hf_config._name_or_path.replace(
-    #     "-", ""
-    # ), f"The model specified in vLLM ({hf_config._name_or_path}) does not match the model name ({model_args.model_name}) with model weights ({model_args.CKPT_DIR})."
+    assert tt_model_args.model_name.replace("-", "").endswith(
+        hf_config._name_or_path.replace("-", "")
+    ), f"The model specified in vLLM ({hf_config._name_or_path}) does not match the model name ({tt_model_args.model_name}) with model weights ({tt_model_args.CKPT_DIR})."
     if n_layers is not None:
         tt_model_args.n_layers = n_layers
     state_dict = tt_model_args.load_state_dict()
@@ -57,9 +57,10 @@ def initialize_vllm_text_transformer(
     paged_attention_config = None
     tt_kv_cache = None
 
+    block_size = 32  # [INFO] block size is fixed to 32 for now
     paged_attention_config = PagedAttentionConfig(
-        block_size=32,
-        max_num_blocks=4096,
+        block_size=block_size,
+        max_num_blocks=max_seq_len * max_batch_size // block_size,
     )
     # Implied shuffling of blocks
     permutation = torch.randperm(paged_attention_config.max_num_blocks)
@@ -83,31 +84,25 @@ def initialize_vllm_text_transformer(
     return tt_model_args, model, page_table, tt_kv_cache
 
 
-class Qwen2_5_VLInputProcessor:
-    def __init__(self, model_name):
-        self.processor = AutoProcessor.from_pretrained(model_name)
+def input_processor_for_qwen25_vl(ctx: InputContext, inputs: Union[DecoderOnlyInputs, EncoderDecoderInputs]):
+    input_processor = ctx.get_hf_processor()
+    prompt_text = inputs["prompt"]
+    images = inputs["multi_modal_data"]["image"]
 
-    def __call__(self, inputs):
-        # todo)) make use of the token ids directly
-        prompt_text = inputs["prompt"]
-        images = inputs["multi_modal_data"]["image"]
+    processed_inputs = input_processor(
+        text=prompt_text,  # [INFO] Qwen2VLProcessor handles the case where text is a string or a list of strings
+        images=images,
+        videos=None,  # [INFO] videos are not supported yet
+        return_tensors="pt",
+    )
 
-        processed_inputs = self.processor(
-            # todo)) can text be empty?
-            text=prompt_text,  # [INFO] Qwen2VLProcessor handles the case where text is a string or a list of strings
-            images=images,
-            videos=None,  # [INFO] videos are not supported yet
-            # padding=True,
-            return_tensors="pt",
-        )
-
-        assert processed_inputs.input_ids.shape[0] == 1, "Only one image is processed at a time by vLLM"
-        return {
-            "type": inputs["type"],
-            "prompt_token_ids": processed_inputs.input_ids[0].tolist(),
-            "prompt": inputs["prompt"],
-            "multi_modal_data": {"image": processed_inputs},  # [INFO] add processed_inputs
-        }
+    assert processed_inputs.input_ids.shape[0] == 1, "Only one image is processed at a time by vLLM"
+    return {
+        "type": inputs["type"],
+        "prompt_token_ids": processed_inputs.input_ids[0].tolist(),
+        "prompt": inputs["prompt"],
+        "multi_modal_data": {"image": processed_inputs},  # [INFO] add processed_inputs
+    }
 
 
 class CustomNamespace(SimpleNamespace):
@@ -115,6 +110,7 @@ class CustomNamespace(SimpleNamespace):
         return key in self.__dict__
 
 
+@INPUT_REGISTRY.register_input_processor(input_processor_for_qwen25_vl)
 class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
     def __init__(self, *args, **kwargs):
         self.page_table = kwargs.pop("page_table", None)
@@ -122,8 +118,6 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
         assert (
             self.page_table is not None and self.kv_cache is not None
         ), "Page table and kv cache must be provided for vLLM"
-        self.input_processor = kwargs.pop("input_processor", None)
-        assert self.input_processor is not None, "Input processor must be provided for vLLM"
         self.reference_model = kwargs.pop("reference_model", None)
         self.visual_model = kwargs.pop("visual_model", None)
         assert (
@@ -142,11 +136,10 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
             mesh_device,
             max_batch_size,
             max_seq_len=131072,
-            n_layers=n_layers,
+            n_layers=n_layers,  # todo)) remove this after debugging n_layers
             dtype=ttnn.bfloat8_b,
         )
 
-        input_processor = Qwen2_5_VLInputProcessor(model_args.model_name)
         # todo)) { remove this after debugging
         from transformers import logging as transformers_logging
 
@@ -177,7 +170,6 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
             tokenizer=model_args.tokenizer,
             page_table=page_table,
             kv_cache=kv_cache,
-            input_processor=input_processor,
             reference_model=reference_model,
             visual_model=visual_model,
         )
@@ -245,7 +237,6 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
             k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
             v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
 
-        # todo)) remove this if it turns out to be unnecessary -- can this function receive tokens from multiple users?
         logits = self.prefill_forward_text(
             input_prefill_pt[0].unsqueeze(0),  # Just warmup prefill for 1 user
             page_table=self.page_table,
@@ -265,7 +256,6 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
             kv_cache=kv_cache,
             prompt_lens=decoding_pos,
         )
-        # torch.save(logits, f"ttnn_logits.pt")
 
         return logits
 
@@ -278,5 +268,16 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
         enable_trace=True,
         read_from_device=True,
     ):
-        # todo))
-        pass
+        return super().decode_forward_text(
+            tokens=tokens,
+            start_pos=start_pos,
+            page_table=self.page_table,
+            kv_cache=kv_cache,
+            enable_trace=enable_trace,
+            read_from_device=read_from_device,
+            argmax_on_device=False,
+        )
+
+    # todo)) remove this after qwen2.5-vl-rebase-main is merged
+    def read_decode_output(self, tt_logits, unpadded_batch, is_tokens=False):
+        return super().read_decode_output(tt_logits, unpadded_batch, argmax_on_device=is_tokens)
