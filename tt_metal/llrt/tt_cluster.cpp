@@ -1075,6 +1075,11 @@ std::unordered_set<CoreCoord> Cluster::get_active_ethernet_cores(
             }
         }
     }
+    std::cout << "BROSKO " << chip_id << " active_ethernet_cores ";
+    for (const auto& core : active_ethernet_cores) {
+        std::cout << core.str() << " ";
+    }
+    std::cout << std::endl;
     return active_ethernet_cores;
 }
 
@@ -1159,6 +1164,11 @@ std::set<tt_fabric::chan_id_t> Cluster::get_fabric_ethernet_channels(chip_id_t c
             fabric_ethernet_channels.insert(this->get_soc_desc(chip_id).logical_eth_core_to_chan_map.at(eth_core));
         }
     }
+    std::cout << "BROSKO " << chip_id << " get_fabric_ethernet_channels ";
+    for (const auto& channel : fabric_ethernet_channels) {
+        std::cout << channel << " ";
+    }
+    std::cout << std::endl;
     return fabric_ethernet_channels;
 }
 
@@ -1200,6 +1210,11 @@ std::unordered_set<CoreCoord> Cluster::get_inactive_ethernet_cores(chip_id_t chi
             inactive_ethernet_cores.insert(eth_core);
         }
     }
+    std::cout << "BROSKO " << chip_id << " get_inactive_ethernet_cores ";
+    for (const auto& core : inactive_ethernet_cores) {
+        std::cout << core.str() << " ";
+    }
+    std::cout << std::endl;
     return inactive_ethernet_cores;
 }
 
