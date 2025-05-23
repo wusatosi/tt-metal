@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import torch
+
+# import numpy as np
 import ttnn
 from models.common.lightweightmodule import LightweightModule
 
@@ -49,7 +51,6 @@ class TTSampling(LightweightModule):
     def forward(self, x: ttnn.Tensor):
         # Local top k
         topk_values, topk_indices = ttnn.topk(x, k=32, dim=-1, sub_core_grids=self.args.sub_core_grid_topk)
-        ttnn.deallocate(x)
 
         # Gather values
         # Note: Persistent output buffer used, do not deallocate output!
@@ -110,7 +111,7 @@ class TTSampling(LightweightModule):
 
         # Untilize
         topk_global_indices_interleaved_untilised = ttnn.untilize(
-            topk_global_indices_interleaved, sub_core_grids=self.args.sub_core_grids
+            topk_global_indices_interleaved, use_multicore=True, sub_core_grids=self.args.sub_core_grids
         )
         ttnn.deallocate(topk_global_indices_interleaved)
 
@@ -121,6 +122,7 @@ class TTSampling(LightweightModule):
             k=self.k,
             p=self.p,
             seed=self.seed,
+            # seed=np.random.randint(0, 2**32 - 1), # TODO: find solution for constant outputs for constant seed
             sub_core_grids=ttnn.num_cores_to_corerangeset_in_subcoregrids(
                 self.args.start_core, self.max_batch_size, self.args.sub_core_grids, row_wise=True
             ),

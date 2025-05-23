@@ -230,16 +230,20 @@ def run_llama3_demo(
     profiler.end("loading_weights_to_device")
     logger.info("Finished loading weights to device.")
 
-    # Keep track of generated outputs to print out every iteration
-    if dummy_weights:
-        encoded_prompts = [
-            [128000, 2028, 374, 264, 1296]
-        ] * model_args.max_batch_size  # "This is a test" encoded prompt
-    else:
-        if instruct_mode:
-            encoded_prompts = [model_args.encode_prompt(prompt) for prompt in input_prompts]
-        else:
-            encoded_prompts = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in input_prompts]
+    # # Keep track of generated outputs to print out every iteration
+    # if dummy_weights:
+    #     encoded_prompts = [
+    #         [128000, 2028, 374, 264, 1296]
+    #     ] * model_args.max_batch_size  # "This is a test" encoded prompt
+    # else:
+    #     if instruct_mode:
+    #         encoded_prompts = [model_args.encode_prompt(prompt) for prompt in input_prompts]
+    #     else:
+    #         encoded_prompts = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in input_prompts]
+
+    prompts = ["Life is "] * model_args.max_batch_size
+    tokenizer = Tokenizer(model_args.tokenizer_path)
+    encoded_prompts = [tokenizer.encode(prompt, bos=True, eos=False) for prompt in prompts]
 
     # Prefill by decode: start at first token; pad to 32 (tile size)
     max_prompt_length = max([len(prompt) for prompt in encoded_prompts])
@@ -402,97 +406,112 @@ def run_llama3_demo(
     # Tracks the number of iterations where throughput falls below `tsu_threshold`
     tsu_failures = 0
 
-    while users_decoding:
-        if iteration == 0:  # First iteration also accounts for compile time
-            profiler.start(f"compile_decode", iteration=iteration)
-        iteration_time_start = time()
+    try:
+        while users_decoding:
+            if iteration == 0:  # First iteration also accounts for compile time
+                profiler.start(f"compile_decode", iteration=iteration)
+            iteration_time_start = time()
 
-        # Execute trace
-        ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
-        tt_out_tok_cpu = tt_out_tok.cpu(blocking=True, cq_id=0)
-        iteration_time = time() - iteration_time_start
+            # Execute trace
+            ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
+            tt_out_tok_device0 = ttnn.get_device_tensors(tt_out_tok)[0]
+            tt_out_tok_cpu = tt_out_tok_device0.cpu(blocking=True, cq_id=0)
+            iteration_time = time() - iteration_time_start
 
-        # Update current pos and mat idxs on host and send to device
-        # TODO This is required for now since we cannot ttnn.plus_one(rot_mat_idxs) while it being uint32.
-        # If this tensor is int32, it won't be supported by ttnn.embedding
-        if not stress_test:
-            current_pos += 1
-        # ttnn.synchronize_device(mesh_device)
-        # Write to host
-        tt_output_torch = ttnn.to_torch(
-            tt_out_tok_cpu,
-            mesh_composer=ttnn.ConcatMesh2dToTensor(
-                mesh_device,
-                dims=(3, 1),
-                mesh_shape=model_args.cluster_shape,
-            ),
-        )[0, 0, 0, :batch_size]
-        # Append the generated token to the list of outputs
-        if iteration in range(len(encoded_prompts[0])):
-            all_outputs.append(encoded_prompts[0][iteration])  # Update list of TT outputs
-            tt_out_tok_reset = ttnn.from_torch(
-                encoded_prompts_tensor_whole_sequence[:, iteration].reshape(1, 1, 1, batch_size),
-                dtype=ttnn.uint32,
-                layout=ttnn.ROW_MAJOR_LAYOUT,
-                mesh_mapper=ttnn.ShardTensor2dMesh(mesh_device, dims=(None, None), mesh_shape=model_args.cluster_shape),
-            )
-            ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
-        else:
-            all_outputs.append(tt_output_torch.tolist()[0])  # Update generated token to list of TT outputs
-            if all_outputs[-1] in [128001, 128009] and not stress_test:  # EoT tokens
+            # Update current pos and mat idxs on host and send to device
+            # TODO This is required for now since we cannot ttnn.plus_one(rot_mat_idxs) while it being uint32.
+            # If this tensor is int32, it won't be supported by ttnn.embedding
+            if not stress_test:
+                current_pos += 1
+            # ttnn.synchronize_device(mesh_device)
+            # Write to host
+            # tt_output_torch = ttnn.to_torch(
+            #     tt_out_tok_cpu,
+            #     mesh_composer=ttnn.ConcatMesh2dToTensor(
+            #         mesh_device,
+            #         dims=(3, 1),
+            #         mesh_shape=model_args.cluster_shape,
+            #     ),
+            # )[0, 0, 0, :batch_size]
+            tt_output_torch = ttnn.to_torch(
+                tt_out_tok_cpu,
+            )[0, 0, 0, :batch_size]
+            # breakpoint()
+            # Append the generated token to the list of outputs
+            if iteration in range(len(encoded_prompts[0])):
+                all_outputs.append(encoded_prompts[0][iteration])  # Update list of TT outputs
+                tt_out_tok_reset = ttnn.from_torch(
+                    encoded_prompts_tensor_whole_sequence[:, iteration].reshape(1, 1, 1, batch_size),
+                    dtype=ttnn.uint32,
+                    layout=ttnn.ROW_MAJOR_LAYOUT,
+                    mesh_mapper=ttnn.ShardTensor2dMesh(
+                        mesh_device, dims=(None, None), mesh_shape=model_args.cluster_shape
+                    ),
+                )
+                ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
+            else:
+                all_outputs.append(tt_output_torch.tolist()[0])  # Update generated token to list of TT outputs
+                if all_outputs[-1] in [128001, 128009] and not stress_test:  # EoT tokens
+                    users_decoding = False
+
+            # Ignore the first iteration for average speed calculation
+            if iteration > 0:
+                total_decoding_time += iteration_time
+                total_tokens_generated += 1
+
+            tokens_per_second_per_user = 1 / iteration_time
+
+            profiler.start(f"log_printing_iter_{iteration}", iteration=iteration)
+            # Print out generated outputs for each user at the end of every iteration
+            if not is_ci_env:
+                # if len(user_input) == 1:
+                logger.info("[User 0] {}".format("".join(tokenizer.decode(all_outputs))))
+                # else:
+                #     for user in range(batch_size):
+                #         text = "".join(tokenizer.decode(all_outputs[user]))
+                #         if len(text) > 100:
+                #             text = "..." + text[-97:]
+                #         text = text.replace("\n", " ")
+                #         logger.info("[User {}] {}".format(user, text))
+
+            if not is_ci_env or iteration < 200 or iteration % 1000 == 0:
+                # Always print perf at every iteration if not in CI
+                logger.info(
+                    f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
+                )
+
+            if is_ci_env and iteration == 127:
+                tokens_per_second_per_user_token127 = tokens_per_second_per_user
+
+            if not stress_test:
+                # Increment failure count if throughput is too low
+                if (
+                    tokens_per_second_per_user < tsu_thresholds["min"]
+                    or tokens_per_second_per_user > tsu_thresholds["max"]
+                ):
+                    tsu_failures += 1
+
+            profiler.end(f"log_printing_iter_{iteration}", iteration=iteration)
+
+            if iteration == 0:  # First iteration also accounts for compile time
+                profiler.end(f"compile_decode", iteration=iteration)
+
+            iteration += 1
+
+            # Upper limit of generated tokens for each user (to avoid infinite generation in case eos is not seen)
+            if iteration >= max_generated_tokens:
                 users_decoding = False
 
-        # Ignore the first iteration for average speed calculation
-        if iteration > 0:
-            total_decoding_time += iteration_time
-            total_tokens_generated += 1
+        # Release trace
+        ttnn.release_trace(mesh_device, trace_id)
 
-        tokens_per_second_per_user = 1 / iteration_time
-
-        profiler.start(f"log_printing_iter_{iteration}", iteration=iteration)
-        # Print out generated outputs for each user at the end of every iteration
-        if not is_ci_env:
-            # if len(user_input) == 1:
-            logger.info("[User 0] {}".format("".join(tokenizer.decode(all_outputs))))
-            # else:
-            #     for user in range(batch_size):
-            #         text = "".join(tokenizer.decode(all_outputs[user]))
-            #         if len(text) > 100:
-            #             text = "..." + text[-97:]
-            #         text = text.replace("\n", " ")
-            #         logger.info("[User {}] {}".format(user, text))
-
-        if not is_ci_env or iteration < 200 or iteration % 1000 == 0:
-            # Always print perf at every iteration if not in CI
-            logger.info(
-                f"Iteration {iteration}: {1000*iteration_time:.0f}ms @ {tokens_per_second_per_user:.1f} tok/s/user ({batch_size*tokens_per_second_per_user:.1f} tok/s throughput)"
-            )
-
-        if is_ci_env and iteration == 127:
-            tokens_per_second_per_user_token127 = tokens_per_second_per_user
-
-        if not stress_test:
-            # Increment failure count if throughput is too low
-            if tokens_per_second_per_user < tsu_thresholds["min"] or tokens_per_second_per_user > tsu_thresholds["max"]:
-                tsu_failures += 1
-
-        profiler.end(f"log_printing_iter_{iteration}", iteration=iteration)
-
-        if iteration == 0:  # First iteration also accounts for compile time
-            profiler.end(f"compile_decode", iteration=iteration)
-
-        iteration += 1
-
-        # Upper limit of generated tokens for each user (to avoid infinite generation in case eos is not seen)
-        if iteration >= max_generated_tokens:
-            users_decoding = False
-
-    # Release trace
-    ttnn.release_trace(mesh_device, trace_id)
-
-    # Finish profiling at the end of all batches inference
-    profiler.end(profiler_step_name)
-    profiler.end("run")
+        # Finish profiling at the end of all batches inference
+        profiler.end(profiler_step_name)
+        profiler.end("run")
+    except Exception as e:
+        logger.error(f"Error in decode loop: {e}")
+        breakpoint()
+        raise e
 
     if is_ci_env and tokens_per_second_per_user_token127 is not None:
         benchmark_data.add_measurement(profiler, 0, profiler_step_name, "tsu_e2e", tokens_per_second_per_user_token127)
@@ -542,7 +561,7 @@ def run_llama3_demo(
             200,  # max_generated_tokens
             True,  # paged_attention
             {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params  # TODO This will be serviced by vLLM
-            {"top_k": 32, "top_p": 0.08, "seed": 42},  # sampling_params (argmax)
+            {"top_k": 1, "top_p": 0.08, "seed": 42},  # sampling_params (argmax)
             False,  # stress_test
             0,  # start_pos
         ),
@@ -561,7 +580,7 @@ def run_llama3_demo(
             False,  # stress_test
             0,  # start_pos
         ),
-        (  # Stress test: batch-32 very long generations but at same token index
+        (  # Stress test: 4*128k generation length
             "instruct",
             80,
             "models/demos/llama3_subdevices/demo/input_data_questions_prefill_128.json",  # input_prompts
@@ -576,7 +595,7 @@ def run_llama3_demo(
             True,  # stress_test
             0,  # start_pos
         ),
-        (  # full demo, long generation test
+        (  # mini stress test
             "instruct",
             80,
             "models/demos/llama3_subdevices/demo/input_data_questions_prefill_128.json",  # input_prompts
@@ -606,7 +625,7 @@ def run_llama3_demo(
             False,  # stress_test
             127,  # start_pos
         ),
-        (  # Stress test: batch-32 very long generations but at same token index
+        (  # ND hang test
             "instruct",
             80,
             "models/demos/llama3_subdevices/demo/input_data_questions_prefill_128.json",  # input_prompts
