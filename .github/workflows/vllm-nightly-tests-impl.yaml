@@ -145,7 +145,7 @@ jobs:
       - name: 📐 Run benchmark
         timeout-minutes: ${{ matrix.test-group.benchmark_timeout }}
         run: |
-          behchmark_log="./output/vllm_benchmark.log"
+          benchmark_log="./output/vllm_benchmark.log"
 
           python3 vllm/benchmarks/benchmark_serving.py \
             --backend vllm \
@@ -163,7 +163,7 @@ jobs:
           # If the backend fails, the benchmark will still complete successfully but with all-zero results.
           # It will contain a warning message, though
           warning_message="All requests failed"
-          if grep -q $warning_message $behchmark_log; then
+          if grep -q $warning_message $benchmark_log; then
             echo "❌ All requests failed, check out vllm_server.log"
             exit 1
           fi
