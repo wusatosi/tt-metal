@@ -1121,7 +1121,8 @@ conv_op_l1_usage conv2d::calculate_L1_usage(
             act_block_split_ntiles *= 2;
         }
         // ACT CB
-        uint32_t act_cb_size = act_block_split_ntiles * input_tile_size;
+        uint32_t act_cb_size =
+            act_block_split_ntiles * input_tile_size * 3;  // hack to avoid splitting CB on the window outer loop
         tt::log_debug(tt::LogOp, "Act CB Size: {}", act_cb_size);
 
         // WEIGHTS CB
