@@ -201,8 +201,20 @@ class TtTransformer(LightweightModule):
         if page_table is not None:
             # we only want to update the kv cache on the 8 devices (every fourth device starting at user_id//8 ) for a given user_id
             # we are setting the page table to -1 for all other devices to skip the update
-            page_table_padded = torch.ones((128, page_table.shape[1]), dtype=torch.int32) * -1
-            page_table_padded[user_id // 8 * 32 : (user_id // 8 + 1) * 32, :] = page_table
+            # page_table_padded = torch.ones((128, page_table.shape[1]), dtype=torch.int32) * -1
+            # page_table_padded[user_id // 8 * 32 : (user_id // 8 + 1) * 32, :] = page_table
+            PAGE_TABLE_ROWS_PER_USER = 32
+            pad_rows = PAGE_TABLE_ROWS_PER_USER - page_table.shape[0]
+            if pad_rows > 0:
+                page_table = torch.nn.functional.pad(
+                    page_table, (0, 0, 0, pad_rows), value=-1
+                )
+            page_table_padded = torch.full(
+                (128, page_table.shape[1]), -1, dtype=torch.int32
+            )
+            start = (user_id // 8) * PAGE_TABLE_ROWS_PER_USER
+            page_table_padded[start : start + PAGE_TABLE_ROWS_PER_USER, :] = page_table
+
             tt_page_table = ttnn.from_torch(
                 page_table_padded,
                 device=None,
