@@ -450,9 +450,9 @@ int main() {
                 barrier_remote_cb_interface_setup(noc_index, end_cb_index);
                 start_ncrisc_kernel_run(enables);
                 int index = static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::DM0);
-                uint32_t (*kernel_address)(uint32_t) = (uint32_t (*)(uint32_t))
+                auto *kernel_address = (uint32_t (*)())
                     (kernel_config_base + launch_msg_address->kernel_config.kernel_text_offset[index]);
-                auto stack_free = (*kernel_address)((uint32_t)kernel_address);
+                auto stack_free = kernel_address();
                 record_stack_usage(stack_free);
             } else {
 #if defined(PROFILE_KERNEL)

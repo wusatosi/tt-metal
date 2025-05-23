@@ -22,8 +22,6 @@
 #include "debug/stack_usage.h"
 // clang-format on
 
-uint32_t halt_stack_ptr_save;
-
 tt_l1_ptr mailboxes_t *const mailboxes = (tt_l1_ptr mailboxes_t *)(MEM_MAILBOX_BASE);
 volatile tt_l1_ptr uint8_t *const ncrisc_run = &mailboxes->subordinate_sync.dm1;
 
