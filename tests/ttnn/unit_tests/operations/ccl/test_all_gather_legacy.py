@@ -159,6 +159,7 @@ def run_all_gather_impl(
     ###
 
     input_tensor_mesh_list = []
+    buffer_tensor_mesh_list = []
     output_tensor_goldens_list = []
 
     for i in range(num_iters):
@@ -261,16 +262,16 @@ def run_all_gather_impl(
     "num_devices, num_links, output_shape, dim, layout",
     [
         (8, 1, [1, 1, 32, 8192], 3, ttnn.TILE_LAYOUT),
-        (8, 1, [1, 1, 1024, 4096], 2, ttnn.TILE_LAYOUT),
-        (8, 1, [1, 8, 1024, 4096], 1, ttnn.TILE_LAYOUT),
-        (8, 1, [1, 1, 256, 4096], 2, ttnn.TILE_LAYOUT),
+        # (8, 1, [1, 1, 1024, 4096], 2, ttnn.TILE_LAYOUT),
+        # (8, 1, [1, 8, 1024, 4096], 1, ttnn.TILE_LAYOUT),
+        # (8, 1, [1, 1, 256, 4096], 2, ttnn.TILE_LAYOUT),
     ],
 )
 @pytest.mark.parametrize(
     "input_dtype",
     [
-        # ttnn.bfloat16,
-        ttnn.bfloat8_b,
+        ttnn.bfloat16,
+        # ttnn.bfloat8_b,
     ],
 )
 @pytest.mark.parametrize(

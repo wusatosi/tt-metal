@@ -35,25 +35,6 @@ namespace ttnn {
 
 using namespace ccl;
 
-void append_fabric_connection_rt_argument(
-    const std::optional<tt::tt_fabric::SenderWorkerAdapterSpec>& connection,
-    const CoreCoord& core,
-    tt::tt_metal::Program& program,
-    std::vector<uint32_t>& writer_rt_args) {
-    writer_rt_args.push_back(connection.has_value());
-    if (connection.has_value()) {
-        auto sender_worker_flow_control_semaphore_id = CreateSemaphore(program, {core}, 0);
-        auto sender_worker_teardown_semaphore_id = CreateSemaphore(program, {core}, 0);
-        auto sender_worker_buffer_index_semaphore_id = CreateSemaphore(program, {core}, 0);
-        append_worker_to_fabric_edm_sender_rt_args(
-            connection.value(),
-            sender_worker_flow_control_semaphore_id,
-            sender_worker_teardown_semaphore_id,
-            sender_worker_buffer_index_semaphore_id,
-            writer_rt_args);
-    }
-}
-
 tt::tt_metal::operation::ProgramWithCallbacks all_gather_legacy(
     const Tensor& input_tensor,
     IDevice* sender_device,
@@ -90,6 +71,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_legacy(
     // Get worker cores, assuming 1 worker per link
     auto sender_core_range = CoreRangeSet(CoreRange({0, 0}, {0, 0}));
     auto receiver_core_range = CoreRangeSet(CoreRange({1, 0}, {1, 0}));
+    auto semaphore_core_range = CoreRangeSet(CoreRange({0, 0}, {1, 0}));
     auto sender_cores = corerange_to_cores(sender_core_range, 1, true);
     auto receiver_cores = corerange_to_cores(receiver_core_range, 1, true);
     uint32_t num_workers_per_link = 1;
@@ -120,12 +102,12 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_legacy(
         CreateCircularBuffer(program, sender_worker_core_range, cb_reserved_packet_header_config);
 
     uint32_t receiver_cb_index = tt::CBIndex::c_16;
-    tt::DataFormat df = tt::tt_metal::datatype_to_dataformat_converter(output_tensor.get_dtype());
     tt::tt_metal::CircularBufferConfig cb_receiver_config =
         tt::tt_metal::CircularBufferConfig(cb_num_pages * l1_scratch_cb_page_size_bytes, {{receiver_cb_index, df}})
             .set_page_size(receiver_cb_index, l1_scratch_cb_page_size_bytes);
     tt::tt_metal::CBHandle cb_receiver_workers = CreateCircularBuffer(program, receiver_core_range, cb_src0_config);
 
+    uint32_t sync_semaphore = tt::tt_metal::CreateSemaphore(program, semaphore_core_range, 0);
     // Tensor Info
     const auto input_tensor_layout = input_tensor.buffer()->buffer_layout();
     const auto input_tensor_buffer_type = input_tensor.buffer()->buffer_type();
@@ -137,7 +119,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_legacy(
 
     // KERNEL CREATION
     // Sender Reader
-    auto sender_sender_reader_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
+    auto sender_reader_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
     sender_reader_kernel_config.compile_args = {
         static_cast<uint32_t>(input_tensor_buffer_type),  // buffer0_type
         src0_cb_index,                                    // cb0_id
@@ -160,7 +142,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_legacy(
     // Sender Writer
     auto sender_writer_kernel_config = tt::tt_metal::WriterDataMovementConfig{};
     sender_writer_kernel_config.compile_args = {
-        src0_cb_index,                    // cb0_id
+        src0_cb_index,  // cb0_id
+        receiver_cb_index,
         reserved_packet_header_CB_index,  // reserved_packet_header_cb_id
         op_config.get_page_size(),        // tensor0_page_size
         num_pages_per_packet,             // packet_size_in_pages
@@ -180,7 +163,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_legacy(
         sender_writer_kernel_config);
 
     // Receiver
-    auto receiver_kernel_config = tt::tt_metal::WriterDataMovementConfig{};
+    auto receiver_kernel_config = tt::tt_metal::ReaderDataMovementConfig{};
     receiver_kernel_config.compile_args = {
         static_cast<uint32_t>(output_tensor_buffer_type),  // buffer0_type
         receiver_cb_index,                                 // cb0_id
@@ -195,74 +178,70 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_legacy(
     for (const auto& arg : receiver_kernel_config.compile_args) {
         log_trace(tt::LogOp, "\t{}", arg);
     }
-    auto worker_sender_writer_kernel_id = tt::tt_metal::CreateKernel(
+    auto worker_receiver_kernel_id = tt::tt_metal::CreateKernel(
         program,
         "ttnn/cpp/ttnn/operations/experimental/ccl/all_gather_legacy/device/kernels/receiver.cpp",
         receiver_core_range,
         receiver_kernel_config);
 
-    // Kernel Runtime Args
-    CoreCoord drain_sync_core;  // the first worker of each chip is the drain sync core, which contains the output ready
-                                // semaphore
-    for (uint32_t link = 0; link < num_links; link++) {
-        CoreCoord core = sender_worker_cores[link];
-        if (link == 0) {
-            // drain sync core is the first worker core
-            drain_sync_core = mesh_device->worker_core_from_logical_core(core);
-        }
+    std::vector<uint32_t> sender_reader_rt_args = {
+        input_tensor.buffer()->address(),   // tensor_address0
+        output_tensor.buffer()->address(),  // tensor_address1
+        sync_semaphore,                     // sync_semaphore
+    };
+    log_trace(tt::LogOp, "Reader Runtime Args:");
+    for (const auto& arg : sender_reader_rt_args) {
+        log_trace(tt::LogOp, "\t{}", arg);
+    }
+    tt::tt_metal::SetRuntimeArgs(program, worker_sender_reader_kernel_id, {sender_cores[0]}, sender_reader_rt_args);
 
-        // Set reader runtime args
-        uint32_t base_pages_per_worker = input_tensor_num_pages / num_links;
-        uint32_t remainder = input_tensor_num_pages % num_links;
-        uint32_t input_tile_id_start = link * base_pages_per_worker + std::min(link, remainder);
-        uint32_t input_tile_id_end = (link + 1) * base_pages_per_worker + std::min(link + 1, remainder);
-        std::vector<uint32_t> reader_rt_args = {
-            input_tensor.buffer()->address(),  // tensor_address0
-            input_tile_id_start,               // tile_id_start
-            input_tile_id_end,                 // tile_id_end
-        };
-        log_trace(tt::LogOp, "Reader Runtime Args:");
-        for (const auto& arg : reader_rt_args) {
-            log_trace(tt::LogOp, "\t{}", arg);
-        }
-        tt::tt_metal::SetRuntimeArgs(program, worker_sender_reader_kernel_id, {core}, reader_rt_args);
-
-        // Set writer runtime args
-        bool wait_output_semaphore = (link == 0) && !enable_async_output_tensor;
-        bool reset_global_semaphore = (link == 0) && !enable_async_output_tensor;
-        uint32_t out_ready_sem_wait_value = (dynamic_alternate ? (ring_size + 1) : ring_size) * num_links;
-        uint32_t output_tile_id_start = ring_index * input_tensor_num_pages + input_tile_id_start;
-        uint32_t output_tile_id_end = ring_index * input_tensor_num_pages + input_tile_id_end;
-        std::vector<uint32_t> writer_rt_args = {
-            output_tensor.buffer()->address(),  // tensor_address0
-            semaphore.address(),                // out_ready_sem_bank_addr (absolute address)
-            output_tile_id_start,               // tile_id_start
-            output_tile_id_end,                 // tile_id_end
-            wait_output_semaphore,              // wait_output_semaphore
-            reset_global_semaphore,             // reset_global_semaphore
-            drain_sync_core.x,                  // out_ready_sem_noc0_x
-            drain_sync_core.y,                  // out_ready_sem_noc0_y
-            out_ready_sem_wait_value,           // out_ready_sem_wait_value
-        };
-        log_trace(tt::LogOp, "Writer Runtime Args:");
-        for (const auto& arg : writer_rt_args) {
-            log_trace(tt::LogOp, "\t{}", arg);
-        }
-        writer_rt_args.push_back(forward_device.has_value());
-        if (forward_device.has_value()) {
-            tt::tt_fabric::append_fabric_connection_rt_argument(
-                sender_device->id(), forward_device.value()->id(), link, program, {core}, writer_rt_args);
-        }
-        writer_rt_args.push_back(backward_device.has_value());
-        if (backward_device.has_value()) {
-            tt::tt_fabric::append_fabric_connection_rt_argument(
-                sender_device->id(), backward_device.value()->id(), link, program, {core}, writer_rt_args);
-        }
-        tt::tt_metal::SetRuntimeArgs(program, worker_sender_writer_kernel_id, {core}, writer_rt_args);
+    // Set writer runtime args
+    auto receiver_core_noc = mesh_device->worker_core_from_logical_core(receiver_cores[0]);
+    auto sender_core_noc = mesh_device->worker_core_from_logical_core(sender_cores[0]);
+    std::vector<uint32_t> sender_writer_rt_args = {
+        semaphore.address(),  // out_ready_sem_bank_addr (absolute address)
+        receiver_core_noc.x,  // out_ready_sem_noc0_x
+        receiver_core_noc.y,  // out_ready_sem_noc0_y
+    };
+    log_trace(tt::LogOp, "Writer Runtime Args:");
+    for (const auto& arg : sender_writer_rt_args) {
+        log_trace(tt::LogOp, "\t{}", arg);
+    }
+    sender_writer_rt_args.push_back(forward_device.has_value());
+    if (forward_device.has_value()) {
+        tt::tt_fabric::append_fabric_connection_rt_args(
+            sender_device->id(), forward_device.value()->id(), 0, program, sender_cores[0], sender_writer_rt_args);
+    }
+    sender_writer_rt_args.push_back(backward_device.has_value());
+    if (backward_device.has_value()) {
+        tt::tt_fabric::append_fabric_connection_rt_args(
+            sender_device->id(), backward_device.value()->id(), 0, program, sender_cores[0], sender_writer_rt_args);
     }
 
+    tt::tt_metal::SetRuntimeArgs(program, worker_sender_writer_kernel_id, {sender_cores[0]}, sender_writer_rt_args);
+
+    // Set writer runtime args
+    std::vector<uint32_t> receiver_rt_args = {
+        output_tensor.buffer()->address(),  // tensor_address0
+        semaphore.address(),                // out_ready_sem_bank_addr (absolute address)
+        sync_semaphore,
+        sender_core_noc.x,  // out_ready_sem_noc0_x
+        sender_core_noc.y,  // out_ready_sem_noc0_y
+    };
+    log_trace(tt::LogOp, "Writer Runtime Args:");
+    for (const auto& arg : receiver_rt_args) {
+        log_trace(tt::LogOp, "\t{}", arg);
+    }
+
+    tt::tt_metal::SetRuntimeArgs(program, worker_receiver_kernel_id, {receiver_cores[0]}, receiver_rt_args);
+
     auto override_runtime_arguments_callback =
-        [worker_sender_reader_kernel_id, worker_sender_writer_kernel_id, semaphore, sender_worker_cores](
+        [worker_sender_reader_kernel_id,
+         worker_sender_writer_kernel_id,
+         worker_receiver_kernel_id,
+         semaphore,
+         sender_cores,
+         receiver_cores](
             const void* operation,
             Program& program,
             const std::vector<Tensor>& input_tensors,
@@ -278,14 +257,21 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_legacy(
             // update senders
             auto& worker_reader_sender_runtime_args_by_core = GetRuntimeArgs(program, worker_sender_reader_kernel_id);
             auto& worker_writer_sender_runtime_args_by_core = GetRuntimeArgs(program, worker_sender_writer_kernel_id);
-            for (const auto& core : sender_worker_cores) {
+            auto& worker_receiver_runtime_args_by_core = GetRuntimeArgs(program, worker_receiver_kernel_id);
+
+            for (const auto& core : sender_cores) {
                 // reader
                 auto& worker_reader_sender_runtime_args = worker_reader_sender_runtime_args_by_core[core.x][core.y];
                 worker_reader_sender_runtime_args[0] = input.buffer()->address();
+                worker_reader_sender_runtime_args[1] = output.buffer()->address();
                 // writer
                 auto& worker_writer_sender_runtime_args = worker_writer_sender_runtime_args_by_core[core.x][core.y];
-                worker_writer_sender_runtime_args[0] = output.buffer()->address();
-                worker_writer_sender_runtime_args[1] = semaphore.address();
+                worker_writer_sender_runtime_args[0] = semaphore.address();
+            }
+            for (const auto& core : receiver_cores) {
+                auto& worker_receiver_runtime_args = worker_receiver_runtime_args_by_core[core.x][core.y];
+                worker_receiver_runtime_args[0] = output.buffer()->address();
+                worker_receiver_runtime_args[1] = semaphore.address();
             }
         };
 

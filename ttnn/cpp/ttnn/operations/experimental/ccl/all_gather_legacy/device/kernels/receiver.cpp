@@ -22,10 +22,6 @@ constexpr uint32_t num_devices = get_compile_time_arg_val(4);
 constexpr uint32_t num_tiles = get_compile_time_arg_val(5);
 constexpr uint32_t ring_index = get_compile_time_arg_val(6);
 
-/*
- * CCL Send will present various operating modes. Although there is only a single send kernel, it may (compile time)
- * dispatch implementations depending on those invocation parameters.
- */
 void kernel_main() {
     ///////////////////////////////////////////////////
     // ARGS
@@ -47,9 +43,16 @@ void kernel_main() {
     DPRINT << "cb0_id: " << (uint32_t)cb0_id << "\n";
     DPRINT << "packet_size_in_pages: " << (uint32_t)packet_size_in_pages << "\n";
     DPRINT << "tensor0_page_size: " << (uint32_t)tensor0_page_size << "\n";
+    DPRINT << "num_devices: " << (uint32_t)num_devices << "\n";
+    DPRINT << "num_tiles: " << (uint32_t)num_tiles << "\n";
+    DPRINT << "ring_index: " << (uint32_t)ring_index << "\n";
 
     DPRINT << "rt args: \n";
     DPRINT << "tensor_address0: " << (uint32_t)tensor_address0 << "\n";
+    DPRINT << "out_ready_sem_bank_addr: " << (uint32_t)out_ready_sem_bank_addr << "\n";
+    DPRINT << "sync_semaphore: " << (uint32_t)sync_semaphore << "\n";
+    DPRINT << "sender_noc_x: " << (uint32_t)sender_noc_x << "\n";
+    DPRINT << "sender_noc_y: " << (uint32_t)sender_noc_y << "\n";
 
     // interleaved addrgen
     constexpr bool is_dram = buffer0_type == tt::tt_metal::BufferType::DRAM;
@@ -59,28 +62,36 @@ void kernel_main() {
     for (uint32_t step = 0; step < 8; step++) {
         while (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(out_ready_sem_bank_addr) < (step + 1));
         DPRINT << "waitval done\n";
-        uint32_t tile_id = ((ring_index - step + num_devices) % num_devices) * num_tiles;
+        uint32_t start_tile_id = ((ring_index - step + num_devices) % num_devices) * num_tiles;
         uint32_t tile_id_end = start_tile_id + num_tiles;
+        uint32_t tile_id = start_tile_id;
         while (tile_id < tile_id_end) {
             DPRINT << "tile_id: " << tile_id << "\n";
             cb_wait_front(cb0_id, packet_size_in_pages);
+            DPRINT << "cb_wait_front done\n";
             const uint32_t l1_read_address_base = get_read_ptr(cb0_id);
             uint32_t l1_read_addr = l1_read_address_base;
-
+            DPRINT << "l1_read_addr_base: " << l1_read_address_base << "\n";
             uint32_t num_pages_to_read = std::min(tile_id_end - tile_id, packet_size_in_pages);
+            DPRINT << "num_pages_to_read: " << num_pages_to_read << "\n";
             for (uint32_t j = 0; j < num_pages_to_read; j++) {
                 noc_async_write_tile(tile_id, tensor0_addrgen, l1_read_addr);
+                DPRINT << "noc_async_write_tile done\n";
                 l1_read_addr += tensor0_page_size;
                 tile_id++;
             }
 
             noc_async_read_barrier();
+            DPRINT << "noc_async_read_barrier done\n";
             cb_push_back(cb0_id, packet_size_in_pages);
+            DPRINT << "cb_push_back done\n";
         }
 
         // set sender's semaphore
         uint64_t sender_sem_addr = get_noc_addr(sender_noc_x, sender_noc_y, sync_semaphore);
+        DPRINT << "sender_sem_addr: " << sender_sem_addr << "\n";
         noc_semaphore_set_remote(sync_semaphore, sender_sem_addr);
+        DPRINT << "noc_semaphore_set_remote done\n";
     }
 
     DPRINT << "DONE \n";

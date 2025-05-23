@@ -150,8 +150,6 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherLegacy::create_program_at
         }
     }
 
-    log_trace(tt::LogOp, "version: {}", static_cast<uint32_t>(version));
-
     return all_gather_legacy(
         input_tensors[0],
         target_device,
