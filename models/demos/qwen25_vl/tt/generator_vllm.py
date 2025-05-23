@@ -135,8 +135,8 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
             hf_config,
             mesh_device,
             max_batch_size,
-            max_seq_len=131072,
-            n_layers=n_layers,  # todo)) remove this after debugging n_layers
+            max_seq_len=4096,  # todo)) add some smarts to determine max_seq_len based on the model name and device, instead of blindly setting to 131072
+            n_layers=n_layers,
             dtype=ttnn.bfloat8_b,
         )
 
