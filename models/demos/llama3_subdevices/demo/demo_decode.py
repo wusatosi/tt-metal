@@ -472,8 +472,8 @@ def run_llama3_demo(
             ttnn.copy_host_to_device_tensor(tt_out_tok_reset, tt_out_tok)
         else:
             all_outputs.append(tt_output_torch.tolist()[0])  # Update generated token to list of TT outputs
-            if all_outputs[-1] in [128001, 128009] and not stress_test:  # EoT tokens
-                users_decoding = False
+            # if all_outputs[-1] in [128001, 128009] and not stress_test:  # EoT tokens
+            #     users_decoding = False
 
         # Ignore the first iteration for average speed calculation
         if iteration > 0:
@@ -572,7 +572,7 @@ def run_llama3_demo(
             1,  # repeat_batches
             128 * 1024,  # max_seq_len
             32,  # batch_size
-            200,  # max_generated_tokens
+            20000,  # max_generated_tokens
             True,  # paged_attention
             {"page_block_size": 64, "page_max_num_blocks": 4096},  # page_params  # TODO This will be serviced by vLLM
             {"top_k": 32, "top_p": 0.08, "seed": 42},  # sampling_params (argmax)
