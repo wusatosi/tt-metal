@@ -576,7 +576,12 @@ template <DeviceOperationConcept device_operation_t>
 typename device_operation_t::tensor_return_value_t invoke(
     QueueId cq_id,
     const typename device_operation_t::operation_attributes_t& operation_attributes,
-    const typename device_operation_t::tensor_args_t& tensor_args) {
+    const typename device_operation_t::tensor_args_t& tensor_args,
+    const std::string& full_name = "n/a")
+{
+    if (full_name == "ttnn::prim::unary") {
+        fmt::println("[UNARY] in detail for unary");
+    }
     fmt::println("Scoping run device op");
     ZoneScopedN("Run Device Operation");
     fmt::println("Scoped run device op");
