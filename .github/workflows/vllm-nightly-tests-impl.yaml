@@ -178,8 +178,6 @@ jobs:
             fi
           else
             echo "❌ PID file not found. Server may not have started correctly."
-            echo "----- vllm_server.log -----"
-            cat "$log_file"
             exit 1
           fi
 
