@@ -11,9 +11,9 @@ from loguru import logger  # type: ignore
 import matplotlib.pyplot as plt  # type: ignore
 import itertools
 
-from tools.profiler.process_device_log import import_log_run_stats
-import tools.profiler.device_post_proc_config as device_post_proc_config
-from tools.profiler.common import PROFILER_LOGS_DIR, PROFILER_DEVICE_SIDE_LOG
+from tools.tracy.process_device_log import import_log_run_stats
+import tools.tracy.device_post_proc_config as device_post_proc_config
+from tools.tracy.common import PROFILER_LOGS_DIR, PROFILER_DEVICE_SIDE_LOG
 
 # Corresponding test ids for each test
 test_id_to_name = {
@@ -292,7 +292,7 @@ def gather_stats_from_csv(file_path, verbose=False):
 
     # Gather stats from csv
     if not verbose:
-        logger.disable("tools.profiler.process_device_log")
+        logger.disable("tools.tracy.process_device_log")
 
     return import_log_run_stats(setup)
 

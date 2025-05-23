@@ -8,10 +8,10 @@ from loguru import logger
 import numpy as np
 import pandas as pd
 import csv
-from tools.profiler.process_device_log import import_log_run_stats
-import tools.profiler.device_post_proc_config as device_post_proc_config
+from tools.tracy.process_device_log import import_log_run_stats
+import tools.tracy.device_post_proc_config as device_post_proc_config
 
-from tools.profiler.common import PROFILER_LOGS_DIR, PROFILER_DEVICE_SIDE_LOG
+from tools.tracy.common import PROFILER_LOGS_DIR, PROFILER_DEVICE_SIDE_LOG
 
 profiler_log_path = PROFILER_LOGS_DIR / PROFILER_DEVICE_SIDE_LOG
 

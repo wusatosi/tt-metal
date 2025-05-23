@@ -13,8 +13,8 @@ import socket
 
 from loguru import logger
 
-from tracy.process_ops_logs import process_ops
-from tracy.common import (
+from .process_ops_logs import process_ops
+from .common import (
     TT_METAL_HOME,
     PROFILER_BIN_DIR,
     PROFILER_ARTIFACTS_DIR,
@@ -28,7 +28,7 @@ from tracy.common import (
     generate_logs_folder,
 )
 
-import tracy.tracy_state
+import tools.tracy.tracy_state
 
 DEFAULT_CHILD_CALLS = ["CompileProgram", "HWCommandQueue_write_buffer"]
 

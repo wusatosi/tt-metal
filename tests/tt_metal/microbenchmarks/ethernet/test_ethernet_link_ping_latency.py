@@ -7,8 +7,8 @@ import sys
 
 from loguru import logger
 import pytest
-from tools.profiler.process_device_log import import_log_run_stats
-import tools.profiler.device_post_proc_config as device_possetupt_proc_config
+from tools.tracy.process_device_log import import_log_run_stats
+import tools.tracy.device_post_proc_config as device_possetupt_proc_config
 
 
 @pytest.mark.parametrize("sample_counts", [(1024,)])  # , 8, 16, 64, 256],

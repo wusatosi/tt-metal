@@ -19,9 +19,8 @@ from collections import deque
 import click
 from loguru import logger
 
-from tracy.process_device_log import import_log_run_stats
-import tracy.device_post_proc_config as device_post_proc_config
-from tracy.common import (
+from .process_device_log import import_log_run_stats
+from .common import (
     PROFILER_DEVICE_SIDE_LOG,
     PROFILER_HOST_SIDE_LOG,
     PROFILER_ARTIFACTS_DIR,
