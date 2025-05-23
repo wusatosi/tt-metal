@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
+// SPDX-FileCopyrightText: © 2024 Tenstorrent AI ULC
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -14,17 +14,21 @@ void MAIN {
     constexpr uint32_t src_cb_id = get_compile_time_arg_val(2);
     constexpr uint32_t out_cb_id = get_compile_time_arg_val(3);
 
-    pack_untilize_init<per_core_block_tile_cnt>(src_cb_id, out_cb_id);
+    constexpr uint32_t num_blocks_per_col = 2;
+    constexpr uint32_t block_ct_dim = per_core_block_tile_cnt / num_blocks_per_col;
+    constexpr uint32_t full_ct_dim = per_core_block_tile_cnt;
 
-    for (uint32_t b = 0; b < per_core_block_cnt; ++b) {
-        cb_wait_front(src_cb_id, per_core_block_tile_cnt);
-        cb_reserve_back(out_cb_id, per_core_block_tile_cnt);
+    pack_untilize_init<block_ct_dim, full_ct_dim>(src_cb_id, out_cb_id);
 
-        pack_untilize_block<per_core_block_tile_cnt>(src_cb_id, 1, out_cb_id);
+    cb_reserve_back(out_cb_id, full_ct_dim);
 
-        cb_push_back(out_cb_id, per_core_block_tile_cnt);
-        cb_pop_front(src_cb_id, per_core_block_tile_cnt);
+    for (uint32_t b = 0; b < num_blocks_per_col; ++b) {
+        cb_wait_front(src_cb_id, block_ct_dim);
+        pack_untilize_block<block_ct_dim, full_ct_dim>(src_cb_id, 1, out_cb_id, b);
+        cb_pop_front(src_cb_id, block_ct_dim);
     }
+
+    cb_push_back(out_cb_id, full_ct_dim);
 
     pack_untilize_uninit(out_cb_id);
 }
