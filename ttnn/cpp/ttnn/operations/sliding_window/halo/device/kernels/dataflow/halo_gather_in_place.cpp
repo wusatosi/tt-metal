@@ -131,7 +131,7 @@ void copy_sticks_async_from_temp(
             uint16_t nsticks = config_data[i + j + 2];
             uint32_t size = nsticks * stick_nbytes;
 
-            if (remote_entry_count % 2 != main_thread || main_thread && padding_exists) {
+            if ((remote_entry_count % 2 != main_thread) || (main_thread && padding_exists)) {
                 uint16_t dst_local_idx = config_data[i + j + 1];
                 uint32_t dst_offset = dst_local_idx * stick_nbytes;
                 // DPRINT << "    dst_local_idx: " << dst_local_idx << ", nsticks: " << nsticks
@@ -201,6 +201,7 @@ void copy_sticks_async_local(
                 dst_local_idx + nsticks < dst_relative_src || dst_relative_src + nsticks < dst_local_idx;
             if (is_not_overlap_copy) {
                 if constexpr (main_thread) {
+                    cb_reserve_back(sycn_cb_id, 1);  // wait for any stick by stick copies to finish
                     noc_async_write(src_addr, dst_addr, size);
                 }
             } else {  // dst and src data overlaps, stick by stick copy is necessary
@@ -247,6 +248,9 @@ void copy_sticks_async_local(
                 } else {
                     uint32_t half_stick = stick_nbytes / 2;
                     if constexpr (main_thread) {
+                        cb_reserve_back(sycn_cb_id, 1);
+                        noc_async_write_barrier();  // wait for any non-overlap copies to finish
+                        cb_push_back(sycn_cb_id, 1);
                         bool is_forward_copy = dst_local_idx > dst_relative_src;
                         if (is_forward_copy) {  // dst data is being moved "in front" of the source data, reverse
                                                 // ordering of stick by stick copy is necessary
@@ -259,6 +263,7 @@ void copy_sticks_async_local(
                             }
                         }
                     } else {
+                        cb_wait_front(sycn_cb_id, 1);
                         bool is_forward_copy = dst_local_idx > dst_relative_src;
                         if (is_forward_copy) {  // dst data is being moved "in front" of the source data, reverse
                                                 // ordering of stick by stick copy is necessary
@@ -276,6 +281,8 @@ void copy_sticks_async_local(
                                     half_stick);
                             }
                         }
+                        noc_async_write_barrier();
+                        cb_pop_front(sycn_cb_id, 1);
                     }
                 }
             }
