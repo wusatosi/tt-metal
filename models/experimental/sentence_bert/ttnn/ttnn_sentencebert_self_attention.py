@@ -3,8 +3,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ttnn
-from models.experimental.sentence_bert.ttnn.common import query_key_value_matmul_program_config
-import torch
+from models.experimental.sentence_bert.ttnn.common import (
+    query_key_value_matmul_program_config,
+    pre_softmax_config,
+    softmax_config,
+)
 
 
 def p(x, a="x"):
@@ -136,29 +139,30 @@ class TtnnSentenceBertSelfAttention:
                 key,
                 memory_config=ttnn.L1_HEIGHT_SHARDED_MEMORY_CONFIG,
                 dtype=ttnn.bfloat8_b,
+                program_config=pre_softmax_config,
             )
             ttnn.deallocate(query)
             ttnn.deallocate(key)
             # pad_shape = attention_scores.padded_shape
             # attention_scores = attention_scores.reshape(pad_shape[0], 1, pad_shape[1] * pad_shape[2], pad_shape[3])
             # freciprocal_of_sqrt_hidden_dim = 1 / math.sqrt(head_size)
-            p(attention_scores, "qkt")
+            # p(attention_scores, "qkt")
             # print("qkt shape after reshape is ",attention_scores.shape)
             # print("args are ",freciprocal_of_sqrt_hidden_dim,ttnn.SoftmaxDefaultProgramConfig())
-            p(attention_mask, "attt mask")
+            # p(attention_mask, "attt mask")
             # attention_probabilities = ttnn.scale_mask_softmax_in_place(
             # attention_scores, freciprocal_of_sqrt_hidden_dim, attention_mask, program_config=ttnn.SoftmaxDefaultProgramConfig()
             # )
             # p(attention_probabilities,"attn prob")
+            # attention_probabilities = attention_probabilities.reshape(pad_shape)
+            # p(attention_probabilities,"attn prob after reshape")
             attention_probabilities = ttnn.transformer.attention_softmax_(
                 attention_scores,
                 attention_mask=attention_mask,
                 head_size=head_size,
+                program_config=softmax_config,
             )
-            torch.save(
-                ttnn.to_torch(attention_probabilities),
-                "/home/ubuntu/venkatesh_latest/tt-metal/models/experimental/sentence_bert/ttnn/dumps/q_pipeline",
-            )
+            p(attention_probabilities, "attn prob")
             context_layer = ttnn.matmul(
                 attention_probabilities,
                 value,
@@ -167,10 +171,10 @@ class TtnnSentenceBertSelfAttention:
             )
             ttnn.deallocate(attention_probabilities)
             ttnn.deallocate(value)
-
-            context_layer = ttnn.transformer.concatenate_heads(
+            p(context_layer, "after mamtmul")
+            context_layer = ttnn.experimental.nlp_concat_heads(
                 context_layer,
                 memory_config=ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG,
             )
-
+            p(context_layer, "final")
             return context_layer

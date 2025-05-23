@@ -40,15 +40,15 @@ def test_ttnn_sentence_bert_model(device, inputs):
     ttnn_input_ids, ttnn_token_type_ids, ttnn_position_ids, ttnn_attention_mask = preprocess_inputs(
         input_ids, token_type_ids, position_ids, extended_mask, device
     )
-    sharded_input = ttnn.to_memory_config(
-        ttnn_input_ids,
-        memory_config=ttnn.create_sharded_memory_config(
-            ttnn_input_ids.shape,
-            core_grid=device.core_grid,
-            strategy=ttnn.ShardStrategy.BLOCK,
-            orientation=ttnn.ShardOrientation.COL_MAJOR,
-        ),
-    )
-    ttnn_out = ttnn_module(sharded_input, ttnn_attention_mask, ttnn_token_type_ids, ttnn_position_ids, device=device)
-    ttnn_out = ttnn.to_torch(ttnn_out[0])  # 0.98 - randn
-    assert_with_pcc(reference_out.last_hidden_state, ttnn_out, 0.97)
+    # sharded_input = ttnn.to_memory_config(
+    #     ttnn_input_ids,
+    #     memory_config=ttnn.create_sharded_memory_config(
+    #         ttnn_input_ids.shape,
+    #         core_grid=device.core_grid,
+    #         strategy=ttnn.ShardStrategy.BLOCK,
+    #         orientation=ttnn.ShardOrientation.COL_MAJOR,
+    #     ),
+    # )
+    ttnn_out = ttnn_module(ttnn_input_ids, ttnn_attention_mask, ttnn_token_type_ids, ttnn_position_ids, device=device)
+    ttnn_out = ttnn.to_torch(ttnn_out[0]).squeeze(dim=1)  # 0.98
+    assert_with_pcc(reference_out.last_hidden_state, ttnn_out, 1.0)

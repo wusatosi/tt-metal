@@ -7,44 +7,68 @@ import torch
 from tt_lib.utils import pad_weight
 
 layernorm_program_config = ttnn.LayerNormShardedMultiCoreProgramConfig(
-    compute_with_storage_grid_size=(8, 8),
-    subblock_w=3,
+    compute_with_storage_grid_size=(6, 8),
+    subblock_w=4,
     block_h=12,
-    block_w=3,
+    block_w=4,
     inplace=True,
 )
 
 ff1_matmul_program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-    compute_with_storage_grid_size=(8, 8),
-    in0_block_w=3,
+    compute_with_storage_grid_size=(6, 8),
+    in0_block_w=4,
     out_subblock_h=1,
     out_subblock_w=8,
     per_core_M=12,
     per_core_N=16,
-    transpose_mcast=True,
+    transpose_mcast=False,
     fused_activation=(ttnn.UnaryOpType.GELU, True),
 )
 
 ff2_program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-    compute_with_storage_grid_size=(8, 8),
+    compute_with_storage_grid_size=(6, 8),
     in0_block_w=4,
-    out_subblock_h=1,
-    out_subblock_w=6,
-    per_core_M=12,
-    per_core_N=12,
-    transpose_mcast=True,
-    fused_activation=None,
-)
-
-query_key_value_matmul_program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-    compute_with_storage_grid_size=(8, 8),
-    in0_block_w=3,
     out_subblock_h=1,
     out_subblock_w=6,
     per_core_M=12,
     per_core_N=12,
     transpose_mcast=False,
     fused_activation=None,
+)
+
+query_key_value_matmul_program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+    compute_with_storage_grid_size=(6, 8),
+    in0_block_w=4,
+    out_subblock_h=1,
+    out_subblock_w=6,
+    per_core_M=12,
+    per_core_N=12,
+    transpose_mcast=False,
+    fused_activation=None,
+)
+self_out_program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+    compute_with_storage_grid_size=(6, 8),
+    in0_block_w=4,
+    out_subblock_h=2,
+    out_subblock_w=4,
+    per_core_M=12,
+    per_core_N=4,
+    transpose_mcast=False,
+    fused_activation=None,
+)
+pre_softmax_config = ttnn.MatmulMultiCoreReuseProgramConfig(
+    compute_with_storage_grid_size=(6, 8),
+    in0_block_w=2,
+    out_subblock_h=1,
+    out_subblock_w=6,
+    per_core_M=24,
+    per_core_N=12,
+)
+softmax_config = ttnn.SoftmaxShardedMultiCoreProgramConfig(
+    compute_with_storage_grid_size=(6, 8),
+    subblock_w=6,
+    block_h=24,
+    block_w=12,
 )
 
 

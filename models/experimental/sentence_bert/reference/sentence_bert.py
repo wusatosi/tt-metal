@@ -170,10 +170,6 @@ class BertSelfAttention(nn.Module):
             attention_scores = attention_scores + attention_mask
 
         attention_probs = nn.functional.softmax(attention_scores, dim=-1)
-        torch.save(
-            attention_probs,
-            "/home/ubuntu/venkatesh_latest/tt-metal/models/experimental/sentence_bert/ttnn/dumps/q_pipeline_ref",
-        )
         if head_mask is not None:
             attention_probs = attention_probs * head_mask
         print("after sotmax,", attention_probs.shape)
@@ -187,6 +183,10 @@ class BertSelfAttention(nn.Module):
 
         if self.is_decoder:
             outputs = outputs + (past_key_value,)
+        torch.save(
+            outputs[0],
+            "/home/ubuntu/venkatesh_latest/tt-metal/models/experimental/sentence_bert/ttnn/dumps/q_pipeline_ref",
+        )
         return outputs
 
 
@@ -315,6 +315,7 @@ class BertIntermediate(nn.Module):
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)
         hidden_states = self.intermediate_act_fn(hidden_states)
+
         return hidden_states
 
 

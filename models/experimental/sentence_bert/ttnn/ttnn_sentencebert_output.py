@@ -6,6 +6,13 @@ import ttnn
 from models.experimental.sentence_bert.ttnn.common import ff2_program_config, layernorm_program_config
 
 
+def p(x, a="x"):
+    print(f"{a}'s  shape: {x.shape}")
+    print(f"{a}'s  layout: {x.layout}")
+    print(f"{a}'s  dtype: {x.dtype}")
+    print(f"{a}'s config: {x.memory_config()}")
+
+
 class TtnnSentenceBertOutput:
     def __init__(self, parameters, config):
         self.parameters = parameters
@@ -14,13 +21,18 @@ class TtnnSentenceBertOutput:
         self.LayerNorm = ttnn.layer_norm
 
     def __call__(self, hidden_states: ttnn.Tensor, input_tensor: ttnn.Tensor):
+        p(hidden_states, "1st input to bert out")
+        p(input_tensor, "2nd input to bert out")
         bert_output_lin = self.dense(
             hidden_states,
             self.parameters.dense.weight,
             bias=self.parameters.dense.bias,
             memory_config=ttnn.L1_BLOCK_SHARDED_MEMORY_CONFIG,
             program_config=ff2_program_config,
+            dtype=ttnn.bfloat8_b,
         )
+
+        p(bert_output_lin, "after 1st linear of  bert out")
         bert_output_lin = ttnn.reshard(bert_output_lin, input_tensor.memory_config())
         bert_output_lin = self.LayerNorm(
             bert_output_lin,
@@ -32,4 +44,5 @@ class TtnnSentenceBertOutput:
             compute_kernel_config=ttnn.WormholeComputeKernelConfig(math_fidelity=ttnn.MathFidelity.HiFi4),
             program_config=layernorm_program_config,
         )
+        p(bert_output_lin, "final bert out")
         return bert_output_lin

@@ -51,5 +51,5 @@ def test_ttnn_sentence_bert_Embeddings(device, inputs):
     ttnn_out = ttnn_module(
         input_ids=sharded_input, token_type_ids=ttnn_token_type_ids, position_ids=ttnn_position_ids, device=device
     )
-    ttnn_out = ttnn.to_torch(ttnn_out)
+    ttnn_out = ttnn.to_torch(ttnn_out).squeeze(dim=1)
     assert_with_pcc(reference_out, ttnn_out, 0.9999)

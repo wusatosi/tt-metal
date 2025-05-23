@@ -2,7 +2,7 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import ttnn
+import ttnn, torch
 from models.experimental.sentence_bert.ttnn.ttnn_sentencebert_self_attention import TtnnSentenceBertSelfAttention
 from models.experimental.sentence_bert.ttnn.ttnn_sentencebert_self_output import TtnnSentenceBertSelfOutput
 
@@ -19,14 +19,18 @@ class TtnnSentenceBertAttention:
         device=None,
     ):
         self_outputs = self.self(hidden_states, attention_mask, device=device)
-        self_outputs = ttnn.to_memory_config(
-            self_outputs,
-            memory_config=ttnn.create_sharded_memory_config(
-                self_outputs.shape,
-                core_grid=device.core_grid,
-                strategy=ttnn.ShardStrategy.BLOCK,
-                orientation=ttnn.ShardOrientation.COL_MAJOR,
-            ),
-        )
+        # self_outputs = ttnn.to_memory_config(
+        #     self_outputs,
+        #     memory_config=ttnn.create_sharded_memory_config(
+        #         self_outputs.shape,
+        #         core_grid=device.core_grid,
+        #         strategy=ttnn.ShardStrategy.BLOCK,
+        #         orientation=ttnn.ShardOrientation.COL_MAJOR,
+        #     ),
+        # )
         self_outputs = self.output(self_outputs, hidden_states)
+        torch.save(
+            ttnn.to_torch(self_outputs),
+            "/home/ubuntu/venkatesh_latest/tt-metal/models/experimental/sentence_bert/ttnn/dumps/q_pipeline",
+        )
         return self_outputs
