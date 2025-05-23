@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <stdint.h>
+#include <cinttypes>
 #include <cstdint>
 
 #include "compile_time_args.h"
@@ -200,9 +201,24 @@ void copy_sticks_async_local(
             bool is_not_overlap_copy =
                 dst_local_idx + nsticks < dst_relative_src || dst_relative_src + nsticks < dst_local_idx;
             if (is_not_overlap_copy) {
-                if constexpr (main_thread) {
-                    cb_reserve_back(sycn_cb_id, 1);  // wait for any stick by stick copies to finish
-                    noc_async_write(src_addr, dst_addr, size);
+                if (size >= 16 * half_max_bandwidth_stick_size) {
+                    uint32_t half_size = size / 2;
+                    if constexpr (main_thread) {
+                        cb_reserve_back(sycn_cb_id, 1);  // wait for any stick by stick copies to finish
+                        noc_async_write_barrier();
+                        cb_push_back(sycn_cb_id, 1);
+                        noc_async_write(src_addr, dst_addr, half_size);
+                    } else {
+                        cb_wait_front(sycn_cb_id, 1);
+                        noc_async_write(src_addr + half_size, dst_addr + half_size, half_size);
+                        noc_async_write_barrier();
+                        cb_pop_front(sycn_cb_id, 1);
+                    }
+                } else {
+                    if constexpr (main_thread) {
+                        cb_reserve_back(sycn_cb_id, 1);  // wait for any stick by stick copies to finish
+                        noc_async_write(src_addr, dst_addr, size);
+                    }
                 }
             } else {  // dst and src data overlaps, stick by stick copy is necessary
                 if constexpr (stick_nbytes <= half_max_bandwidth_stick_size) {  // noc transfers with larger page sizes
@@ -231,6 +247,8 @@ void copy_sticks_async_local(
                     //     }
                     // } else {
                     if constexpr (main_thread) {
+                        // TODO do we have a race here between overalp and non-overlap?  we should probably use the sync
+                        // cb...
                         cb_reserve_back(local_temp_cb_id, 1);
                         const uint32_t local_temp_addr = get_write_ptr(local_temp_cb_id);
                         const uint64_t temp_addr = get_noc_addr(my_noc_x, my_noc_y, local_temp_addr);
@@ -249,7 +267,7 @@ void copy_sticks_async_local(
                     uint32_t half_stick = stick_nbytes / 2;
                     if constexpr (main_thread) {
                         cb_reserve_back(sycn_cb_id, 1);
-                        noc_async_write_barrier();  // wait for any non-overlap copies to finish
+                        noc_async_write_barrier();
                         cb_push_back(sycn_cb_id, 1);
                         bool is_forward_copy = dst_local_idx > dst_relative_src;
                         if (is_forward_copy) {  // dst data is being moved "in front" of the source data, reverse
