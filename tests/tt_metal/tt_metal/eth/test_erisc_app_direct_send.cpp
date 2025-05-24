@@ -900,6 +900,8 @@ TEST_F(CommandQueueMultiDeviceProgramFixture, ActiveEthKernelsDirectSendAllConne
                 if (receiver_device->id() != device_id) {
                     continue;
                 }
+                auto sender_translated = sender_device->ethernet_core_from_logical_core(sender_core);
+                auto receiver_translated = receiver_device->ethernet_core_from_logical_core(receiver_core);
                 std::cout << "Sender device " << sender_device->id() << " core " << sender_core.str()
                           << " receiver device " << receiver_device->id() << " core " << receiver_core.str()
                           << std::endl;

@@ -387,6 +387,8 @@ FORCE_INLINE void send_next_data(
     //             channel sync
     volatile auto* pkt_header = reinterpret_cast<volatile PACKET_HEADER_TYPE*>(
         sender_buffer_channel.get_buffer_address(local_sender_wrptr_buffer_index));
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)sender_buffer_channel.get_buffer_address(local_sender_wrptr_buffer_index));
+    // PAUSE();
     ASSERT(tt::tt_fabric::is_valid(*const_cast<PACKET_HEADER_TYPE*>(pkt_header)));
     size_t payload_size_bytes = pkt_header->get_payload_size_including_header();
     pkt_header->src_ch_id = sender_channel_index;
@@ -412,6 +414,7 @@ FORCE_INLINE void send_next_data(
     while (internal_::eth_txq_is_busy(DEFAULT_ETH_TXQ)) {
     };
     remote_update_ptr_val<to_receiver_pkts_sent_id>(words_to_forward);
+    WATCHER_RING_BUFFER_PUSH(0xfacefeed);
 }
 
 /////////////////////////////////////////////
@@ -800,16 +803,29 @@ void run_sender_channel_step(
     // TODO: convert to loop to send multiple packets back to back (or support sending multiple packets in one shot)
     //       when moving to stream regs to manage rd/wr ptrs
     // TODO: update to be stream reg based. Initialize to space available and simply check for non-zero
-    WATCHER_RING_BUFFER_PUSH(0xabcd1234);
+    // invalidate_l1_cache();
+    // asm("fence");
+    // WATCHER_RING_BUFFER_PUSH(0xabcd1234);
+    // for (int i = 0; i < 2048; i++) {
+    //     asm("fence");
+    // }
     bool receiver_has_space_for_packet = outbound_to_receiver_channel_pointers.has_space_for_packet();
 
-    // WATCHER_RING_BUFFER_PUSH((uint32_t)(local_sender_channel_worker_interface.remote_producer_wrptr));
-    // ASSERT((uint32_t)(local_sender_channel_worker_interface.remote_producer_wrptr) == 0x21f20);
+    auto debug_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x6F640);
+    debug_ptr[0] = 0xdeadbeef;
+    uint32_t debug_val = *debug_ptr;
 
-    bool has_unsent_packet = local_sender_channel_worker_interface.has_unsent_payload();
-    // PAUSE();
-    // WATCHER_RING_BUFFER_PUSH((uint32_t)has_unsent_packet);
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)(local_sender_channel_worker_interface.remote_producer_wrptr));
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)*(local_sender_channel_worker_interface.remote_producer_wrptr));
+
+    bool has_unsent_packet = local_sender_channel_worker_interface.local_wrptr.get_ptr() !=
+                             *local_sender_channel_worker_interface.remote_producer_wrptr;
+
     bool can_send = receiver_has_space_for_packet && has_unsent_packet;
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)receiver_has_space_for_packet);
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)local_sender_channel_worker_interface.local_wrptr.get_ptr());
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)*local_sender_channel_worker_interface.remote_producer_wrptr);
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)can_send);
     if constexpr (enable_first_level_ack) {
         bool sender_backpressured_from_sender_side =
             !(local_sender_channel_worker_interface.local_rdptr.distance_behind(
@@ -817,6 +833,7 @@ void run_sender_channel_step(
         can_send = can_send && !sender_backpressured_from_sender_side;
     }
     if (can_send) {
+        WATCHER_RING_BUFFER_PUSH(0xfacefeed);
         did_something = true;
         if constexpr (enable_packet_header_recording) {
             auto packet_header = reinterpret_cast<PACKET_HEADER_TYPE*>(local_sender_channel.get_buffer_address(
@@ -911,8 +928,8 @@ void run_receiver_channel_step(
     std::array<uint8_t, num_eth_ports>& port_direction_table) {
     auto& ack_counter = receiver_channel_pointers.ack_counter;
     auto pkts_received_since_last_check = get_ptr_val<to_receiver_pkts_sent_id>();
-    // WATCHER_RING_BUFFER_PUSH(0xfacefeed);
-    // WATCHER_RING_BUFFER_PUSH(pkts_received_since_last_check);
+    // WATCHER_RING_BUFFER_PUSH(0xcabebabe);
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)pkts_received_since_last_check);
     if constexpr (enable_first_level_ack) {
         bool pkts_received = pkts_received_since_last_check > 0;
         ASSERT(receiver_channel_pointers.completion_ptr.distance_behind(ack_counter) < RECEIVER_NUM_BUFFERS);
@@ -1195,7 +1212,7 @@ void run_fabric_edm_main_loop(
                     port_direction_table);
             }
             if constexpr (enable_ring_support) {
-                WATCHER_RING_BUFFER_PUSH(0x55554323);
+                // WATCHER_RING_BUFFER_PUSH(0x55554323);
                 run_receiver_channel_step<
                     enable_packet_header_recording,
                     enable_fabric_counters,
@@ -1287,7 +1304,7 @@ void run_fabric_edm_main_loop(
             WATCHER_RING_BUFFER_PUSH(0xfebafeba);
             did_nothing_count = 0;
         } else {
-            WATCHER_RING_BUFFER_PUSH(0x12345678);
+            // WATCHER_RING_BUFFER_PUSH(0x12345678);
             if (did_nothing_count++ > SWITCH_INTERVAL) {
                 did_nothing_count = 0;
                 // shouldn't do noc counter sync since we are not incrementing them
@@ -1304,6 +1321,7 @@ void __attribute__((noinline)) wait_for_static_connection_to_ready(
         local_sender_channel_worker_interfaces) {
     for (size_t i = 0; i < NUM_SENDER_CHANNELS; i++) {
         if (sender_ch_live_check_skip[i]) {
+            WAYPOINT("FHA");
             while (!connect_is_requested(*local_sender_channel_worker_interfaces[i].connection_live_semaphore)) {
                 invalidate_l1_cache();
             }
@@ -1449,11 +1467,11 @@ void kernel_main() {
         init_ptr_val<to_sender_packets_completed_streams[4]>(0);
     }
 
-    WATCHER_RING_BUFFER_PUSH(0x90098778);
-    WATCHER_RING_BUFFER_PUSH((uint32_t)to_receiver_packets_sent_streams[0]);
+    // WATCHER_RING_BUFFER_PUSH(0x90098778);
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)to_receiver_packets_sent_streams[0]);
     auto debug_after_init = get_ptr_val<to_receiver_packets_sent_streams[0]>();
-    WATCHER_RING_BUFFER_PUSH((uint32_t)debug_after_init);
-    WATCHER_RING_BUFFER_PUSH(0xbedabeda);
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)debug_after_init);
+    // WATCHER_RING_BUFFER_PUSH(0xbedabeda);
 
     if constexpr (is_handshake_sender) {
         erisc::datamover::handshake::sender_side_start(handshake_addr, DEFAULT_HANDSHAKE_CONTEXT_SWITCH_TIMEOUT);
@@ -1624,6 +1642,8 @@ void kernel_main() {
     ////////////////////////
     // Sender runtime args
     ////////////////////////
+    // WATCHER_RING_BUFFER_PUSH(0x70098778);
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)arg_idx);
     auto sender0_worker_semaphore_ptr = reinterpret_cast<volatile uint32_t*>(
         persistent_mode ? get_arg_val<uint32_t>(arg_idx++)
                         : get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++)));
@@ -1635,6 +1655,10 @@ void kernel_main() {
                      : get_semaphore<ProgrammableCoreType::ACTIVE_ETH>(get_arg_val<uint32_t>(arg_idx++)));
     auto sender3_worker_semaphore_ptr = reinterpret_cast<volatile uint32_t*>(get_arg_val<uint32_t>(arg_idx++));
     auto sender4_worker_semaphore_ptr = reinterpret_cast<volatile uint32_t*>(get_arg_val<uint32_t>(arg_idx++));
+    // WATCHER_RING_BUFFER_PUSH(0x70098778);
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)sender0_worker_semaphore_ptr);
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)sender1_worker_semaphore_ptr);
+    // WATCHER_RING_BUFFER_PUSH(0x50098778);
 
     const size_t local_sender_channel_0_connection_buffer_index_addr =
         persistent_mode ? local_sender_channel_0_connection_buffer_index_id

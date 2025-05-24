@@ -64,7 +64,6 @@ HalCoreInfoType create_active_eth_mem_map() {
     mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::WATCHER)] = sizeof(watcher_msg_t);
     mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::DPRINT)] = sizeof(dprint_buf_msg_t);
     mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::PROFILER)] = sizeof(profiler_msg_t);
-    // TODO: this is wrong, need eth specific value. For now use same value as idle
     mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::KERNEL_CONFIG)] = MEM_ERISC_KERNEL_CONFIG_SIZE;
     mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::UNRESERVED)] =
         MEM_ERISC_MAX_SIZE - mem_map_bases[static_cast<std::size_t>(HalL1MemAddrType::UNRESERVED)];
@@ -78,6 +77,9 @@ HalCoreInfoType create_active_eth_mem_map() {
     mem_map_sizes[static_cast<std::size_t>(HalL1MemAddrType::FABRIC_ROUTER_CONFIG)] =
         MEM_ERISC_FABRIC_ROUTER_CONFIG_SIZE;
 
+    std::cout << "Active unreserved base " << mem_map_bases[static_cast<std::size_t>(HalL1MemAddrType::UNRESERVED)]
+              << std::endl;
+    std::cout << "fabric router config base " << (uint32_t)MEM_ERISC_FABRIC_ROUTER_CONFIG_BASE << std::endl;
     std::vector<std::vector<HalJitBuildConfig>> processor_classes(NumEthDispatchClasses - 1);
     std::vector<HalJitBuildConfig> processor_types(1);
     for (std::size_t processor_class_idx = 0; processor_class_idx < processor_classes.size(); processor_class_idx++) {

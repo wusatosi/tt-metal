@@ -600,6 +600,17 @@ std::vector<uint32_t> FabricEriscDatamoverBuilder::get_compile_time_args() const
 }
 
 std::vector<uint32_t> FabricEriscDatamoverBuilder::get_runtime_args() const {
+    std::cout << "sender_channels_flow_control_semaphore_id[0]: " << this->sender_channels_flow_control_semaphore_id[0]
+              << std::endl;
+    std::cout << "sender_channels_flow_control_semaphore_id[1]: " << this->sender_channels_flow_control_semaphore_id[1]
+              << std::endl;
+    std::cout << "sender_channels_flow_control_semaphore_id[2]: " << this->sender_channels_flow_control_semaphore_id[2]
+              << std::endl;
+    std::cout << "sender_channels_flow_control_semaphore_id[3]: " << this->sender_channels_flow_control_semaphore_id[3]
+              << std::endl;
+    std::cout << "sender_channels_flow_control_semaphore_id[4]: " << this->sender_channels_flow_control_semaphore_id[4]
+              << std::endl;
+
     return std::vector<uint32_t>{
         this->sender_channels_connection_semaphore_id[0],
         this->sender_channels_connection_semaphore_id[1],

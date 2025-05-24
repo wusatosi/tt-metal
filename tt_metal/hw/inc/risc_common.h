@@ -186,6 +186,7 @@ inline __attribute__((always_inline)) void invalidate_l1_cache() {
 #endif
 }
 
+// move this to firmware_common.h
 // Flush i$ on ethernet riscs
 inline __attribute__((always_inline)) void flush_erisc_icache() {
 #ifdef ARCH_BLACKHOLE
@@ -193,10 +194,27 @@ inline __attribute__((always_inline)) void flush_erisc_icache() {
 //  between FW end and Kernel start.
 // This works because risc tries to prefetch 1 cache line.
 // The 32B still get cached but they are never executed
+asm(R"ASM(
+        .option push
+        li   t1, 0x2
+        csrrs zero, 0x7c0, t1
+        fence
+        .option pop
+         )ASM" ::
+        : "t1");
 #pragma GCC unroll 2048
     for (int i = 0; i < 2048; i++) {
         asm("nop");
     }
+    asm(R"ASM(
+        .option push
+        fence
+        li   t1, 0x2
+        csrrc zero, 0x7c0, t1
+        fence
+        .option pop
+         )ASM" ::
+            : "t1");
 #endif
 }
 

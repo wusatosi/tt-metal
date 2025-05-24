@@ -36,7 +36,6 @@ inline void setup_connection_and_headers(
         if constexpr (mcast_mode) {
             packet_header->to_chip_multicast(MulticastRoutingCommandHeader{1, static_cast<uint8_t>(hops)});
         } else {
-            DPRINT << "Setting up unicast header with hops " << (uint32_t)hops << ENDL();
             packet_header->to_chip_unicast(static_cast<uint8_t>(hops));
         }
     }
@@ -44,6 +43,9 @@ inline void setup_connection_and_headers(
     DPRINT << "Setting up packet header to " << HEX() << noc_dest_addr << DEC() << " with payload size "
            << packet_payload_size_bytes << ENDL();
     packet_header->to_noc_unicast_write(NocUnicastCommandHeader{noc_dest_addr}, packet_payload_size_bytes);
+
+    DPRINT << "noc addr in pkt header is " << HEX() << (uint64_t)packet_header->command_fields.unicast_write.noc_address
+           << DEC() << ENDL();
 }
 
 inline void send_packet(

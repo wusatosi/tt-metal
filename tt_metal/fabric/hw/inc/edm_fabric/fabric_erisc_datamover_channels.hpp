@@ -9,6 +9,7 @@
 #include <cstdint>
 
 #include "debug/dprint.h"
+#include "debug/pause.h"
 #include "dataflow_api.h"
 #if defined(COMPILE_FOR_ERISC)
 #include "tt_metal/hw/inc/ethernet/tunneling.h"
@@ -154,11 +155,18 @@ struct EdmChannelWorkerInterface {
     // local_wrptr trails from_remote_wrptr
     // we have new data if they aren't equal
     [[nodiscard]] FORCE_INLINE bool has_unsent_payload() {
-        invalidate_l1_cache();
-        auto debug_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x21f20);
-        WATCHER_RING_BUFFER_PUSH(local_wrptr.get_ptr());
-        WATCHER_RING_BUFFER_PUSH(*debug_ptr);
-        WATCHER_RING_BUFFER_PUSH(0xfacefeed);
+        // invalidate_l1_cache();
+
+        for (int i = 0; i < 2048; i++) {
+            asm("fence");
+        }
+        // auto debug_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x6F640);
+        // debug_ptr[0] = 0xdeadbeef;
+        // uint32_t debug_val = *debug_ptr;
+        // WATCHER_RING_BUFFER_PUSH(0xdeadbeef);
+        // WATCHER_RING_BUFFER_PUSH(local_wrptr.get_ptr());
+        // WATCHER_RING_BUFFER_PUSH(*remote_producer_wrptr);
+        // WATCHER_RING_BUFFER_PUSH(0xfacefeed);
         // return local_wrptr.get_ptr() != *debug_ptr;
         return local_wrptr.get_ptr() != *remote_producer_wrptr;
     }

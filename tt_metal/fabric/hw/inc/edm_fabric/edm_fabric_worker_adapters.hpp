@@ -451,7 +451,14 @@ private:
                    << " using noc " << (uint32_t)noc << DEC() << ENDL();
             // PAUSE();
             noc_inline_dw_write(noc_sem_addr, this->buffer_slot_wrptr, 0xf, noc);
-            // noc_async_write_barrier();
+            noc_async_write_barrier();
+
+            noc_async_read(noc_sem_addr, 0x17FFC0, sizeof(uint32_t), noc);
+            noc_async_read_barrier(noc);
+            auto debug_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x17FFC0);
+
+            DPRINT << "noc_async_read " << HEX() << noc_sem_addr << " value is " << (uint32_t)debug_ptr[0] << DEC()
+                   << ENDL();
         }
     }
 

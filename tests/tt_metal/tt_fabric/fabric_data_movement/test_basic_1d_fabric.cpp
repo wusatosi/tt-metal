@@ -433,6 +433,7 @@ void RunTestUnicastRaw(BaseFabricFixture* fixture, uint32_t num_hops, RoutingDir
         if (eth_chans.size() == 0) {
             GTEST_SKIP() << "No active eth chans to connect to";
         }
+        tt::log_info(tt::LogTest, "dst_physical_device_id {}", dst_physical_device_id);
 
         // Pick a port from end of the list. On T3K, there are missimg routing planes due to FD tunneling
         // edm_port = *std::prev(eth_chans.end());

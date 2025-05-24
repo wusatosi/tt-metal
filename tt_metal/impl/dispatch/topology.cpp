@@ -1272,10 +1272,8 @@ std::unique_ptr<Program> create_and_compile_tt_fabric_program(IDevice* device) {
             "tt_metal/fabric/impl/kernels/edm_fabric/fabric_erisc_datamover.cpp",
             eth_logical_core,
             tt::tt_metal::EthernetConfig{
-                .noc = tt_metal::NOC::NOC_0,
-                .compile_args = ct_args,
-                .defines = defines,
-                .opt_level = tt::tt_metal::KernelBuildOptLevel::O3});
+                .noc = tt_metal::NOC::NOC_0, .compile_args = ct_args, .defines = defines,
+                /*.opt_level = tt::tt_metal::KernelBuildOptLevel::O3*/});
 
         tt::tt_metal::SetRuntimeArgs(*fabric_program_ptr, kernel, eth_logical_core, rt_args);
     }
