@@ -583,6 +583,12 @@ FORCE_INLINE void receiver_forward_packet(
     tt::tt_fabric::EdmToEdmSender<SENDER_NUM_BUFFERS>& downstream_edm_interface,
     uint8_t transaction_id,
     uint8_t rx_channel_id) {
+    constexpr bool ENABLE_STATEFUL_NOC_APIS =
+#ifndef DEBUG_PRINT_ENABLED
+        true;
+#else
+        false;
+#endif
     if constexpr (std::is_same_v<ROUTING_FIELDS_TYPE, tt::tt_fabric::RoutingFields>) {
         // If the packet is a terminal packet, then we can just deliver it locally
         bool start_distance_is_terminal_value =
@@ -605,11 +611,11 @@ FORCE_INLINE void receiver_forward_packet(
                 execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id, rx_channel_id);
                 break;
             case tt::tt_fabric::LowLatencyRoutingFields::FORWARD_ONLY:
-                forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support, true>(
+                forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support, ENABLE_STATEFUL_NOC_APIS>(
                     packet_start, payload_size_bytes, cached_routing_fields, downstream_edm_interface, transaction_id);
                 break;
             case tt::tt_fabric::LowLatencyRoutingFields::WRITE_AND_FORWARD:
-                forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support, true>(
+                forward_payload_to_downstream_edm<SENDER_NUM_BUFFERS, enable_ring_support, ENABLE_STATEFUL_NOC_APIS>(
                     packet_start, payload_size_bytes, cached_routing_fields, downstream_edm_interface, transaction_id);
                 WAYPOINT("Lwrt");
                 execute_chip_unicast_to_local_chip(packet_start, payload_size_bytes, transaction_id, rx_channel_id);
