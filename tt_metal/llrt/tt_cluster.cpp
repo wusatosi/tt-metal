@@ -203,6 +203,8 @@ void Cluster::generate_cluster_descriptor() {
     this->cluster_type_ = Cluster::get_cluster_type_from_cluster_desc(this->rtoptions_, this->cluster_desc_);
 
     this->cluster_desc_->print_all();
+    std::unique_ptr<tt_ClusterDescriptor> new_topo_discovery = tt::umd::TopologyDiscovery().create_ethernet_map();
+    new_topo_discovery->print_all();
 
     if (this->target_type_ != TargetDevice::Simulator && this->arch_ == tt::ARCH::BLACKHOLE) {
         TT_FATAL(
