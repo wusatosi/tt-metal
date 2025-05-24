@@ -1303,7 +1303,7 @@ void ProgramImpl::generate_trace_dispatch_commands(IDevice* device) {
         ProgramCommandSequence program_command_sequence;
         program_dispatch::insert_empty_program_dispatch_preamble_cmd(program_command_sequence);
         program_dispatch::insert_stall_cmds(program_command_sequence, sub_device_id, device);
-        program_dispatch::assemble_device_commands(program_command_sequence, *this, device, sub_device_id);
+        program_dispatch::assemble_device_commands(program_command_sequence, *this, device, sub_device_id, false);
         // TODO: We currently do not have a mechanism of removing entries in the cache when a manager is removed
         // This means programs will contain stale entries in the cache until the program is deleted
         trace_cached_program_command_sequences.insert({command_hash, std::move(program_command_sequence)});
@@ -1772,7 +1772,7 @@ uint32_t detail::ProgramImpl::get_program_kernel_bins_sizeB(IDevice* device) {
 }
 
 uint32_t Program::get_program_kernel_bins_sizeB(IDevice* device) {
-    return pimpl_->get_program_kernel_bins_sizeB(device);
+    return impl().get_program_kernel_bins_sizeB(device);
 }
 
 }  // namespace tt::tt_metal
