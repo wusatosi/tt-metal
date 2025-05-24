@@ -49,7 +49,7 @@ perf_targets = {
     "AllGatherConcat_0": {
         "op_name": "AllGatherConcat",
         "kernel_duration": 12419.194444444445,
-        "op_to_op": 796.8888888888889,
+        "op_to_op": 623.4444444444445,
         "first_to_last_start": 1866.0,
         "non-overlapped-dispatch-time": 12541.7,
         "kernel_duration_relative_margin": 0.05,
