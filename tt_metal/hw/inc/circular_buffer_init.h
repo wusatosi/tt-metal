@@ -16,14 +16,22 @@
 FORCE_INLINE void setup_local_cb_read_write_interfaces(
     uint32_t tt_l1_ptr* cb_l1_base,
     uint32_t start_cb_index,
-    uint32_t max_cb_index,
+    uint32_t local_cb_mask,
     bool read,
     bool write,
     bool init_wr_tile_ptr) {
     volatile tt_l1_ptr uint32_t* circular_buffer_config_addr =
         cb_l1_base + start_cb_index * UINT32_WORDS_PER_LOCAL_CIRCULAR_BUFFER_CONFIG;
 
-    for (uint32_t cb_id = start_cb_index; cb_id < max_cb_index; cb_id++) {
+    for (uint32_t cb_id = start_cb_index; cb_id < 32; cb_id++) {
+        if (!local_cb_mask) {
+            break;
+        }
+        if (!(local_cb_mask & (1u << cb_id))) {
+            circular_buffer_config_addr += UINT32_WORDS_PER_LOCAL_CIRCULAR_BUFFER_CONFIG;
+            continue;
+        }
+        local_cb_mask &= ~(1u << cb_id);
         // NOTE: fifo_addr, fifo_size and fifo_limit in 16B words!
         uint32_t fifo_addr = circular_buffer_config_addr[0] >> cb_addr_shift;
         uint32_t fifo_size = circular_buffer_config_addr[1] >> cb_addr_shift;
