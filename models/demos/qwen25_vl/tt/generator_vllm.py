@@ -138,17 +138,12 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
             max_seq_len=4096,  # todo)) add some smarts to determine max_seq_len based on the model name and device, instead of blindly setting to 131072
             n_layers=n_layers,
             dtype=ttnn.bfloat8_b,
+            optimizations=ModelOptimizations.performance
+            if "72B" in hf_config.name_or_path
+            else ModelOptimizations.accuracy,
         )
 
-        # todo)) { remove this after debugging
-        from transformers import logging as transformers_logging
-
-        transformers_logging.set_verbosity_error()
-        # todo)) }
         config = Ref_Qwen2_5_VLForConditionalGeneration.config_class.from_pretrained(model_args.model_name)
-        # todo)) { remove this after debugging
-        config.vision_config.depth = 1
-        # todo)) }
         reference_model = Ref_Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_args.model_name, config=config, torch_dtype="auto", device_map="auto"
         )
