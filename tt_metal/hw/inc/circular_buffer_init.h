@@ -11,6 +11,15 @@
 #include "remote_circular_buffer_api.h"
 #include "risc_attribs.h"
 
+inline uint8_t count_trailing_zeros(uint32_t v) {
+    // https://graphics.stanford.edu/~seander/bithacks.html#ZerosOnRightMultLookup
+    static const uint8_t MultiplyDeBruijnBitPosition[32] =
+    {
+        0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
+        31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
+    };
+    return MultiplyDeBruijnBitPosition[((uint32_t)((v & -v) * 0x077CB531U)) >> 27];
+}
 // NCRISC and BRISC setup read and write
 // TRISC sets up read or write
 FORCE_INLINE void setup_local_cb_read_write_interfaces(
@@ -23,6 +32,7 @@ FORCE_INLINE void setup_local_cb_read_write_interfaces(
     volatile tt_l1_ptr uint32_t* circular_buffer_config_addr =
         cb_l1_base + start_cb_index * UINT32_WORDS_PER_LOCAL_CIRCULAR_BUFFER_CONFIG;
 
+        #if 0
     for (uint32_t cb_id = start_cb_index; cb_id < 32; cb_id++) {
         if (!local_cb_mask) {
             break;
@@ -31,6 +41,11 @@ FORCE_INLINE void setup_local_cb_read_write_interfaces(
             circular_buffer_config_addr += UINT32_WORDS_PER_LOCAL_CIRCULAR_BUFFER_CONFIG;
             continue;
         }
+        local_cb_mask &= ~(1u << cb_id);
+        #endif
+
+    while (local_cb_mask) {
+        uint32_t cb_id = count_trailing_zeros(local_cb_mask);
         local_cb_mask &= ~(1u << cb_id);
         // NOTE: fifo_addr, fifo_size and fifo_limit in 16B words!
         uint32_t fifo_addr = circular_buffer_config_addr[0] >> cb_addr_shift;
