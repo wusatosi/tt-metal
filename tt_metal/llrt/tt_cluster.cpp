@@ -202,6 +202,8 @@ void Cluster::generate_cluster_descriptor() {
     this->cluster_desc_ = this->driver_->get_cluster_description();
     this->cluster_type_ = Cluster::get_cluster_type_from_cluster_desc(this->rtoptions_, this->cluster_desc_);
 
+    this->cluster_desc_->print_all();
+
     if (this->target_type_ != TargetDevice::Simulator && this->arch_ == tt::ARCH::BLACKHOLE) {
         TT_FATAL(
             this->cluster_desc_->get_noc_translation_table_en().at(0),
