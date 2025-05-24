@@ -29,8 +29,6 @@ FORCE_INLINE void setup_local_cb_read_write_interfaces(
     bool read,
     bool write,
     bool init_wr_tile_ptr) {
-    volatile tt_l1_ptr uint32_t* circular_buffer_config_addr =
-        cb_l1_base + start_cb_index * UINT32_WORDS_PER_LOCAL_CIRCULAR_BUFFER_CONFIG;
 
         #if 0
     for (uint32_t cb_id = start_cb_index; cb_id < 32; cb_id++) {
@@ -47,6 +45,8 @@ FORCE_INLINE void setup_local_cb_read_write_interfaces(
     while (local_cb_mask) {
         uint32_t cb_id = count_trailing_zeros(local_cb_mask);
         local_cb_mask &= ~(1u << cb_id);
+        volatile tt_l1_ptr uint32_t* circular_buffer_config_addr =
+            cb_l1_base + cb_id * UINT32_WORDS_PER_LOCAL_CIRCULAR_BUFFER_CONFIG;
         // NOTE: fifo_addr, fifo_size and fifo_limit in 16B words!
         uint32_t fifo_addr = circular_buffer_config_addr[0] >> cb_addr_shift;
         uint32_t fifo_size = circular_buffer_config_addr[1] >> cb_addr_shift;
@@ -73,7 +73,7 @@ FORCE_INLINE void setup_local_cb_read_write_interfaces(
             local_interface.fifo_wr_tile_ptr = 0;
         }
 
-        circular_buffer_config_addr += UINT32_WORDS_PER_LOCAL_CIRCULAR_BUFFER_CONFIG;
+      //  circular_buffer_config_addr += UINT32_WORDS_PER_LOCAL_CIRCULAR_BUFFER_CONFIG;
     }
 }
 
