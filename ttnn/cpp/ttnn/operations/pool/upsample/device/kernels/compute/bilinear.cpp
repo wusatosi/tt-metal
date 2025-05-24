@@ -56,6 +56,8 @@ void MAIN {
         in_ntiles_c % MAX_TILES_PER_REDUCTION == 0 ? max_tiles_per_iter : in_ntiles_c % MAX_TILES_PER_REDUCTION;
 
     constexpr uint32_t num_output_tiles = out_ntiles_c;  //* nblocks;
+
+    // XXX : negative inf srca is true, zero srca is false in init, but not done for actual call
     tilizeA_B_reduce_init<false, true>(in_cb_id1, in_scalar_cb_id1, max_tiles_per_iter, out_cb_id, 2, 4);
     pack_untilize_dst_init_short<num_output_tiles>(out_cb_id, 1, 2); /* pack 1 row (1x32) */
     for (uint32_t i = 0; i < nsticks_per_core_by_nblocks; i++) {

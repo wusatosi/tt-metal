@@ -99,7 +99,7 @@ inline void llk_unpack_tilize_block(std::uint32_t operand, std::uint32_t block_c
 /*************************************************************************
  * LLK UNPACK TILIZE SRC A, UNPACK SRC B
  *************************************************************************/
-
+// XXX : num faces is received from the tile id, not the argument of tilizeA_B_reduce_init
 template <bool is_fp32_dest_acc_en = false, StochRndType stoch_rnd_mode = StochRndType::None>
 inline void llk_unpack_tilizeA_B_hw_configure(
     const llk_unpack_AB_params_t *unpack_tilizeA_B_params, const int within_face_16x16_transpose = 0) {
@@ -137,6 +137,7 @@ inline void llk_unpack_tilizeA_B_hw_configure_disaggregated(
 }
 
 // TODO: add support for all the template parameters
+// XXX : The code to unpack B is not here for blackhole.
 template <bool neginf_srcA = false, std::uint32_t reload_srcB = false, bool zero_srcA = false, bool zero_srcA_reduce = false>
 inline void llk_unpack_tilizeA_B_mop_config(const bool narrow_tile = false, const std::uint32_t num_faces = 4) {
 
