@@ -8,13 +8,11 @@ import torch
 from types import SimpleNamespace
 from typing import Union
 
-from models.demos.qwen25_vl.tt.generator import Generator as QwenVLGenerator
-
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
     Qwen2_5_VLForConditionalGeneration as Ref_Qwen2_5_VLForConditionalGeneration,
 )
-from transformers import AutoProcessor
 
+from models.demos.qwen25_vl.tt.generator import Generator as QwenVLGenerator
 from models.demos.qwen25_vl.tt.common import (
     PagedAttentionConfig,
     preprocess_inputs_prefill,
@@ -23,7 +21,6 @@ from models.demos.qwen25_vl.tt.common import (
 )
 from models.demos.qwen25_vl.tt.model import DropInVisionTransformer, Transformer
 from models.demos.qwen25_vl.tt.model_config import VisionModelArgs
-
 from models.tt_transformers.tt.model_config import ModelArgs, ModelOptimizations
 
 from vllm.inputs import INPUT_REGISTRY, DecoderOnlyInputs, EncoderDecoderInputs, InputContext
@@ -41,14 +38,14 @@ def initialize_vllm_text_transformer(
 ):
     tt_model_args = ModelArgs(
         mesh_device,
-        instruct=("Instruct" in hf_config._name_or_path),
+        instruct=("Instruct" in hf_config.name_or_path),
         max_batch_size=max_batch_size,
         optimizations=optimizations,
         max_seq_len=max_seq_len,
     )
     assert tt_model_args.model_name.replace("-", "").endswith(
-        hf_config._name_or_path.replace("-", "")
-    ), f"The model specified in vLLM ({hf_config._name_or_path}) does not match the model name ({tt_model_args.model_name}) with model weights ({tt_model_args.CKPT_DIR})."
+        hf_config.name_or_path.replace("-", "")
+    ), f"The model specified in vLLM ({hf_config.name_or_path}) does not match the model name ({tt_model_args.model_name}) with model weights ({tt_model_args.CKPT_DIR})."
     if n_layers is not None:
         tt_model_args.n_layers = n_layers
     state_dict = tt_model_args.load_state_dict()
@@ -138,9 +135,9 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
             max_seq_len=4096,  # todo)) add some smarts to determine max_seq_len based on the model name and device, instead of blindly setting to 131072
             n_layers=n_layers,
             dtype=ttnn.bfloat8_b,
-            optimizations=ModelOptimizations.performance
-            if "72B" in hf_config.name_or_path
-            else ModelOptimizations.accuracy,
+            optimizations=(
+                ModelOptimizations.performance if "72B" in hf_config.name_or_path else ModelOptimizations.accuracy
+            ),
         )
 
         config = Ref_Qwen2_5_VLForConditionalGeneration.config_class.from_pretrained(model_args.model_name)
