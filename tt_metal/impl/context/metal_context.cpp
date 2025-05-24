@@ -120,6 +120,9 @@ void MetalContext::initialize(
         // populate_fd_kernels(all_devices_set, num_hw_cqs);
     }
 
+    // Set internal routing for active ethernet cores, this is required for our FW to run
+    tt::tt_metal::MetalContext::instance().get_cluster().set_internal_routing_info_for_ethernet_cores(true);
+
     // Initialize debug tools, reset cores, init FW
     for (chip_id_t device_id : all_devices) {
         // Init debug tools
@@ -148,6 +151,9 @@ void MetalContext::initialize(
 
 void MetalContext::teardown() {
     initialized_ = false;
+
+    // Set internal routing to false to exit active ethernet FW & go back to base FW
+    tt::tt_metal::MetalContext::instance().get_cluster().set_internal_routing_info_for_ethernet_cores(false);
 
     auto all_devices = cluster_->all_chip_ids();
     for (chip_id_t device_id : all_devices) {

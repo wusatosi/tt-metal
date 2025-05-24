@@ -274,8 +274,8 @@ void DevicePool::initialize(
     _inst->skip_remote_devices = skip;
     _inst->use_max_eth_core_count_on_all_devices_ = use_max_eth_core_count_on_all_devices;
     _inst->add_devices_to_pool(device_ids);
-    tt::tt_metal::MetalContext::instance().get_cluster().set_internal_routing_info_for_ethernet_cores(
-        true, target_mmio_ids);
+    // tt::tt_metal::MetalContext::instance().get_cluster().set_internal_routing_info_for_ethernet_cores(
+    //     true, target_mmio_ids);
     _inst->init_firmware_on_active_devices();
 }
 
@@ -749,7 +749,7 @@ bool DevicePool::close_devices(const std::vector<IDevice*>& devices, bool skip_s
 
     detail::ProfilerSync(ProfilerSyncState::CLOSE_DEVICE);
 
-    tt::tt_metal::MetalContext::instance().get_cluster().set_internal_routing_info_for_ethernet_cores(false);
+    // tt::tt_metal::MetalContext::instance().get_cluster().set_internal_routing_info_for_ethernet_cores(false);
 
     bool pass = true;
     for (const auto& dev_id : devices_to_close) {
