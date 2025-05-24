@@ -151,9 +151,8 @@ struct CQPrefetchPagedToRingbufferCmd {
 
 struct CQPrefetchSetRingbufferOffsetCmd {
     uint32_t offset;
-    uint8_t pad1;
+    uint16_t pad1;
     uint8_t pad2;
-    uint16_t pad3;
     uint8_t update_wp;  // if set, the ringbuffer write pointer will be updated to the offset
 } __attribute__((packed));
 
