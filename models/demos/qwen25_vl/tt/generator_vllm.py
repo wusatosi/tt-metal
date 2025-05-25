@@ -83,7 +83,12 @@ def initialize_vllm_text_transformer(
 
 def input_processor_for_qwen25_vl(ctx: InputContext, inputs: Union[DecoderOnlyInputs, EncoderDecoderInputs]):
     input_processor = ctx.get_hf_processor()
-    prompt_text = inputs["prompt"]
+    if "prompt" in inputs:
+        prompt_text = inputs["prompt"]
+    else:
+        # [INFO] with current version of vLLM, in server mode, inputs["prompt"] gives KeyError; only inputs['prompt_token_ids'] is available
+        assert "prompt_token_ids" in inputs, "prompt_token_ids must be available in server mode"
+        prompt_text = input_processor.decode(inputs["prompt_token_ids"], skip_special_tokens=False)
     images = inputs["multi_modal_data"]["image"]
 
     processed_inputs = input_processor(
@@ -97,7 +102,7 @@ def input_processor_for_qwen25_vl(ctx: InputContext, inputs: Union[DecoderOnlyIn
     return {
         "type": inputs["type"],
         "prompt_token_ids": processed_inputs.input_ids[0].tolist(),
-        "prompt": inputs["prompt"],
+        "prompt": prompt_text,
         "multi_modal_data": {"image": processed_inputs},  # [INFO] add processed_inputs
     }
 
@@ -124,7 +129,9 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
         super().__init__(*args, **kwargs)
 
     @classmethod
-    def initialize_vllm_model(cls, hf_config, mesh_device, max_batch_size, n_layers=None, tt_data_parallel=1):
+    def initialize_vllm_model(
+        cls, hf_config, mesh_device, max_batch_size, n_layers=None, n_vision_layers=None, tt_data_parallel=1
+    ):
         # Enable async mode todo)) remove this when qwen2.5-vl-rebase-main is merged
         mesh_device.enable_async(True)
 
@@ -141,6 +148,8 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
         )
 
         config = Ref_Qwen2_5_VLForConditionalGeneration.config_class.from_pretrained(model_args.model_name)
+        if n_vision_layers is not None:
+            config.vision_config.depth = n_vision_layers
         reference_model = Ref_Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_args.model_name, config=config, torch_dtype="auto", device_map="auto"
         )
