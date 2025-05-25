@@ -35,8 +35,8 @@ test_suite_bh_single_pcie_small_ml_model_tests() {
       exit 1
     fi
 
-    HF_MODEL=meta-llama/Llama-3.1-8B-Instruct MESH_DEVICE=N150 pytest models/tt_transformers/demo/simple_text_demo.py -k performance-batch-1
     pytest --disable-warnings --input-path="models/demos/whisper/demo/dataset/conditional_generation" models/demos/whisper/demo/demo.py::test_demo_for_conditional_generation
+    HF_MODEL=meta-llama/Llama-3.1-8B-Instruct MESH_DEVICE=N150 pytest models/tt_transformers/demo/simple_text_demo.py -k performance-batch-1
 }
 
 # Define test suite mappings for different hardware topologies
