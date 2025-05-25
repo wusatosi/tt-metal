@@ -108,9 +108,7 @@ def sample_top_p(values: torch.Tensor, p: float):
     probs_sum = torch.cumsum(probs_sort, dim=-1)
     mask = probs_sum - probs_sort > p
     probs_sort[mask] = 0.0
-    # print("probs_sort before normalization:", probs_sort)
-    probs_sort.div_(probs_sort.sum(dim=-1, keepdim=True))  # TODO: do this in the kernel too?
-    # print("probs_sort after normalization:", probs_sort)
+    probs_sort.div_(probs_sort.sum(dim=-1, keepdim=True))
 
     next_token = torch.multinomial(probs_sort, num_samples=1)
     return torch.gather(probs_idx, -1, next_token)
@@ -178,12 +176,19 @@ def reference_sampling(input_tensor, sampling_params, num_devices, padded_vocab_
     ],
     indirect=True,
 )
-@pytest.mark.parametrize(
+@pytest.mark.parametrize(  # Worker size is selected to give 120kB ringbuffer size
     "device_params",
-    [{"dispatch_core_axis": ttnn.DispatchCoreAxis.COL, "fabric_config": ttnn.FabricConfig.FABRIC_1D}],
+    [
+        {
+            "dispatch_core_axis": ttnn.DispatchCoreAxis.COL,
+            "trace_region_size": 25600,
+            "worker_l1_size": 1344544,
+            "fabric_config": ttnn.FabricConfig.FABRIC_1D,
+        }
+    ],
     indirect=True,
 )
-def test_llama_sampling_inference(dtype, sampling_params, batch_size, mesh_device, reset_seeds):  # use_program_cache
+def test_llama_sampling_inference(dtype, sampling_params, batch_size, mesh_device, use_program_cache, reset_seeds):
     use_tracing = True
     load_cached_outputs = True
     num_samples = 10
@@ -296,12 +301,12 @@ def test_llama_sampling_inference(dtype, sampling_params, batch_size, mesh_devic
 
                 # Execute trace
                 ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
-                tt_out_tok_cpu = tt_outputs.cpu(blocking=True, cq_id=0)
+                tt_out_tok_device0 = ttnn.get_device_tensors(tt_outputs)[0]
+                tt_out_tok_cpu = tt_out_tok_device0.cpu(blocking=True, cq_id=0)
+                logger.info("Execute trace done")
                 # iteration_time = time() - iteration_time_start
 
-                tt_output_torch = ttnn.to_torch(
-                    tt_out_tok_cpu,
-                )
+                tt_output_torch = ttnn.to_torch(tt_out_tok_cpu)
                 tt_output_torch = tt_output_torch[0, 0, :, :]
                 tt_output_torch = tt_output_torch.reshape(-1, 1)
                 tt_outputs_torch.append(tt_output_torch[0].item())
