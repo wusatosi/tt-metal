@@ -1590,12 +1590,14 @@ void noc_semaphore_set(volatile tt_l1_ptr uint32_t* sem_addr, uint32_t val) {
  */
 // clang-format on
 template <bool write_to_stream_reg = false, bool posted = false>
-FORCE_INLINE void noc_inline_dw_write(
+FORCE_INLINE void noc_inline_dw_write_impl(
     uint64_t addr, uint32_t val, uint8_t be = 0xF, uint8_t noc = noc_index, uint8_t vc = NOC_UNICAST_WRITE_VC) {
-    WAYPOINT("NWIW");
     DEBUG_SANITIZE_NOC_ADDR(noc, addr, 4);
     // This API does not support DRAM addresses
     DEBUG_SANITIZE_NO_DRAM_ADDR(noc, addr, 4);
+    if (my_y[0] != 18 || my_x[0] != 18) {
+        ASSERT(addr != 71609984815240);
+    }
 #ifdef ARCH_BLACKHOLE
     // On Blackhole issuing inline writes and atomics requires all 4 memory ports to accept the transaction at the same
     // time. If one port on the receipient has no back-pressure then the transaction will hang because there is no
@@ -1649,13 +1651,49 @@ FORCE_INLINE void noc_inline_dw_write(
         posted  // posted
     );
 #endif
+}
+
+template <bool write_to_stream_reg = false, bool posted = false>
+FORCE_INLINE void noc_inline_dw_write(
+    uint64_t addr, uint32_t val, uint8_t be = 0xF, uint8_t noc = noc_index, uint8_t vc = NOC_UNICAST_WRITE_VC) {
+    WAYPOINT("NWIW");
+    noc_inline_dw_write_impl<write_to_stream_reg, posted>(addr, val, be, noc, vc);
     WAYPOINT("NWID");
+}
+template <bool write_to_stream_reg = false, bool posted = false>
+FORCE_INLINE void noc_inline_dw_write2(
+    uint64_t addr, uint32_t val, uint8_t be = 0xF, uint8_t noc = noc_index, uint8_t vc = NOC_UNICAST_WRITE_VC) {
+    WAYPOINT("NWIW");
+    noc_inline_dw_write_impl<write_to_stream_reg, posted>(addr, val, be, noc, vc);
+    WAYPOINT("NWId");
+}
+template <bool write_to_stream_reg = false, bool posted = false>
+FORCE_INLINE void noc_inline_dw_write3(
+    uint64_t addr, uint32_t val, uint8_t be = 0xF, uint8_t noc = noc_index, uint8_t vc = NOC_UNICAST_WRITE_VC) {
+    WAYPOINT("NWIW");
+    noc_inline_dw_write_impl<write_to_stream_reg, posted>(addr, val, be, noc, vc);
+    WAYPOINT("NWid");
+}
+template <bool write_to_stream_reg = false, bool posted = false>
+FORCE_INLINE void noc_inline_dw_write4(
+    uint64_t addr, uint32_t val, uint8_t be = 0xF, uint8_t noc = noc_index, uint8_t vc = NOC_UNICAST_WRITE_VC) {
+    WAYPOINT("NWIW");
+    noc_inline_dw_write_impl<write_to_stream_reg, posted>(addr, val, be, noc, vc);
+    WAYPOINT("Nwid");
+}
+template <bool write_to_stream_reg = false, bool posted = false>
+FORCE_INLINE void noc_inline_dw_write5(
+    uint64_t addr, uint32_t val, uint8_t be = 0xF, uint8_t noc = noc_index, uint8_t vc = NOC_UNICAST_WRITE_VC) {
+    WAYPOINT("NWIW");
+    noc_inline_dw_write_impl<write_to_stream_reg, posted>(addr, val, be, noc, vc);
+    WAYPOINT("nwid");
 }
 
 // on BH this api can only write to stream register, writing to L1 will cause hangs!
-template <bool posted = false>
+template <bool posted = false, bool set_val = false>
 FORCE_INLINE void noc_inline_dw_write_set_state(
     uint64_t addr,
+    uint32_t val = 0,
     uint8_t be = 0xF,
     uint8_t cmd_buf = write_at_cmd_buf,
     uint8_t noc = noc_index,
@@ -1673,6 +1711,9 @@ FORCE_INLINE void noc_inline_dw_write_set_state(
     be32 = (be32 << be_shift);
 
     while (!noc_cmd_buf_ready(noc, cmd_buf));
+    if constexpr (set_val) {
+        NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_AT_DATA, val);
+    }
     NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_CTRL, noc_cmd_field);
     NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_TARG_ADDR_LO, addr & 0xFFFFFFFF);
     NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_TARG_ADDR_COORDINATE, (uint32_t)(addr >> NOC_ADDR_COORD_SHIFT));
@@ -1681,7 +1722,12 @@ FORCE_INLINE void noc_inline_dw_write_set_state(
 }
 
 // on BH this api can only write to stream register, writing to L1 will cause hangs!
-template <bool update_addr_lo = false, bool update_counter = true, bool posted = false, bool update_addr_hi = false>
+template <
+    bool update_addr_lo = false,
+    bool update_counter = true,
+    bool posted = false,
+    bool update_addr_hi = false,
+    bool update_val = false>
 FORCE_INLINE void noc_inline_dw_write_with_state(
     uint32_t val, uint32_t addr = 0, uint8_t cmd_buf = write_at_cmd_buf, uint8_t noc = noc_index) {
     // only either hi or lo address should be getting updated
@@ -1704,7 +1750,9 @@ FORCE_INLINE void noc_inline_dw_write_with_state(
     } else if constexpr (update_addr_hi) {
         NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_TARG_ADDR_COORDINATE, addr);
     }
-    NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_AT_DATA, val);
+    if constexpr (update_val) {
+        NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_AT_DATA, val);
+    }
     NOC_CMD_BUF_WRITE_REG(noc, cmd_buf, NOC_CMD_CTRL, NOC_CTRL_SEND_REQ);
     if constexpr (noc_mode == DM_DEDICATED_NOC) {
         if constexpr (update_counter) {

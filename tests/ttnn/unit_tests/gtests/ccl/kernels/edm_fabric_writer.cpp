@@ -6,7 +6,7 @@
 #include "ttnn/cpp/ttnn/operations/ccl/common/interpreter_backends/kernel_common/noc_addr.hpp"
 #include "dataflow_api.h"
 #include "tt_metal/fabric/hw/inc/edm_fabric/fabric_connection_manager.hpp"
-
+#include "debug/ring_buffer.h"
 #include <cstdint>
 #include <cstddef>
 
@@ -14,7 +14,7 @@ static constexpr bool enable_start_synchronization = get_compile_time_arg_val(0)
 static constexpr bool enable_finish_synchronization = get_compile_time_arg_val(1) != 0;
 static constexpr bool enable_any_synchronization = enable_start_synchronization || enable_finish_synchronization;
 
-FORCE_INLINE void line_sync(
+__attribute__((noinline)) static void line_sync(
     FabricConnectionManager& fabric_connection,
     bool sync_forward,
     bool sync_backward,
@@ -28,6 +28,9 @@ FORCE_INLINE void line_sync(
 
     auto dest_noc_addr =
         safe_get_noc_addr(static_cast<uint8_t>(sync_noc_x), static_cast<uint8_t>(sync_noc_y), sync_bank_addr, 0);
+    // WATCHER_RING_BUFFER_PUSH(0x12345678);
+    // WATCHER_RING_BUFFER_PUSH(dest_noc_addr);
+    // WATCHER_RING_BUFFER_PUSH(dest_noc_addr >> 32);
     if (sync_forward) {
         fwd_packet_header->to_noc_unicast_atomic_inc(NocUnicastAtomicIncCommandHeader{dest_noc_addr, 1, 128});
         fabric_connection.get_forward_connection().wait_for_empty_write_slot();
@@ -74,7 +77,7 @@ static FORCE_INLINE void setup_packet_header(
 }
 
 template <tt::tt_fabric::NocSendType T>
-static void send_packets(
+__attribute__((noinline)) static void send_packets(
     FabricConnectionManager& fabric_connection,
     volatile PACKET_HEADER_TYPE* pkt_hdr_fwd,
     volatile PACKET_HEADER_TYPE* pkt_hdr_bwd,
@@ -87,7 +90,7 @@ static void send_packets(
 }
 
 template <>
-FORCE_INLINE void send_packets<tt::tt_fabric::NocSendType::NOC_UNICAST_WRITE>(
+__attribute__((noinline)) void send_packets<tt::tt_fabric::NocSendType::NOC_UNICAST_WRITE>(
     FabricConnectionManager& fabric_connection,
     volatile PACKET_HEADER_TYPE* pkt_hdr_fwd,
     volatile PACKET_HEADER_TYPE* pkt_hdr_bwd,
@@ -137,7 +140,7 @@ FORCE_INLINE void send_packets<tt::tt_fabric::NocSendType::NOC_UNICAST_WRITE>(
 }
 
 template <>
-void send_packets<tt::tt_fabric::NocSendType::NOC_UNICAST_ATOMIC_INC>(
+__attribute__((noinline)) void send_packets<tt::tt_fabric::NocSendType::NOC_UNICAST_ATOMIC_INC>(
     FabricConnectionManager& fabric_connection,
     volatile PACKET_HEADER_TYPE* pkt_hdr_fwd,
     volatile PACKET_HEADER_TYPE* pkt_hdr_bwd,
@@ -223,7 +226,7 @@ void send_packets<tt::tt_fabric::NocSendType::NOC_UNICAST_ATOMIC_INC>(
 }
 
 template <>
-void send_packets<tt::tt_fabric::NocSendType::NOC_FUSED_UNICAST_ATOMIC_INC>(
+__attribute__((noinline)) void send_packets<tt::tt_fabric::NocSendType::NOC_FUSED_UNICAST_ATOMIC_INC>(
     FabricConnectionManager& fabric_connection,
     volatile PACKET_HEADER_TYPE* pkt_hdr_fwd,
     volatile PACKET_HEADER_TYPE* pkt_hdr_bwd,
@@ -346,8 +349,11 @@ void kernel_main() {
 
     fabric_connection.open();
 
+    WAYPOINT("CHK_");
     cb_reserve_back(source_l1_cb_index, 1);
+    WAYPOINT("CHK0");
     cb_reserve_back(packet_header_cb, packet_header_size_in_headers);
+    WAYPOINT("CHK1");
     const auto source_l1_buffer_address = get_write_ptr(source_l1_cb_index);
     const auto packet_header_buffer_address = get_write_ptr(packet_header_cb);
 
@@ -359,6 +365,8 @@ void kernel_main() {
     auto* sync_bwd_packet_header =
         reinterpret_cast<volatile PACKET_HEADER_TYPE*>(packet_header_buffer_address + sizeof(PACKET_HEADER_TYPE) * 3);
 
+    WAYPOINT("PKTD");
+
     if (enable_any_synchronization) {
         sync_fwd_packet_header->to_chip_multicast(
             MulticastRoutingCommandHeader{1, static_cast<uint8_t>(sync_mcast_fwd_hops)});
@@ -367,6 +375,7 @@ void kernel_main() {
     }
 
     if (enable_start_synchronization) {
+        WAYPOINT("SYNC");
         line_sync(
             fabric_connection,
             sync_fwd,
@@ -378,6 +387,7 @@ void kernel_main() {
             sync_noc_y,
             start_sync_val);
         noc_async_writes_flushed();
+        WATCHER_RING_BUFFER_PUSH(0x99998888);
         line_sync(
             fabric_connection,
             sync_fwd,
@@ -388,6 +398,8 @@ void kernel_main() {
             sync_noc_x,
             sync_noc_y,
             2 * start_sync_val);
+        WATCHER_RING_BUFFER_PUSH(0xbabababa);
+        WAYPOINT("sync");
     }
 
     {
@@ -457,6 +469,9 @@ void kernel_main() {
 
             if (sync_noc_x == my_x[0] && sync_noc_y == my_y[0]) {
                 // Sanity check to ensure we don't receive more acks than expected
+                if (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(sync_bank_addr) != second_finish_sync_val) {
+                    while(1);
+                }
                 ASSERT(*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(sync_bank_addr) == second_finish_sync_val);
                 // reset the global semaphore in case it is used in a op/kernel invocation
                 *reinterpret_cast<volatile tt_l1_ptr uint32_t*>(sync_bank_addr) = 0;
