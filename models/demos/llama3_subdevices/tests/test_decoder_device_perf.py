@@ -660,6 +660,10 @@ def test_llama_TG_perf_device(
             benchmark_data.add_measurement(
                 profiler, 0, step_name, op_name + "-model-op_to_op-avg", avg_dispatch_duration
             )
+            benchmark_data.add_measurement(
+                profiler, 0, step_name, op_name + "-model-first_to_last-avg", 
+                first_to_last_start_per_instance_averaged_dict[op_code_with_id]
+            )
 
             # min
             benchmark_data.add_measurement(
@@ -676,6 +680,13 @@ def test_llama_TG_perf_device(
                 op_name + "-model-op_to_op-min",
                 dispatch_duration_per_instance_min_dict[op_code_with_id],
             )
+            benchmark_data.add_measurement(
+                profiler,
+                0,
+                step_name,
+                op_name + "-model-first_to_last-min",
+                first_to_last_start_per_instance_min_dict[op_code_with_id],
+            )
 
             # max
             benchmark_data.add_measurement(
@@ -691,6 +702,13 @@ def test_llama_TG_perf_device(
                 step_name,
                 op_name + "-model-op_to_op-max",
                 dispatch_duration_per_instance_max_dict[op_code_with_id],
+            )
+            benchmark_data.add_measurement(
+                profiler,
+                0,
+                step_name,
+                op_name + "-model-first_to_last-max",
+                first_to_last_start_per_instance_max_dict[op_code_with_id],
             )
 
             # Verify kernel duration is within tolerance
@@ -754,6 +772,39 @@ def test_llama_TG_perf_device(
                     f"{perf_targets[op_code_with_id]['op_to_op_duration_relative_margin']}, "
                     f"relative margin to pass would be: "
                     f"{abs(perf_targets[op_code_with_id]['op_to_op'] - avg_dispatch_duration) / perf_targets[op_code_with_id]['op_to_op']}"
+                )
+            
+            # Verify first_to_last_start is within tolerance
+            avg_first_to_last = first_to_last_start_per_instance_averaged_dict[op_code_with_id]
+            upper_limit = (
+                perf_targets[op_code_with_id]["first_to_last_start"]
+                + perf_targets[op_code_with_id]["first_to_last_start_relative_margin"]
+                * perf_targets[op_code_with_id]["first_to_last_start"]
+            )
+            lower_limit = (
+                perf_targets[op_code_with_id]["first_to_last_start"]
+                - perf_targets[op_code_with_id]["first_to_last_start_relative_margin"]
+                * perf_targets[op_code_with_id]["first_to_last_start"]
+            )
+            if avg_first_to_last > upper_limit:
+                passing = False
+                logger.info(
+                    f"{op_code_with_id} first_to_last_start: {avg_first_to_last} ns is larger than target "
+                    f"({perf_targets[op_code_with_id]['first_to_last_start']}) ns, difference: "
+                    f"{abs(avg_first_to_last - upper_limit)} ns, margin: "
+                    f"{perf_targets[op_code_with_id]['first_to_last_start_relative_margin']}, "
+                    f"relative margin to pass would be: "
+                    f"{abs(perf_targets[op_code_with_id]['first_to_last_start'] - avg_first_to_last) / perf_targets[op_code_with_id]['first_to_last_start']}"
+                )
+            elif avg_first_to_last < lower_limit:
+                passing = False
+                logger.info(
+                    f"{op_code_with_id} first_to_last_start: {avg_first_to_last} ns is smaller than target "
+                    f"({perf_targets[op_code_with_id]['first_to_last_start']}) ns, difference: "
+                    f"{abs(lower_limit - avg_first_to_last)} ns, margin: "
+                    f"{perf_targets[op_code_with_id]['first_to_last_start_relative_margin']}, "
+                    f"relative margin to pass would be: "
+                    f"{abs(perf_targets[op_code_with_id]['first_to_last_start'] - avg_first_to_last) / perf_targets[op_code_with_id]['first_to_last_start']}"
                 )
 
         else:
