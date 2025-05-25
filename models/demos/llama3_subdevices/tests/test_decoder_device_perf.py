@@ -32,6 +32,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.05,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.2,
+        "first_to_last_start": 2484.1111111111113,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "RMSAllGather_1": {
         "op_name": "RMS_1",
@@ -41,6 +43,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.05,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.2,
+        "first_to_last_start": 2509.6666666666665,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "AllGatherConcat_0": {
         "op_name": "AllGatherConcat",
@@ -50,6 +54,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.05,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.5,
+        "first_to_last_start": 1866.0,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "AllGatherAsync_0": {
         "op_name": "AllGatherAsync_Binary_Mult",
@@ -59,6 +65,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.05,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.2,
+        "first_to_last_start": 1565.888888888889,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "Matmul_0": {
         "op_name": "QKV_MM",
@@ -68,6 +76,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.05,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.1,
+        "first_to_last_start": 2106.0,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "Matmul_1": {
         "op_name": "DO_MM",
@@ -77,6 +87,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.05,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.1,
+        "first_to_last_start": 2207.5555555555557,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "Matmul_2": {
         "op_name": "FF1_MM",
@@ -86,6 +98,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.05,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.1,
+        "first_to_last_start": 2120.6666666666665,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "Matmul_3": {
         "op_name": "FF3_MM",
@@ -95,6 +109,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.05,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.15,
+        "first_to_last_start": 2132.3333333333335,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "Matmul_4": {
         "op_name": "FF2_MM",
@@ -104,6 +120,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.05,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.1,
+        "first_to_last_start": 1719.111111111111,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "AllReduceCreateQkvHeads_0": {
         "op_name": "AllReduce_Fuse_Createheads",
@@ -113,6 +131,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.05,
         "op_to_op_duration_relative_margin": 0.4,
         "dispatch_duration_relative_margin": 0.2,
+        "first_to_last_start": 1906.2222222222222,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "AllReduceAsync_0": {
         "op_name": "AllReduceAsync_DO",
@@ -122,6 +142,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.05,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.3,
+        "first_to_last_start": 1660.7777777777778,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "AllReduceAsync_1": {
         "op_name": "AllReduceAsync_FF2",
@@ -131,6 +153,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.05,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.2,
+        "first_to_last_start": 1785.2222222222222,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "LlamaReduceScatterDeviceOperation_0": {
         "op_name": "ReduceScatter_FF1",
@@ -140,6 +164,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.05,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.3,
+        "first_to_last_start": 1993.7777777777778,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "LlamaReduceScatterDeviceOperation_1": {
         "op_name": "ReduceScatter_FF3",
@@ -149,6 +175,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.05,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.3,
+        "first_to_last_start": 2018.2222222222222,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "RotaryEmbeddingLlamaFusedQK_0": {
         "op_name": "RotaryEmbeddingLlamaFusedQK",
@@ -158,6 +186,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.1,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.35,
+        "first_to_last_start": 2560.8888888888887,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "PagedUpdateCacheDeviceOperation_0": {
         "op_name": "PagedUpdateCache",
@@ -167,6 +197,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.2,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.2,
+        "first_to_last_start": 2317.1111111111113,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "ScaledDotProductAttentionDecode_0": {
         "op_name": "SDPA",
@@ -176,6 +208,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.07,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.3,
+        "first_to_last_start": 2766.222222222222,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "BinaryDeviceOperation_0": {
         "op_name": "Binary_Mult_Silu",
@@ -185,6 +219,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.1,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.2,
+        "first_to_last_start": 1857.5555555555557,
+        "first_to_last_start_relative_margin": 0.2,
     },
     "Untilize_0": {
         "op_name": "Untilize",
@@ -194,6 +230,8 @@ perf_targets = {
         "kernel_duration_relative_margin": 0.2,
         "op_to_op_duration_relative_margin": 0.2,
         "dispatch_duration_relative_margin": 0.5,
+        "first_to_last_start": 2043.3333333333333,
+        "first_to_last_start_relative_margin": 0.2,
     },
 }
 
@@ -558,6 +596,17 @@ def test_llama_TG_perf_device(
     dispatch_duration_per_instance_averaged_dict = average_per_instance_dict(dispatch_duration_per_instance_dict)
     first_to_last_start_per_instance_averaged_dict = average_per_instance_dict(
         first_to_last_start_per_instance_dict
+    )
+
+    # first layer
+    kernel_duration_per_instance_averaged_dict_compilation_first_layer = average_per_instance_dict(
+        kernel_duration_per_instance_dict_compilation_first_layer
+    )
+    kernel_duration_per_instance_averaged_dict_trace_first_layer = average_per_instance_dict(
+        kernel_duration_per_instance_dict_trace_first_layer
+    )
+    dispatch_duration_per_instance_averaged_dict_first_layer = average_per_instance_dict(
+        dispatch_duration_per_instance_dict_first_layer
     )
 
     # Min over all iterations of each op instance
