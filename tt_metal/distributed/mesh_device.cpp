@@ -92,6 +92,7 @@ decltype(auto) validate_and_get_reference_value(
     // Validate all other devices match
     for (auto it = devices.begin() + 1; it != devices.end(); ++it) {
         const auto& current_value = std::forward<F>(func)(*it);
+        std::cout << "BROSKO validate_and_get_reference_value called for " << (*it)->id() << std::endl;
         if (current_value != reference_value) {
             TT_THROW(
                 "{} [{}:{}] failed: Device at index {} returned value that differs from reference. "

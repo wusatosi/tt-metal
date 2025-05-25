@@ -289,6 +289,7 @@ void DevicePool::initialize_host(IDevice* dev) const {
 
     // Create system memory writer for this device to have an associated interface to hardware command queue (i.e.
     // hugepage). Need to do this before FW init so we know what dispatch cores to reset.
+    std::cout << "BROSKO using_fast_dispatch " << this->using_fast_dispatch << std::endl;
     if (this->using_fast_dispatch) {
         detail::DispatchStateCheck(true);
         dev->init_command_queue_host();

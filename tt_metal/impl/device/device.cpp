@@ -954,6 +954,7 @@ void Device::configure_command_queue_programs() {
 }
 
 void Device::init_command_queue_host() {
+    std::cout << "BROSKO init_command_queue_host called " << this->id_ << std::endl;
     using_fast_dispatch_ = true;
     sysmem_manager_ = std::make_unique<SystemMemoryManager>(this->id_, this->num_hw_cqs());
     auto worker_launch_message_buffer_state = std::make_shared<DispatchArray<LaunchMessageRingBufferState>>();
