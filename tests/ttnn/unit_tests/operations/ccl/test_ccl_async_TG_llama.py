@@ -54,6 +54,13 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
     }
 )
 
+CORE_RANGE_SET_WORKER_CORES = ttnn.CoreRangeSet(
+    [
+        ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(3, 9)),
+        ttnn.CoreRange(ttnn.CoreCoord(5, 0), ttnn.CoreCoord(6, 9)),
+    ]
+)
+
 
 # Enumerate the post-commit cases explicitly
 @skip_for_grayskull("Requires eth connected devices to run")
@@ -64,12 +71,6 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
     ],
 )
 @pytest.mark.parametrize(
-    "input_dtype",
-    [
-        ttnn.bfloat16,
-    ],
-)
-@pytest.mark.parametrize(
     "num_iters, warmup_iters",
     [
         (NUM_ITERATIONS, 10),
@@ -77,7 +78,7 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
 )
 @pytest.mark.parametrize("shard_grid_orientation", [ttnn.ShardOrientation.ROW_MAJOR])
 @pytest.mark.parametrize(
-    "tensor_mem_layout, output_shape, num_links, dim, input_shard_shape,input_shard_grid,output_shard_shape, output_shard_grid, layout",
+    "tensor_mem_layout, output_shape, num_links, dim, input_shard_shape,input_shard_grid,output_shard_shape, output_shard_grid, layout, input_dtype",
     (
         (  # AllGather after SDPA
             ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
@@ -94,6 +95,7 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
                 }
             ),
             ttnn.TILE_LAYOUT,
+            ttnn.bfloat16,
         ),
         (  # AllGather after Binary Mult+Silu
             ttnn.TensorMemoryLayout.WIDTH_SHARDED,
@@ -105,6 +107,7 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
             (32, 160),
             get_core_range_set(PREFETCHER_NOC1_GRID),
             ttnn.TILE_LAYOUT,
+            ttnn.bfloat16,
         ),
         (  # AllGather for layernorm
             ttnn.TensorMemoryLayout.WIDTH_SHARDED,
@@ -116,12 +119,39 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
             (32, 128),
             CORE_RANGE_SET_1x1,
             ttnn.TILE_LAYOUT,
+            ttnn.bfloat16,
+        ),
+        (  # AllGather for sampling values
+            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+            (1, 1, 32, 256),
+            1,
+            3,
+            None,
+            None,
+            None,
+            None,
+            ttnn.TILE_LAYOUT,
+            ttnn.bfloat16,
+        ),
+        (  # AllGather for sampling indices
+            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+            (1, 1, 32, 256),
+            1,
+            3,
+            None,
+            None,
+            None,
+            None,
+            ttnn.TILE_LAYOUT,
+            ttnn.uint16,
         ),
     ),
     ids=[
         "sdpa",
         "binary_mult",
         "layernorm",
+        "sampling_values",
+        "sampling_indices",
     ],
 )
 @pytest.mark.parametrize("replication_factor", [8])
@@ -151,11 +181,14 @@ def test_all_gather_tg_llama(
 ):
     if mesh_device.get_num_devices() != 32:
         pytest.skip("Not TG!")
-    input_shard_spec = ttnn.ShardSpec(
-        input_shard_grid,
-        input_shard_shape,
-        shard_grid_orientation,
-    )
+    if input_shard_grid is not None and input_shard_shape is not None:
+        input_shard_spec = ttnn.ShardSpec(
+            input_shard_grid,
+            input_shard_shape,
+            shard_grid_orientation,
+        )
+    else:
+        input_shard_spec = None
 
     if output_shard_grid is not None and output_shard_shape is not None:
         output_shard_spec = ttnn.ShardSpec(
