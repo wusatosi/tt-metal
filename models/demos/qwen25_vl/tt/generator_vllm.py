@@ -27,6 +27,15 @@ from vllm.inputs import INPUT_REGISTRY, DecoderOnlyInputs, EncoderDecoderInputs,
 from vllm.model_executor.models.interfaces import SupportsMultiModal
 
 
+def get_platform_specific_optimizations(model_name):
+    is_72B = "72B" in model_name
+
+    optimizations = ModelOptimizations.performance if is_72B else ModelOptimizations.accuracy
+    max_seq_len = 4096 if is_72B else 131072
+
+    return optimizations, max_seq_len
+
+
 def initialize_vllm_text_transformer(
     hf_config,
     mesh_device,
@@ -135,16 +144,15 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
         # Enable async mode todo)) remove this when qwen2.5-vl-rebase-main is merged
         mesh_device.enable_async(True)
 
+        optimizations, max_seq_len = get_platform_specific_optimizations(hf_config.name_or_path)
         model_args, model, page_table, kv_cache = initialize_vllm_text_transformer(
             hf_config,
             mesh_device,
             max_batch_size,
-            max_seq_len=4096,  # todo)) add some smarts to determine max_seq_len based on the model name and device, instead of blindly setting to 131072
+            max_seq_len=max_seq_len,
             n_layers=n_layers,
             dtype=ttnn.bfloat8_b,
-            optimizations=(
-                ModelOptimizations.performance if "72B" in hf_config.name_or_path else ModelOptimizations.accuracy
-            ),
+            optimizations=optimizations,
         )
 
         config = Ref_Qwen2_5_VLForConditionalGeneration.config_class.from_pretrained(model_args.model_name)
@@ -158,6 +166,7 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
             mesh_device.create_submesh(ttnn.MeshShape(1, 1), offset=None),
             max_batch_size=model_args.max_batch_size,
             max_seq_len=model_args.max_seq_len,
+            optimizations=optimizations,
         )
         vision_model_args.hf_config.vision_config.depth = config.vision_config.depth
         visual_model = DropInVisionTransformer(
@@ -181,6 +190,12 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
 
     def allocate_kv_cache(self, *args, **kwargs):
         return self.kv_cache
+
+    def zero_out_kv_cache(self):
+        for layer in self.kv_cache:
+            k_cache, v_cache = layer
+            k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
+            v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
 
     def prefill_forward(
         self,
@@ -232,12 +247,6 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
         )
         self.model.rope_setup.set_cos_sin(cos, sin)
 
-        # when doing repeating batches, set kv-caches to zero, to avoid context leaking
-        for layer in self.model.layers:
-            k_cache, v_cache = layer.attention.layer_past
-            k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
-            v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
-
         logits = self.prefill_forward_text(
             input_prefill_pt[0].unsqueeze(0),  # Just warmup prefill for 1 user
             page_table=self.page_table,
@@ -246,10 +255,7 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
         )
 
         # Reset KV caches to zero after warmup to avoid interference between users
-        for layer in self.model.layers:
-            k_cache, v_cache = layer.attention.layer_past
-            k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
-            v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
+        self.zero_out_kv_cache()
 
         logits = self.prefill_forward_text(
             input_prefill_pt,

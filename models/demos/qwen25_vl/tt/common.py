@@ -73,7 +73,7 @@ def preprocess_inputs_prefill(
         actual_prompt_len = int(user_attention_mask.sum().item())
 
         # Prefill size is nearest power of 2 - FIXME: *really*? power of 2? surely we only need it to be a multiple of 1024 or whatever?
-        prefill_seq_len = max(2 ** math.ceil(math.log(len(input_embed), 2)), 128)
+        prefill_seq_len = min(max_prefill_len, max(2 ** math.ceil(math.log(len(input_embed), 2)), 128))
 
         # Initialize prefill tensors full of pad tokens
         input_prefill_i = torch.empty((prefill_seq_len, pad_embedding.shape[-1]), dtype=pad_embedding.dtype)
