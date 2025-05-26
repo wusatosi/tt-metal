@@ -185,10 +185,10 @@ def run_all_gather_impl(
 @pytest.mark.parametrize(
     "num_devices, num_links, ag_output_shape, dim, layout, ag_input_dtype",
     [
-        (8, 1, [1, 1, 4096, 320 * 8], 3, ttnn.TILE_LAYOUT, ttnn.bfloat16),
-        # (8, 1, [1, 1, 4096, 896*8], 3, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
-        # (8, 1, [1, 1, 4096, 32*8], 3, ttnn.TILE_LAYOUT, ttnn.bfloat16),
-        # (8, 1, [1, 1, 4096, 896*8], 3, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
+        (8, 1, [1, 1, 4096, 320 * 8], 3, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
+        (8, 1, [1, 1, 4096, 896 * 8], 3, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
+        (8, 1, [1, 1, 4096, 32 * 8], 3, ttnn.TILE_LAYOUT, ttnn.bfloat16),
+        (8, 1, [1, 1, 4096, 896 * 8], 3, ttnn.TILE_LAYOUT, ttnn.bfloat8_b),
     ],
 )
 @pytest.mark.parametrize(
