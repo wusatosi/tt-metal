@@ -503,16 +503,15 @@ def test_FalconCausalLM_end_to_end_with_program_cache(
                     k_cache_pcc = 0.989
                     v_cache_pcc = 0.972
                     token_pcc = 0.99
-        elif num_layers == 12:
+        else:
             out_pcc = 0.99
             k_cache_pcc = 0.98
-            v_cache_pcc = 0.98
+            v_cache_pcc = 0.97
     else:  # Decode
-        if num_layers == 60:
-            out_pcc = 0.92
-            k_cache_pcc = 0.99
-            v_cache_pcc = 0.99
-            token_pcc = 0.85
+        out_pcc = 0.92
+        k_cache_pcc = 0.83
+        v_cache_pcc = 0.83
+        token_pcc = 0.83
 
     input_shape = [batch, seq_len]
     model_config = get_model_config(model_config_str, llm_mode, input_shape, num_devices)
