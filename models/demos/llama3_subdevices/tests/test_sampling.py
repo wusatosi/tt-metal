@@ -277,10 +277,9 @@ def test_llama_sampling_inference(dtype, sampling_params, batch_size, mesh_devic
 
             ttnn.end_trace_capture(mesh_device, trace_id, cq_id=0)
 
-            logger.info("Capture done")
             ttnn.synchronize_device(mesh_device)
 
-            logger.info("Synchronize done")
+            logger.info("Capture done")
 
             # Run trace
             tt_outputs_torch = []
@@ -295,6 +294,7 @@ def test_llama_sampling_inference(dtype, sampling_params, batch_size, mesh_devic
                 dtype=dtype,
                 layout=ttnn.TILE_LAYOUT,
             )
+            logger.info("Starting sampling...")
             for i in range(num_samples):
                 ttnn.copy_host_to_device_tensor(tt_input_reset, tt_input)
                 # iteration_time_start = time()
@@ -303,13 +303,13 @@ def test_llama_sampling_inference(dtype, sampling_params, batch_size, mesh_devic
                 ttnn.execute_trace(mesh_device, trace_id, cq_id=0, blocking=False)
                 tt_out_tok_device0 = ttnn.get_device_tensors(tt_outputs)[0]
                 tt_out_tok_cpu = tt_out_tok_device0.cpu(blocking=True, cq_id=0)
-                logger.info("Execute trace done")
                 # iteration_time = time() - iteration_time_start
 
                 tt_output_torch = ttnn.to_torch(tt_out_tok_cpu)
                 tt_output_torch = tt_output_torch[0, 0, :, :]
                 tt_output_torch = tt_output_torch.reshape(-1, 1)
                 tt_outputs_torch.append(tt_output_torch[0].item())
+            logger.info("Sampling done")
         except Exception as e:
             logger.error(f"Error during tracing: {e}")
             raise e

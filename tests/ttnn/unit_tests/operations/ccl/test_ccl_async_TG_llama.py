@@ -54,13 +54,6 @@ CORE_RANGE_SET_1x1 = ttnn.CoreRangeSet(
     }
 )
 
-CORE_RANGE_SET_WORKER_CORES = ttnn.CoreRangeSet(
-    [
-        ttnn.CoreRange(ttnn.CoreCoord(1, 0), ttnn.CoreCoord(3, 9)),
-        ttnn.CoreRange(ttnn.CoreCoord(5, 0), ttnn.CoreCoord(6, 9)),
-    ]
-)
-
 
 # Enumerate the post-commit cases explicitly
 @skip_for_grayskull("Requires eth connected devices to run")
@@ -122,7 +115,7 @@ CORE_RANGE_SET_WORKER_CORES = ttnn.CoreRangeSet(
             ttnn.bfloat16,
         ),
         (  # AllGather for sampling values
-            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+            ttnn.TensorMemoryLayout.INTERLEAVED,
             (1, 1, 32, 256),
             1,
             3,
@@ -134,7 +127,7 @@ CORE_RANGE_SET_WORKER_CORES = ttnn.CoreRangeSet(
             ttnn.bfloat16,
         ),
         (  # AllGather for sampling indices
-            ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+            ttnn.TensorMemoryLayout.INTERLEAVED,
             (1, 1, 32, 256),
             1,
             3,

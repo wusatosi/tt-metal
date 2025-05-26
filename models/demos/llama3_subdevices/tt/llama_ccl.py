@@ -184,7 +184,6 @@ class TT_CCL:
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
         )
-        check_mesh_tensor_alloc(tt_buffer)
         persistent_buffers["SAMPLING_VALUES"] = tt_buffer
 
         # Sampling indices
@@ -196,7 +195,6 @@ class TT_CCL:
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
             mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
         )
-        check_mesh_tensor_alloc(tt_buffer)
         persistent_buffers["SAMPLING_INDICES"] = tt_buffer
 
         # Binary Mult + Silu
