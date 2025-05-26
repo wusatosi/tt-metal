@@ -185,6 +185,7 @@ jobs:
       - name: Run image
         timeout-minutes: 45
         env:
+          # We need to use different volumes depending on the runner... P100 on VLAN and P150 and Cloud
           SOURCE_HF_HOME: /localdev/blackhole_demos/huggingface_data
           HF_HOME: /huggingface_data
         run: docker run -v /dev/hugepages-1G:/dev/hugepages-1G --device /dev/tenstorrent -v $SOURCE_HF_HOME:$HF_HOME:ro -e HF_HOME ${{ needs.get-image-tags.outputs.bh-image-tag }}
