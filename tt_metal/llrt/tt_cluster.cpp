@@ -896,14 +896,21 @@ void Cluster::set_tunnels_from_mmio_device() {
 
         bool tunneled_device_hit;
         for (auto it = device_ids.begin(); it != device_ids.end();) {
+            std::cout << " 2nd step, (*it)->id() " << (*it) << std::endl;
             tunneled_device_hit = false;
             for (auto &dev_vec : tunnels_from_mmio) {
+                std::cout << "  2nd step, dev_vec " << dev_vec << std::endl;
                 for (const auto &[eth_chan, connected_chip_chan] : all_eth_connections.at(dev_vec.back())) {
+                    std::cout << "   2nd step, eth_chan " << eth_chan
+                              << " connected_chip_chan chip: " << std::get<0>(connected_chip_chan)
+                              << " chan: " << std::get<1>(connected_chip_chan) << std::endl;
                     const auto &other_chip_id = std::get<0>(connected_chip_chan);
                     auto id_iter = device_ids.find(other_chip_id);
                     if (id_iter != device_ids.end()) {
+                        std::cout << "    2nd step entered if" << std::endl;
                         it = device_ids.erase(id_iter);
                         dev_vec.push_back(other_chip_id);
+                        std::cout << "    2nd step entered if, dev vec is now " << dev_vec << std::endl;
                         tunneled_device_hit = true;
                         break;
                     }
