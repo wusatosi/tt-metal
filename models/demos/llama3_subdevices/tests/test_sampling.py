@@ -284,18 +284,18 @@ def test_llama_sampling_inference(dtype, sampling_params, batch_size, mesh_devic
 
             # Run trace
             tt_outputs_torch = []
+            # Resetting the input
+            tt_input_reset = ttnn.from_torch(
+                torch_input,
+                mesh_mapper=ttnn.ShardTensor2dMesh(
+                    mesh_device,
+                    dims=(3, None) if model_args.is_galaxy else (None, None),
+                    mesh_shape=model_args.cluster_shape,
+                ),
+                dtype=dtype,
+                layout=ttnn.TILE_LAYOUT,
+            )
             for i in range(num_samples):
-                # Resetting the input
-                tt_input_reset = ttnn.from_torch(
-                    torch_input,
-                    mesh_mapper=ttnn.ShardTensor2dMesh(
-                        mesh_device,
-                        dims=(3, None) if model_args.is_galaxy else (None, None),
-                        mesh_shape=model_args.cluster_shape,
-                    ),
-                    dtype=dtype,
-                    layout=ttnn.TILE_LAYOUT,
-                )
                 ttnn.copy_host_to_device_tensor(tt_input_reset, tt_input)
                 # iteration_time_start = time()
 
