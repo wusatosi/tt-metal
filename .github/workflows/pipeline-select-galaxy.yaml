@@ -19,36 +19,15 @@ on:
         options:
           - config-tg
           - topology-6u
-        default: "config-tg"
+        default: "topology-6u"
       extra-tag:
         required: true
         type: string
-        default: "in-service"
+        default: "g11glx6u03"
       tg-quick:
         required: false
         type: boolean
-        default: false
-      tg-demo:
-        required: false
-        type: boolean
-        default: false
-      tg-unit:
-        required: false
-        type: boolean
-        default: false
-      tg-frequent:
-        required: false
-        type: boolean
-        default: false
-      tg-model-perf:
-        description: "TG model perf tests (requires tracy build)"
-        required: false
-        type: boolean
-        default: false
-      tg-nightly:
-        required: false
-        type: boolean
-        default: false
+        default: true
       tg-stress:
         required: false
         type: boolean
@@ -73,63 +52,6 @@ jobs:
       docker-image: ${{ needs.build-artifact.outputs.dev-docker-image }}
       wheel-artifact-name: ${{ needs.build-artifact.outputs.wheel-artifact-name }}
       build-artifact-name: ${{ needs.build-artifact.outputs.build-artifact-name }}
-      topology-4u: ${{ inputs.topology == 'config-tg' }}
-      topology-6u: ${{ inputs.topology == 'topology-6u' }}
-  tg-unit-tests:
-    if: ${{ inputs.tg-unit }}
-    needs: build-artifact
-    secrets: inherit
-    uses: ./.github/workflows/tg-unit-tests-impl.yaml
-    with:
-      extra-tag: ${{ inputs.extra-tag }}
-      docker-image: ${{ needs.build-artifact.outputs.dev-docker-image }}
-      wheel-artifact-name: ${{ needs.build-artifact.outputs.wheel-artifact-name }}
-      build-artifact-name: ${{ needs.build-artifact.outputs.build-artifact-name }}
-      topology: ${{ inputs.topology }}
-  tg-frequent-tests:
-    if: ${{ inputs.tg-frequent }}
-    needs: build-artifact
-    secrets: inherit
-    uses: ./.github/workflows/tg-frequent-tests-impl.yaml
-    with:
-      extra-tag: ${{ inputs.extra-tag }}
-      docker-image: ${{ needs.build-artifact.outputs.dev-docker-image }}
-      wheel-artifact-name: ${{ needs.build-artifact.outputs.wheel-artifact-name }}
-      build-artifact-name: ${{ needs.build-artifact.outputs.build-artifact-name }}
-      topology: ${{ inputs.topology }}
-  tg-demo-tests:
-    if: ${{ inputs.tg-demo }}
-    needs: build-artifact
-    secrets: inherit
-    uses: ./.github/workflows/tg-demo-tests-impl.yaml
-    with:
-      extra-tag: ${{ inputs.extra-tag }}
-      docker-image: ${{ needs.build-artifact.outputs.dev-docker-image }}
-      wheel-artifact-name: ${{ needs.build-artifact.outputs.wheel-artifact-name }}
-      build-artifact-name: ${{ needs.build-artifact.outputs.build-artifact-name }}
-      topology: ${{ inputs.topology }}
-  tg-model-perf-tests:
-    if: ${{ inputs.tg-model-perf }}
-    needs: build-artifact
-    secrets: inherit
-    uses: ./.github/workflows/tg-model-perf-tests-impl.yaml
-    with:
-      extra-tag: ${{ inputs.extra-tag }}
-      docker-image: ${{ needs.build-artifact.outputs.dev-docker-image }}
-      wheel-artifact-name: ${{ needs.build-artifact.outputs.wheel-artifact-name }}
-      build-artifact-name: ${{ needs.build-artifact.outputs.build-artifact-name }}
-      topology: ${{ inputs.topology }}
-  tg-nightly-tests:
-    needs: build-artifact
-    if: ${{ inputs.tg-nightly }}
-    secrets: inherit
-    uses: ./.github/workflows/tg-nightly-tests-impl.yaml
-    with:
-      extra-tag: ${{ inputs.extra-tag }}
-      docker-image: ${{ needs.build-artifact.outputs.dev-docker-image }}
-      wheel-artifact-name: ${{ needs.build-artifact.outputs.wheel-artifact-name }}
-      build-artifact-name: ${{ needs.build-artifact.outputs.build-artifact-name }}
-      topology: ${{ inputs.topology }}
   tg-stress-test:
     needs: build-artifact
     if: ${{ inputs.tg-stress }}
@@ -140,5 +62,3 @@ jobs:
       docker-image: ${{ needs.build-artifact.outputs.dev-docker-image }}
       wheel-artifact-name: ${{ needs.build-artifact.outputs.wheel-artifact-name }}
       build-artifact-name: ${{ needs.build-artifact.outputs.build-artifact-name }}
-      topology-4u: ${{ inputs.topology == 'config-tg' }}
-      topology-6u: ${{ inputs.topology == 'topology-6u' }}

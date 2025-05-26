@@ -15,7 +15,7 @@ on:
       extra-tag:
         required: false
         type: string
-        default: "in-service"
+        default: "g11glx6u03"
       topology-6u:
         required: false
         type: boolean
