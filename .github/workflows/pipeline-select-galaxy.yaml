@@ -39,7 +39,7 @@ jobs:
     secrets: inherit
     with:
       build-type: ${{ inputs.build-type }}
-      tracy: ${{ inputs.tg-model-perf || inputs.tg-nightly }}
+      tracy: false
       build-wheel: true
       version: 22.04
   tg-quick:
