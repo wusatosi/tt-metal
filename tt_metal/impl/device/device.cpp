@@ -1074,6 +1074,8 @@ bool Device::initialize(
         l1_small_size, trace_region_size, worker_l1_unreserved_start, l1_bank_remap);
     this->generate_device_bank_to_noc_tables();
 
+    std::cout << "Device::initialize for " << id() << " initialized_, maybe minimal " << minimal << std::endl;
+
     // For minimal setup, don't initialize FW, watcher, dprint. They won't work if we're attaching to a hung chip.
     if (minimal)
         return true;
