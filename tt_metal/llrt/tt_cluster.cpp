@@ -895,8 +895,9 @@ void Cluster::set_tunnels_from_mmio_device() {
                   << " the leftover device_ids is " << device_ids << std::endl;
 
         bool tunneled_device_hit;
-        for (auto it = device_ids.begin(); it != device_ids.end();) {
-            std::cout << " 2nd step, (*it)->id() " << (*it) << std::endl;
+        while (!device_ids.empty()) {
+            // std::cout << " 2nd step, (*it)->id() " << (*it) << std::endl;
+            std::cout << " 2nd step, no it needed, device_ids " << device_ids << std::endl;
             tunneled_device_hit = false;
             for (auto &dev_vec : tunnels_from_mmio) {
                 std::cout << "  2nd step, dev_vec " << dev_vec << std::endl;
@@ -908,7 +909,7 @@ void Cluster::set_tunnels_from_mmio_device() {
                     auto id_iter = device_ids.find(other_chip_id);
                     if (id_iter != device_ids.end()) {
                         std::cout << "    2nd step entered if" << std::endl;
-                        it = device_ids.erase(id_iter);
+                        device_ids.erase(id_iter);
                         dev_vec.push_back(other_chip_id);
                         std::cout << "    2nd step entered if, dev vec is now " << dev_vec << std::endl;
                         tunneled_device_hit = true;
@@ -917,7 +918,7 @@ void Cluster::set_tunnels_from_mmio_device() {
                 }
             }
             TT_FATAL(
-                tunneled_device_hit || (it == device_ids.end()),
+                tunneled_device_hit || !device_ids.empty(),
                 "Detected ethernet connections did not match expected device connectivity, try re-running "
                 "tt-topology.");
         }
