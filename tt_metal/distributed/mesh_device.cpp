@@ -92,7 +92,9 @@ decltype(auto) validate_and_get_reference_value(
     // Validate all other devices match
     for (auto it = devices.begin() + 1; it != devices.end(); ++it) {
         const auto& current_value = std::forward<F>(func)(*it);
-        std::cout << "BROSKO validate_and_get_reference_value called for " << (*it)->id() << std::endl;
+        std::cout << "BROSKO validate_and_get_reference_value called for " << (*it)->id() << " using fast dispatch "
+                  << (*it)->using_fast_dispatch() << " reference_value " << devices.front()->using_fast_dispatch()
+                  << std::endl;
         if (current_value != reference_value) {
             TT_THROW(
                 "{} [{}:{}] failed: Device at index {} returned value that differs from reference. "
@@ -557,8 +559,12 @@ bool MeshDevice::using_slow_dispatch() const {
 }
 
 bool MeshDevice::using_fast_dispatch() const {
-    return validate_and_get_reference_value(
+    std::cout << "BROSKO Calling validate for using_fast_dispatch on MeshDevice" << std::endl;
+    auto res = validate_and_get_reference_value(
         scoped_devices_->root_devices(), [](const auto& device) { return device->using_fast_dispatch(); });
+
+    std::cout << "BROSKO END Calling validate for using_fast_dispatch on MeshDevice" << std::endl;
+    return res;
 }
 
 // Device property methods that can be delegated to reference device
