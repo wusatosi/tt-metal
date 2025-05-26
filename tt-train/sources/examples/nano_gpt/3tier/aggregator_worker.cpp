@@ -9,6 +9,7 @@
 #include "autograd/module_base.hpp"
 #include "common.hpp"
 #include "core/distributed/distributed.hpp"
+#include "core/tt_tensor_utils.hpp"
 #include "datasets/utils.hpp"
 #include "models/distributed/gpt2.hpp"
 #include "models/gpt2.hpp"
@@ -118,6 +119,24 @@ void send_aggregated_gradients_from_workers_to_optimizer(
 //     }
 // }
 
+void recv_and_braodcast_tensor(
+    const ttml::autograd::DistributedContext &recv_ctx,
+    const ttml::autograd::DistributedContext &broadcast_ctx,
+    ttnn::Tensor &tensor,
+    Rank source,
+    Rank root) {
+    auto cpu_tensor = tensor.cpu();
+    auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensor);
+
+    for (auto buffer : buffers) {
+        recv_ctx.recv(buffer, source, Tag{0});
+    }
+
+    for (auto buffer : buffers) {
+        broadcast_ctx.broadcast(buffer, root);
+    }
+}
+
 void send_weights_from_optimizer_to_workers(
     const ttml::autograd::DistributedContext &workers_and_aggregator_ctx,
     const ttml::autograd::DistributedContext &aggregator_and_optimizer_ctx,
@@ -126,11 +145,17 @@ void send_weights_from_optimizer_to_workers(
     Rank optimizer_rank{*aggregator_and_optimizer_ctx.rank() + 1};
     for (auto &[name, tensor_ptr] : sorted_model_parameters) {
         auto tensor = tensor_ptr->get_value();
-        ttml::core::distributed::recv_tensor(
-            aggregator_and_optimizer_ctx, tensor, ttml::core::distributed::Rank{optimizer_rank});
+        recv_and_braodcast_tensor(
+            aggregator_and_optimizer_ctx,
+            workers_and_aggregator_ctx,
+            tensor,
+            optimizer_rank,
+            workers_and_aggregator_ctx.rank());
+        // ttml::core::distributed::recv_tensor(
+        //     aggregator_and_optimizer_ctx, tensor, ttml::core::distributed::Rank{optimizer_rank});
 
-        ttml::core::distributed::broadcast_tensor(
-            workers_and_aggregator_ctx, tensor, workers_and_aggregator_ctx.rank());
+        // ttml::core::distributed::broadcast_tensor(
+        //     workers_and_aggregator_ctx, tensor, workers_and_aggregator_ctx.rank());
     }
 }
 
