@@ -4,6 +4,7 @@
 
 #include "core/distributed/distributed.hpp"
 
+#include <chrono>
 #include <core/ttnn_all_includes.hpp>
 #include <tt-metalium/distributed_context.hpp>
 #include <ttnn/operations/creation.hpp>
@@ -86,23 +87,68 @@ void receive_all_tensors(const autograd::DistributedContext& ctx, std::vector<tt
     }
 }
 
+class Timer {
+public:
+    Timer(const std::string& name) : m_name(name) {
+    }
+
+    void start() {
+        m_start_time = std::chrono::high_resolution_clock::now();
+    }
+
+    void end() {
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - m_start_time);
+        auto duration_ms = static_cast<float>(duration.count());
+        total_time += duration_ms;
+        num_measurements++;
+
+        fmt::println("[{}] Time: {:.2f} ms, Average: {:.2f} ms", m_name, duration_ms, total_time / num_measurements);
+    }
+
+private:
+    float total_time{};
+    uint32_t num_measurements{};
+    string m_name;
+
+    std::chrono::high_resolution_clock::time_point m_start_time;
+};
+
 void send_tensor(const autograd::DistributedContext& ctx, const ttnn::Tensor& tensor, Rank dest, Tag tag) {
+    // static Timer to_cpu_timer(fmt::format("Rank {}, Send to CPU", *ctx.rank()));
+    // static Timer send_buffer_timer(fmt::format("Rank {}, Send buffer", *ctx.rank()));
+
+    // to_cpu_timer.start();
     auto cpu_tensor = tensor.cpu();
     auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensor);
+    // to_cpu_timer.end();
+
+    // send_buffer_timer.start();
     for (auto buffer : buffers) {
         ctx.send(buffer, dest, tag);
     }
+    // send_buffer_timer.end();
 }
 
 void recv_tensor(const autograd::DistributedContext& ctx, ttnn::Tensor& tensor, Rank source, Tag tag) {
-    auto cpu_tensor = tensor.cpu();
+    // static Timer to_cpu_timer(fmt::format("Rank {}, Recv to CPU", *ctx.rank()));
+    // static Timer recv_buffer_timer(fmt::format("Rank {}, Recv buffer", *ctx.rank()));
+    // static Timer assign_timer(fmt::format("Rank {}, To device", *ctx.rank()));
 
+    // to_cpu_timer.start();
+    auto cpu_tensor = tensor.cpu();
     auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensor);
+    // to_cpu_timer.end();
+
+    // recv_buffer_timer.start();
     for (auto buffer : buffers) {
         ctx.recv(buffer, source, tag);
     }
+    // recv_buffer_timer.end();
 
+    // assign_timer.start();
     ttnn::assign(cpu_tensor.to_device(tensor.device()), tensor);
+    // assign_timer.end();
 }
 
 void broadcast_tensor(const autograd::DistributedContext& ctx, ttnn::Tensor& tensor, Rank root) {

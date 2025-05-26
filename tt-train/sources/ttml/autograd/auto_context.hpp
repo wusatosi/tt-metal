@@ -45,6 +45,7 @@ public:
     ~AutoContext() = default;  // to make it work with unique_ptr.
 
     ttnn::distributed::MeshDevice& get_device();
+    void synchronize_device();
 
     void set_mesh_shape(tt::tt_metal::distributed::MeshShape shape);
     [[nodiscard]] tt::tt_metal::distributed::MeshShape get_mesh_shape() const;
