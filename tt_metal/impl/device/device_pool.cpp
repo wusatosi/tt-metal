@@ -546,6 +546,7 @@ void DevicePool::init_firmware_on_active_devices() const {
         // For Galaxy init, we only need to loop over mmio devices
         const auto& mmio_device_id =
             tt::tt_metal::MetalContext::instance().get_cluster().get_associated_mmio_device(dev->id());
+        std::cout << "broskomightskip mmio_device_id " << mmio_device_id << " dev->id " << dev->id() << std::endl;
         if (mmio_device_id != dev->id()) {
             continue;
         }
@@ -567,6 +568,7 @@ void DevicePool::init_firmware_on_active_devices() const {
 
         auto tunnels_from_mmio =
             tt::tt_metal::MetalContext::instance().get_cluster().get_tunnels_from_mmio_device(mmio_device_id);
+        std::cout << "broskomightskip initialize mmio " << dev->id() << std::endl;
         this->initialize_host(dev);
         if (not this->skip_remote_devices) {
             for (uint32_t t = 0; t < tunnels_from_mmio.size(); t++) {
@@ -575,6 +577,8 @@ void DevicePool::init_firmware_on_active_devices() const {
                     uint32_t mmio_controlled_device_id = tunnels_from_mmio[t][ts];
                     log_debug(tt::LogMetal, "Tunnel {} Device {} Tunnel Stop: {}", t, mmio_controlled_device_id, ts);
                     auto device = get_device(mmio_controlled_device_id);
+                    std::cout << "broskomightskip t " << t << " ts " << ts << " mmio_controlled_device_id "
+                              << mmio_controlled_device_id << " device id " << device->id() << std::endl;
                     this->initialize_host(device);
                 }
             }

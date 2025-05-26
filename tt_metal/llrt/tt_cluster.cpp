@@ -819,6 +819,27 @@ std::unordered_map<chip_id_t, std::vector<CoreCoord>> Cluster::get_ethernet_core
     }
     return connected_chips;
 }
+
+template <typename T>
+std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
+    os << "{";
+    for (auto i : vec) {
+        os << i << ", ";
+    }
+    os << "}";
+    return os;
+}
+
+template <typename T>
+std::ostream& operator<<(std::ostream& os, const std::unordered_set<T>& vec) {
+    os << "{";
+    for (auto i : vec) {
+        os << i << ", ";
+    }
+    os << "}";
+    return os;
+}
+
 #define MAX_TUNNEL_DEPTH 4
 void Cluster::set_tunnels_from_mmio_device() {
     for (const auto& mmio_chip_id : this->driver_->get_target_mmio_device_ids()) {
@@ -851,6 +872,7 @@ void Cluster::set_tunnels_from_mmio_device() {
                 TT_ASSERT(
                     it == tunnels_from_mmio.end(),
                     "Duplicate first tunnel stop found when finding FD2 Tunnel devices.");
+                std::cout << "broskotunnels added first_stop " << first_stop << std::endl;
                 tunnels_from_mmio.push_back(first_stop);
             }
         }
@@ -868,6 +890,9 @@ void Cluster::set_tunnels_from_mmio_device() {
             TT_ASSERT(tunnel.size() == 1, "Tunnel depth must be 1 when it has only 1 stop in it.");
             device_ids.erase(tunnel[0]);
         }
+
+        std::cout << "1so now after all first stops where tunnels are " << tunnels_from_mmio
+                  << " the leftover device_ids is " << device_ids << std::endl;
 
         bool tunneled_device_hit;
         for (auto it = device_ids.begin(); it != device_ids.end();) {
@@ -889,6 +914,8 @@ void Cluster::set_tunnels_from_mmio_device() {
                 "Detected ethernet connections did not match expected device connectivity, try re-running "
                 "tt-topology.");
         }
+        std::cout << "2after second stop " << tunnels_from_mmio << " the leftover device_ids is " << device_ids
+                  << std::endl;
 
         TT_ASSERT(tunnels_from_mmio.size() != 0, "Must have at least 1 tunnel from MMIO Device.");
         uint32_t tunnel_depth = tunnels_from_mmio[0].size();
@@ -907,6 +934,8 @@ void Cluster::set_tunnels_from_mmio_device() {
             }
             dev_vec.insert(dev_vec.begin(), mmio_chip_id);
         }
+        std::cout << "3after third stop " << tunnels_from_mmio << " the leftover device_ids is " << device_ids
+                  << std::endl;
         this->tunnels_from_mmio_device.insert({mmio_chip_id, tunnels_from_mmio});
     }
 }
