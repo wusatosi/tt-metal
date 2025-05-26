@@ -36,14 +36,14 @@ ttnn::Tensor ExecuteAllReduceAsync::invoke(
     const ttnn::Tensor& input_tensor,
     const GlobalSemaphore& from_remote_multi_device_global_semaphore,
     const GlobalSemaphore& to_remote_multi_device_global_semaphore,
-    const std::vector<GlobalSemaphore>& gather_multi_device_global_semaphore,
+    const GlobalSemaphore& gather_multi_device_global_semaphore,
     ttnn::operations::reduction::ReduceType math_op,
     const std::optional<ttnn::MemoryConfig>& memory_config,
     ttnn::ccl::Topology topology,
     const std::optional<size_t> num_preferred_links,
     std::optional<tt::tt_metal::SubDeviceId> worker_subdevice_id_opt) {
     MemoryConfig out_memory_config = memory_config.value_or(input_tensor.memory_config());
-    uint32_t dim = find_scatter_dim(input_tensor.get_padded_shape(), input_tensor.get_workers().size());
+    uint32_t dim = find_scatter_dim(input_tensor.get_padded_shape(), input_tensor.active_physical_devices().size());
     ttnn::Tensor scattered_tensor = ttnn::operations::experimental::ccl::reduce_scatter(
         input_tensor,
         dim,
@@ -57,7 +57,7 @@ ttnn::Tensor ExecuteAllReduceAsync::invoke(
     return ttnn::operations::experimental::ccl::all_gather_async(
         scattered_tensor,
         dim,
-        gather_multi_device_global_semaphore,
+        {gather_multi_device_global_semaphore},
         num_preferred_links.value_or(1),
         out_memory_config,
         topology,
@@ -68,7 +68,7 @@ std::vector<ttnn::Tensor> ExecuteAllReduceAsync::invoke(
     const std::vector<ttnn::Tensor>& input_tensors,
     const global_semaphore::MultiDeviceGlobalSemaphore& from_remote_multi_device_global_semaphore,
     const global_semaphore::MultiDeviceGlobalSemaphore& to_remote_multi_device_global_semaphore,
-    const std::vector<global_semaphore::MultiDeviceGlobalSemaphore>& gather_multi_device_global_semaphore,
+    const global_semaphore::MultiDeviceGlobalSemaphore& gather_multi_device_global_semaphore,
     ttnn::operations::reduction::ReduceType math_op,
     const std::optional<ttnn::MemoryConfig>& memory_config,
     ttnn::ccl::Topology topology,
@@ -89,7 +89,7 @@ std::vector<ttnn::Tensor> ExecuteAllReduceAsync::invoke(
     return ttnn::operations::experimental::ccl::all_gather_async(
         scattered_tensors,
         dim,
-        gather_multi_device_global_semaphore,
+        {gather_multi_device_global_semaphore},
         num_preferred_links.value_or(1),
         out_memory_config,
         topology,
@@ -102,7 +102,7 @@ ttnn::Tensor ExecuteAllReduceAsync::invoke(
     const MeshDevice& mesh_device,
     const GlobalSemaphore& from_remote_multi_device_global_semaphore,
     const GlobalSemaphore& to_remote_multi_device_global_semaphore,
-    const std::vector<GlobalSemaphore>& gather_multi_device_global_semaphore,
+    const GlobalSemaphore& gather_multi_device_global_semaphore,
     ttnn::operations::reduction::ReduceType math_op,
     const std::optional<ttnn::MemoryConfig>& memory_config,
     ttnn::ccl::Topology topology,
@@ -132,7 +132,7 @@ ttnn::Tensor ExecuteAllReduceAsync::invoke(
         cluster_axis,
         mesh_device,
         topology,
-        gather_multi_device_global_semaphore,
+        {gather_multi_device_global_semaphore},
         std::nullopt,  // persistent_output_tensor
         out_memory_config,
         num_preferred_links,
@@ -145,7 +145,7 @@ std::vector<ttnn::Tensor> ExecuteAllReduceAsync::invoke(
     const MeshDevice& mesh_device,
     const global_semaphore::MultiDeviceGlobalSemaphore& from_remote_multi_device_global_semaphore,
     const global_semaphore::MultiDeviceGlobalSemaphore& to_remote_multi_device_global_semaphore,
-    const std::vector<global_semaphore::MultiDeviceGlobalSemaphore>& gather_multi_device_global_semaphore,
+    const global_semaphore::MultiDeviceGlobalSemaphore& gather_multi_device_global_semaphore,
     ttnn::operations::reduction::ReduceType math_op,
     const std::optional<ttnn::MemoryConfig>& memory_config,
     ttnn::ccl::Topology topology,
@@ -175,7 +175,7 @@ std::vector<ttnn::Tensor> ExecuteAllReduceAsync::invoke(
         cluster_axis,
         mesh_device,
         topology,
-        gather_multi_device_global_semaphore,
+        {gather_multi_device_global_semaphore},
         std::nullopt,  // persistent_output_tensor
         out_memory_config,
         num_preferred_links,
