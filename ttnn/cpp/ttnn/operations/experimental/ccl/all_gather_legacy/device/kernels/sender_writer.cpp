@@ -47,7 +47,7 @@ FORCE_INLINE void send_packet(
 
 void kernel_main() {
     constexpr uint32_t cb0_id = get_compile_time_arg_val(0);               // src buffer id
-    const auto receiver_base_address = get_compile_time_arg_val(1);        // cb for receiver should be with fixed
+    const auto cb_base_address = get_compile_time_arg_val(1);              // cb for receiver should be with fixed
     constexpr uint32_t packet_header_cb_id = get_compile_time_arg_val(2);  // packet header buffer id
     constexpr uint32_t tensor0_page_size = get_compile_time_arg_val(3);
     constexpr uint32_t packet_size_in_pages = get_compile_time_arg_val(4);
@@ -57,7 +57,7 @@ void kernel_main() {
 
     DPRINT << "ct args: \n";
     DPRINT << "cb0_id: " << (uint32_t)cb0_id << "\n";
-    DPRINT << "receiver_base_address: " << (uint32_t)receiver_base_address << "\n";
+    DPRINT << "cb_base_address: " << (uint32_t)cb_base_address << "\n";
     DPRINT << "packet_header_cb_id: " << (uint32_t)packet_header_cb_id << "\n";
     DPRINT << "packet_size_in_pages: " << (uint32_t)packet_size_in_pages << "\n";
     DPRINT << "tensor0_page_size: " << (uint32_t)tensor0_page_size << "\n";
@@ -67,7 +67,7 @@ void kernel_main() {
 
     size_t arg_idx = 0;
     const size_t out_ready_sem_bank_addr = get_arg_val<uint32_t>(arg_idx++);  // global semaphore address
-                                                                              // address
+    uint32_t receiver_base_address = get_arg_val<uint32_t>(arg_idx++);
     const uint8_t out_ready_sem_noc0_x = get_arg_val<uint32_t>(arg_idx++);    // nocx for receiver core
     const uint8_t out_ready_sem_noc0_y = get_arg_val<uint32_t>(arg_idx++);    // noc y for receiver core
 

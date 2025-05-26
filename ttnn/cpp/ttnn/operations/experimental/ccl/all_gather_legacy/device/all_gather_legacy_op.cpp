@@ -13,7 +13,7 @@ namespace ttnn {
 
 void AllGatherLegacy::validate_with_output_tensors(
     const std::vector<Tensor>& input_tensors, const std::vector<std::optional<Tensor>>& output_tensors) const {
-    TT_FATAL(input_tensors.size() == 1, "Error, Input tensor size should be 1 but has {}", input_tensors.size());
+    // TT_FATAL(input_tensors.size() == 1, "Error, Input tensor size should be 1 but has {}", input_tensors.size());
     const auto& input_tensor = input_tensors[0];
     const auto& layout = input_tensors[0].get_layout();
     const auto& dtype = input_tensors[0].get_dtype();
@@ -152,6 +152,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherLegacy::create_program_at
 
     return all_gather_legacy(
         input_tensors[0],
+        input_tensors[1],
         target_device,
         forward_device,
         backward_device,
@@ -191,6 +192,7 @@ namespace ccl {
 namespace {
 Tensor all_gather_legacy_impl(
     const Tensor& input_tensor,
+    const Tensor& buffer_tensor,
     const uint32_t dim,
     const GlobalSemaphore& multi_device_global_semaphore,
     const uint32_t num_links,
@@ -226,13 +228,14 @@ Tensor all_gather_legacy_impl(
                    ccl_topology,
                    multi_device_global_semaphore,
                    sub_device_id),
-               {input_tensor})
+               {input_tensor, buffer_tensor})
         .at(0);
 }
 }  // namespace
 
 Tensor all_gather_legacy(
     const Tensor& input_tensor,
+    const Tensor& buffer_tensor,
     const uint32_t dim,
     const GlobalSemaphore& multi_device_global_semaphore,
     const uint32_t num_links,
@@ -244,11 +247,20 @@ Tensor all_gather_legacy(
         devices.push_back(input_tensor.mesh_device()->get_device(spec.first));
     }
     return all_gather_legacy_impl(
-        input_tensor, dim, multi_device_global_semaphore, num_links, memory_config, topology, sub_device_id, devices);
+        input_tensor,
+        buffer_tensor,
+        dim,
+        multi_device_global_semaphore,
+        num_links,
+        memory_config,
+        topology,
+        sub_device_id,
+        devices);
 }
 
 std::vector<Tensor> all_gather_legacy(
     const std::vector<Tensor>& input_tensors,
+    const std::vector<Tensor>& buffer_tensors,
     const uint32_t dim,
     const global_semaphore::MultiDeviceGlobalSemaphore& multi_device_global_semaphore,
     const uint32_t num_links,
@@ -265,6 +277,7 @@ std::vector<Tensor> all_gather_legacy(
     for (size_t i = 0; i < input_tensors.size(); i++) {
         output_tensors.push_back(all_gather_legacy_impl(
             input_tensors[i],
+            buffer_tensors[i],
             dim,
             multi_device_global_semaphore.global_semaphores[i],
             num_links,

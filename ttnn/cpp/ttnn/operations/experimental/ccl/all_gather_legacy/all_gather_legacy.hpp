@@ -14,6 +14,7 @@ namespace operations::experimental::ccl {
 struct ExecuteAllGatherLegacy {
     static ttnn::Tensor invoke(
         const ttnn::Tensor& input_tensor,
+        const ttnn::Tensor& buffer_tensor,
         const int32_t dim,
         const GlobalSemaphore& multi_device_global_semaphore,
         const uint32_t num_links = 1,
@@ -23,6 +24,7 @@ struct ExecuteAllGatherLegacy {
 
     static std::vector<ttnn::Tensor> invoke(
         const std::vector<ttnn::Tensor>& input_tensors,
+        const std::vector<ttnn::Tensor>& buffer_tensors,
         const int32_t dim,
         const global_semaphore::MultiDeviceGlobalSemaphore& multi_device_global_semaphore,
         const uint32_t num_links = 1,

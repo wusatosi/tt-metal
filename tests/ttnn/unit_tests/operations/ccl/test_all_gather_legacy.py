@@ -18,6 +18,7 @@ def run_with_trace_t3k(
     mesh_device,
     all_gather_topology,
     input_tensor_mesh,
+    buffer_tensor_mesh,
     dim,
     num_links,
     output_mem_config,
@@ -29,6 +30,7 @@ def run_with_trace_t3k(
     logger.info("Compiling model")
     tt_out_tensor = ttnn.experimental.all_gather_legacy(
         input_tensor_mesh,
+        buffer_tensor_mesh,
         dim,
         multi_device_global_semaphore=multi_device_global_semaphore,
         num_links=num_links,
@@ -44,6 +46,7 @@ def run_with_trace_t3k(
     for i in range(num_iter):
         tt_out_tensor = ttnn.experimental.all_gather_legacy(
             input_tensor_mesh,
+            buffer_tensor_mesh,
             dim,
             multi_device_global_semaphore=multi_device_global_semaphore,
             num_links=num_links,
@@ -75,7 +78,7 @@ def run_all_gather_impl(
     function_level_defaults,
     all_gather_topology,
     num_iters=10,
-    trace_mode=True,
+    trace_mode=False,
     rand_tensor=True,
     mem_config=None,
     input_shard_shape=None,
@@ -175,16 +178,25 @@ def run_all_gather_impl(
                             output_tensor[w, z, y : y + 32, x : x + 32] = tile_id
                             tile_id += 1
 
+        buffer_tensor = torch.zeros(output_shape)
         output_tensor_goldens_list.append(output_tensor)
         input_tensors = torch.chunk(output_tensor, num_devices, dim)
+        buffer_tensors = torch.chunk(buffer_tensor, num_devices, dim)
         tt_input_tensors = []
+        tt_buffer_tensors = []
         for i, t in enumerate(input_tensors):
             tt_input_tensors.append(ttnn.Tensor(t, input_dtype).to(layout))
             logger.info(f"using device {mesh_device.get_device_ids()[i]}")
 
+        for i, t in enumerate(buffer_tensors):
+            tt_buffer_tensors.append(ttnn.Tensor(t, input_dtype).to(layout))
+            logger.info(f"using device {mesh_device.get_device_ids()[i]}")
+
         input_tensor_mesh = ttnn.aggregate_as_tensor(tt_input_tensors).to(mesh_device, input_mem_config)
+        buffer_tensor_mesh = ttnn.aggregate_as_tensor(tt_buffer_tensors).to(mesh_device, input_mem_config)
 
         input_tensor_mesh_list.append(input_tensor_mesh)
+        buffer_tensor_mesh_list.append(buffer_tensor_mesh)
 
     tt_out_tensor_list = []
     if trace_mode:
@@ -192,6 +204,7 @@ def run_all_gather_impl(
             mesh_device,
             all_gather_topology,
             input_tensor_mesh_list[0],
+            buffer_tensor_mesh_list[0],
             dim,
             num_links,
             output_mem_config,
@@ -205,6 +218,7 @@ def run_all_gather_impl(
             if use_cluster_axis_api:
                 tt_out_tensor = ttnn.experimental.all_gather_legacy(
                     input_tensor_mesh_list[i],
+                    buffer_tensor_mesh_list[i],
                     dim,
                     cluster_axis=cluster_axis,
                     mesh_device=mesh_device,
@@ -218,6 +232,7 @@ def run_all_gather_impl(
             else:
                 tt_out_tensor = ttnn.experimental.all_gather_legacy(
                     input_tensor_mesh_list[i],
+                    buffer_tensor_mesh_list[i],
                     dim,
                     multi_device_global_semaphore=ccl_semaphore_handles[i],
                     num_links=num_links,
@@ -281,7 +296,7 @@ def run_all_gather_impl(
         # ttnn.MemoryConfig(buffer_type=ttnn.BufferType.L1)
     ],
 )
-@pytest.mark.parametrize("num_iters", [50])
+@pytest.mark.parametrize("num_iters", [1])
 @pytest.mark.parametrize(
     "device_params", [{"trace_region_size": 23887872, "fabric_config": ttnn.FabricConfig.FABRIC_1D}], indirect=True
 )

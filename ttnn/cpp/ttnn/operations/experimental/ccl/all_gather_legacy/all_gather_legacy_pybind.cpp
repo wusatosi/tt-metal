@@ -28,6 +28,7 @@ void bind_all_gather_legacy(pybind11::module& module, const ccl_operation_t& ope
         ttnn::pybind_overload_t{
             [](const ccl_operation_t& self,
                const ttnn::Tensor& input_tensor,
+               const ttnn::Tensor& buffer_tensor,
                const int32_t dim,
                const GlobalSemaphore& multi_device_global_semaphore,
                const uint32_t num_links,
@@ -35,9 +36,17 @@ void bind_all_gather_legacy(pybind11::module& module, const ccl_operation_t& ope
                const ttnn::ccl::Topology topology,
                std::optional<tt::tt_metal::SubDeviceId> subdevice_id) -> ttnn::Tensor {
                 return self(
-                    input_tensor, dim, multi_device_global_semaphore, num_links, memory_config, topology, subdevice_id);
+                    input_tensor,
+                    buffer_tensor,
+                    dim,
+                    multi_device_global_semaphore,
+                    num_links,
+                    memory_config,
+                    topology,
+                    subdevice_id);
             },
             py::arg("input_tensor"),
+            py::arg("buffer_tensor"),
             py::arg("dim"),
             py::arg("multi_device_global_semaphore"),
             py::kw_only(),

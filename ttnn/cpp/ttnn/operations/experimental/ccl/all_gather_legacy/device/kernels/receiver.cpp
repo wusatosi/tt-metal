@@ -30,6 +30,7 @@ void kernel_main() {
     size_t arg_idx = 0;
     // Load the input tensor spec
     address_t tensor_address0 = get_arg_val<address_t>(arg_idx++);                    // address of output tensor
+    address_t receiver_base_address = get_arg_val<address_t>(arg_idx++);
     const size_t out_ready_sem_bank_addr = get_arg_val<uint32_t>(arg_idx++);          // address of global semaphore
     const uint32_t sync_semaphore = get_semaphore(get_arg_val<uint32_t>(arg_idx++));  // local semaphore
     uint32_t sender_noc_x = get_arg_val<uint32_t>(arg_idx++);                         // nox for sender core
@@ -59,19 +60,24 @@ void kernel_main() {
     auto tensor0_addrgen = InterleavedAddrGenFast<is_dram>{
         .bank_base_address = tensor_address0, .page_size = tensor0_page_size, .data_format = get_dataformat(cb0_id)};
 
+    // auto temp0_addrgen = InterleavedAddrGenFast<1>{
+    //     .bank_base_address = receiver_base_address, .page_size = tensor0_page_size, .data_format =
+    //     get_dataformat(cb0_id)};
+
+    const InterleavedAddrGen<1> s0 = {.bank_base_address = receiver_base_address, .page_size = tensor0_page_size};
     for (uint32_t step = 0; step < 8; step++) {
         while (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(out_ready_sem_bank_addr) < (step + 1));
         DPRINT << "waitval done\n";
         uint32_t start_tile_id = ((ring_index - step + num_devices) % num_devices) * num_tiles;
         uint32_t tile_id_end = start_tile_id + num_tiles;
         uint32_t tile_id = start_tile_id;
+        uint32_t count = 0;
         while (tile_id < tile_id_end) {
             DPRINT << "tile_id: " << tile_id << "\n";
-            cb_wait_front(cb0_id, packet_size_in_pages);
-            DPRINT << "cb_wait_front done\n";
-            const uint32_t l1_read_address_base = get_read_ptr(cb0_id);
-            uint32_t l1_read_addr = l1_read_address_base;
-            DPRINT << "l1_read_addr_base: " << l1_read_address_base << "\n";
+            // cb_wait_front(cb0_id, packet_size_in_pages);
+            // const uint32_t l1_read_address_base = get_read_ptr(cb0_id);
+            // uint32_t l1_read_addr = l1_read_address_base;
+            uint64_t l1_read_addr = get_noc_addr(count, s0);
             uint32_t num_pages_to_read = std::min(tile_id_end - tile_id, packet_size_in_pages);
             DPRINT << "num_pages_to_read: " << num_pages_to_read << "\n";
             for (uint32_t j = 0; j < num_pages_to_read; j++) {
@@ -80,6 +86,7 @@ void kernel_main() {
                 l1_read_addr += tensor0_page_size;
                 tile_id++;
             }
+            count++;
 
             noc_async_read_barrier();
             DPRINT << "noc_async_read_barrier done\n";

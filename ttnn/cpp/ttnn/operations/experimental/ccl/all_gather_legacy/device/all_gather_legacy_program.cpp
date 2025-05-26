@@ -37,6 +37,7 @@ using namespace ccl;
 
 tt::tt_metal::operation::ProgramWithCallbacks all_gather_legacy(
     const Tensor& input_tensor,
+    const Tensor& buffer_tensor,
     IDevice* sender_device,
     std::optional<IDevice*> forward_device,
     std::optional<IDevice*> backward_device,
@@ -105,6 +106,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_legacy(
     tt::tt_metal::CircularBufferConfig cb_receiver_config =
         tt::tt_metal::CircularBufferConfig(cb_num_pages * l1_scratch_cb_page_size_bytes, {{receiver_cb_index, df}})
             .set_page_size(receiver_cb_index, l1_scratch_cb_page_size_bytes);
+    //.set_globally_allocated_address(*buffer_tensor.buffer());
     tt::tt_metal::CBHandle cb_receiver_workers = CreateCircularBuffer(program, receiver_core_range, cb_src0_config);
 
     uint32_t sync_semaphore = tt::tt_metal::CreateSemaphore(program, semaphore_core_range, 0);
@@ -200,6 +202,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_legacy(
     auto sender_core_noc = mesh_device->worker_core_from_logical_core(sender_cores[0]);
     std::vector<uint32_t> sender_writer_rt_args = {
         semaphore.address(),  // out_ready_sem_bank_addr (absolute address)
+        buffer_tensor.buffer()->address(),
         receiver_core_noc.x,  // out_ready_sem_noc0_x
         receiver_core_noc.y,  // out_ready_sem_noc0_y
     };
@@ -223,7 +226,8 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_legacy(
     // Set writer runtime args
     std::vector<uint32_t> receiver_rt_args = {
         output_tensor.buffer()->address(),  // tensor_address0
-        semaphore.address(),                // out_ready_sem_bank_addr (absolute address)
+        buffer_tensor.buffer()->address(),
+        semaphore.address(),  // out_ready_sem_bank_addr (absolute address)
         sync_semaphore,
         sender_core_noc.x,  // out_ready_sem_noc0_x
         sender_core_noc.y,  // out_ready_sem_noc0_y
@@ -249,6 +253,11 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_legacy(
             const std::vector<Tensor>& output_tensors) {
             const auto& input = input_tensors[0];
             const auto& output = output_tensors[0];
+            const auto& buffer = input_tensors[1];
+
+            // auto dst_buffer_query = buffer.buffer();
+
+            // UpdateDynamicCircularBufferAddress(program, cb_receiver_workers, *dst_buffer_query);
 
             auto semaphore = static_cast<const ttnn::AllGatherLegacy*>(operation)->semaphore;
 
@@ -267,11 +276,13 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_legacy(
                 // writer
                 auto& worker_writer_sender_runtime_args = worker_writer_sender_runtime_args_by_core[core.x][core.y];
                 worker_writer_sender_runtime_args[0] = semaphore.address();
+                worker_writer_sender_runtime_args[1] = buffer.buffer()->address();
             }
             for (const auto& core : receiver_cores) {
                 auto& worker_receiver_runtime_args = worker_receiver_runtime_args_by_core[core.x][core.y];
                 worker_receiver_runtime_args[0] = output.buffer()->address();
-                worker_receiver_runtime_args[1] = semaphore.address();
+                worker_receiver_runtime_args[1] = buffer.buffer()->address();
+                worker_receiver_runtime_args[2] = semaphore.address();
             }
         };
 

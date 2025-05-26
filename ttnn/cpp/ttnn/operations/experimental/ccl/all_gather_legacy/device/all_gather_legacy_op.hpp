@@ -91,6 +91,7 @@ std::tuple<CoreRangeSet, std::vector<CoreCoord>> choose_worker_cores(
 
 tt::tt_metal::operation::ProgramWithCallbacks all_gather_legacy(
     const Tensor& input_tensor,
+    const Tensor& buffer_tensor,
     IDevice* target_device,
     std::optional<IDevice*> forward_device,
     std::optional<IDevice*> backward_device,
@@ -109,6 +110,7 @@ namespace ccl {
 
 Tensor all_gather_legacy(
     const Tensor& input_tensor,
+    const Tensor& buffer_tensor,
     const uint32_t dim,
     const GlobalSemaphore& multi_device_global_semaphore,
     const uint32_t num_links = 1,
@@ -118,6 +120,7 @@ Tensor all_gather_legacy(
 
 std::vector<Tensor> all_gather_legacy(
     const std::vector<Tensor>& input_tensors,
+    const std::vector<Tensor>& buffer_tensors,
     const uint32_t dim,
     const global_semaphore::MultiDeviceGlobalSemaphore& multi_device_global_semaphore,
     const uint32_t num_links = 1,
