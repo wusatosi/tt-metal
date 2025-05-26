@@ -26,8 +26,9 @@ inline void tilize_in(
     for (uint32_t in_subblock = 0; in_subblock < in_num_subblocks; ++in_subblock) {
         for (uint32_t h = 0; h < in_subblock_h; ++h) {
             cb_wait_front(in_cb_id, in_block_w);
-            UNPACK((tt::compute::common::print_full_tile(in_cb_id, 0, false)));
-            UNPACK((tt::compute::common::print_full_tile(in_cb_id, 1, false)));
+            UNPACK((DPRINT << "address: " << get_local_cb_interface(in_cb_id).fifo_rd_ptr << ENDL()));
+            // UNPACK((tt::compute::common::print_full_tile(in_cb_id, 0, false)));
+            // UNPACK((tt::compute::common::print_full_tile(in_cb_id, 1, false)));
             cb_reserve_back(out_cb_id, in_block_w);
             tilize_block(in_cb_id, in_block_w, out_cb_id);
             cb_push_back(out_cb_id, in_block_w);

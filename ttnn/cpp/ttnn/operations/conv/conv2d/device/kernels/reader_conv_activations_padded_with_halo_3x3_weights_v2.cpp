@@ -91,6 +91,9 @@ void kernel_main() {
     constexpr uint32_t stride_w_bytes = dilation_w * conv_act_c_read_bytes;
     uint32_t start_reader_idx = 0;
     uint32_t first_block, second_block, third_block;
+
+    DPRINT << "act_num_blocks_h: " << act_num_blocks_h << "\n";
+
     for (uint32_t bh = 0; bh < act_num_blocks_h; bh++) {
         uint32_t reader_offset = act_l1_read_addr;
         cb_reserve_back(cb_id_act, act_block_num_tiles * window_outer);
@@ -107,10 +110,14 @@ void kernel_main() {
         }
 
         uint32_t l1_write_addr_act = get_write_ptr(cb_id_act);
+
+        DPRINT << "address: " << l1_write_addr_act << ENDL();
+
         uint32_t prev_l1 = l1_write_addr_act;
 
         for (uint32_t outer = 0; outer < window_outer; outer++) {
             bool dry_run = outer != 2 && bh != 0;
+            DPRINT << "bh: " << bh << ", outer: " << outer << ", dry run: " << (int)dry_run << ENDL();
             // Reset reader_idx to finish act_block_h_datums
             reader_idx = start_reader_idx;
 
@@ -144,8 +151,6 @@ void kernel_main() {
             noc_async_read_barrier();
 
             reader_offset += window_outer_offset;
-
-            outer++;
         }
 
         // print_full_tile(cb_id_act, 0, false);
