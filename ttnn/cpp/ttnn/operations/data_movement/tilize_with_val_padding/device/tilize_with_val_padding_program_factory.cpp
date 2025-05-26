@@ -41,10 +41,11 @@ uint32_t get_packed_value(const Tensor tensor, const ttnn::PadValue pad_value) {
                 } else {
                     TT_FATAL(
                         tensor.get_dtype() == DataType::FLOAT32 or tensor.get_dtype() == DataType::INT32 or
-                            tensor.get_dtype() == DataType::UINT32,
-                        "only supporting bfloat16, float32, and int32/uint32");
-                    return ((pad_value));
+                            tensor.get_dtype() == DataType::UINT32 || tensor.get_dtype() == DataType::UINT16,
+                        "only supporting bfloat16, float32 and int32/uint32");
+                    return ((uint32_t)(pad_value));
                 }
+
             } else {
                 TT_THROW("type not supported");
             }
@@ -150,7 +151,8 @@ operation::ProgramWithCallbacks tilize_with_val_padding_single_core(
     auto cb_output = tt::tt_metal::CreateCircularBuffer(program, core, cb_output_config);
 
     uint32_t packed_pad_value = get_packed_value(a, pad_value);
-    uint32_t tile_row_size_bytes = (a.get_dtype() == DataType::BFLOAT16) ? 64 : 128;
+    uint32_t tile_row_size_bytes =
+        (a.get_dtype() == DataType::BFLOAT16 || a.get_dtype() == DataType::UINT16) ? 64 : 128;
 
     const std::array reader_kernel_args = {
         src0_buffer->address(),
@@ -350,7 +352,7 @@ operation::ProgramWithCallbacks tilize_with_val_padding_multi_core_block_interle
 
     uint32_t packed_pad_value = get_packed_value(a, pad_value);
     // log2(TILE_WIDTH * data_format_size_in_bytes)
-    uint32_t shift_bits = (a.get_dtype() == DataType::BFLOAT16) ? 6 : 7;
+    uint32_t shift_bits = (a.get_dtype() == DataType::BFLOAT16 || a.get_dtype() == DataType::UINT16) ? 6 : 7;
 
     uint32_t num_tiles_2d = output.get_padded_shape()[-1] * output.get_padded_shape()[-2] / TILE_HW;
 
@@ -587,7 +589,7 @@ operation::ProgramWithCallbacks tilize_with_val_padding_multi_core_interleaved(
 
     uint32_t packed_pad_value = get_packed_value(a, pad_value);
     // log2(TILE_WIDTH * data_format_size_in_bytes)
-    uint32_t shift_bits = (a.get_dtype() == DataType::BFLOAT16) ? 6 : 7;
+    uint32_t shift_bits = (a.get_dtype() == DataType::BFLOAT16 || a.get_dtype() == DataType::UINT16) ? 6 : 7;
 
     KernelHandle unary_reader_kernel_id = CreateKernel(
         program,
