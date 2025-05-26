@@ -144,7 +144,7 @@ AllGatherAsyncVersion AllGatherAsync::select_version(const Tensor& input_tensor)
     } else if (
         input_tensor_shape[0] == 1 && input_tensor_shape[1] == 1 &&
         input_tensor_buffer_layout == tt::tt_metal::TensorMemoryLayout::INTERLEAVED &&
-        input_tensor_page_layout == tt::tt_metal::Layout::TILE) {
+        input_tensor_page_layout == tt::tt_metal::Layout::TILE && semaphore.size() == 2) {
         return AllGatherAsyncVersion::MINIMAL_INTERLEAVED_ANY;
     }
 
@@ -267,7 +267,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
                 this->ring_size,
                 device_index,
                 this->topology,
-                this->semaphore.at(device_index),
+                this->semaphore.at(0),
                 this->sub_device_id);
         }
         case AllGatherAsyncVersion::MINIMAL_INTERLEAVED_ANY: {
@@ -303,7 +303,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
                 this->ring_size,
                 device_index,
                 this->topology,
-                this->semaphore.at(device_index),
+                this->semaphore.at(0),
                 this->sub_device_id);
 
         case AllGatherAsyncVersion::GENERIC:
@@ -320,7 +320,7 @@ tt::tt_metal::operation::ProgramWithCallbacks AllGatherAsync::create_program_at(
                 this->ring_size,
                 device_index,
                 this->topology,
-                this->semaphore.at(device_index),
+                this->semaphore.at(0),
                 this->sub_device_id);
     }
 }
