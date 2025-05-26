@@ -66,13 +66,6 @@ ttnn::distributed::MeshDevice& AutoContext::get_device() {
     return m_device->get_device();
 }
 
-void AutoContext::synchronize_device() {
-    // auto& mesh_device = get_device();
-    // for (auto* device : mesh_device.get_devices()) {
-    //     tt::tt_metal::Synchronize(device);
-    // }
-}
-
 AutoContext::AutoContext() : m_generator(m_seed) {
 }
 

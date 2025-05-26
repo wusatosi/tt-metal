@@ -43,6 +43,35 @@ void send_aggregated_gradients_from_workers_to_optimizer(
     }
 }
 
+// void aggregate_gradients_and_broadcast_weights(
+//     const ttml::autograd::DistributedContext &workers_and_aggregator_ctx,
+//     const ttml::autograd::DistributedContext &aggregator_and_optimizer_ctx,
+//     const SortedParameters &sorted_model_parameters,
+//     int workers) {
+//     Rank optimizer_rank{*aggregator_and_optimizer_ctx.rank() + 1};
+//     for (auto &[name, tensor_ptr] : sorted_model_parameters) {
+//         if (!tensor_ptr->get_requires_grad()) {
+//             continue;
+//         }
+
+//         auto tensor = ttnn::empty_like(tensor_ptr->get_value());
+//         ttml::core::distributed::recv_tensor(workers_and_aggregator_ctx, tensor, ttml::core::distributed::Rank{0});
+//         for (int worker_id = 1; worker_id < workers; ++worker_id) {
+//             auto tensor_to_add = ttnn::empty_like(tensor_ptr->get_value());
+//             ttml::core::distributed::recv_tensor(
+//                 workers_and_aggregator_ctx, tensor_to_add, ttml::core::distributed::Rank{worker_id});
+//             tensor = ttnn::add(tensor, tensor_to_add);
+//         }
+//         tensor = ttnn::multiply(tensor, 1.0F / static_cast<float>(workers));
+//         ttml::core::distributed::send_tensor(aggregator_and_optimizer_ctx, tensor, optimizer_rank);
+
+//         ttml::core::distributed::recv_tensor(
+//             aggregator_and_optimizer_ctx, tensor, ttml::core::distributed::Rank{optimizer_rank});
+//         ttml::core::distributed::broadcast_tensor(
+//             workers_and_aggregator_ctx, tensor, workers_and_aggregator_ctx.rank());
+//     }
+// }
+
 // void send_aggregated_gradients_from_workers_to_optimizer(
 //     const ttml::autograd::DistributedContext &workers_and_aggregator_ctx,
 //     const ttml::autograd::DistributedContext &aggregator_and_optimizer_ctx,
@@ -173,6 +202,8 @@ int main(int argc, char **argv) {
                 *workers_and_aggregator_ctx, *aggregator_and_optimizer_ctx, sorted_model_parameters, workers);
             send_weights_from_optimizer_to_workers(
                 *workers_and_aggregator_ctx, *aggregator_and_optimizer_ctx, sorted_model_parameters, workers);
+            // aggregate_gradients_and_broadcast_weights(
+            //     *workers_and_aggregator_ctx, *aggregator_and_optimizer_ctx, sorted_model_parameters, workers);
             if (global_step >= config.max_steps) {
                 break;
             }

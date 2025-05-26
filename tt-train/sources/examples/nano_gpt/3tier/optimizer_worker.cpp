@@ -5,16 +5,16 @@
 #include <fmt/core.h>
 
 #include <CLI/CLI.hpp>
+#include <core/ttnn_all_includes.hpp>
 
 #include "autograd/auto_context.hpp"
 #include "common.hpp"
+#include "core/compute_kernel_config.hpp"
 #include "core/distributed/distributed.hpp"
-#include "datasets/utils.hpp"
+#include "core/tt_tensor_utils.hpp"
 #include "models/distributed/gpt2.hpp"
 #include "models/gpt2.hpp"
 #include "optimizers/adamw.hpp"
-#include "tokenizers/bpe_tokenizer.hpp"
-#include "tokenizers/char_tokenizer.hpp"
 
 using SortedParameters = std::map<std::string, ttml::autograd::TensorPtr>;
 
@@ -44,6 +44,75 @@ void receive_gradients_from_aggregator(
         tensor_ptr->set_grad(tensor);
     }
 }
+
+using ttml::optimizers::AdamWConfig;
+using ttml::serialization::NamedParameters;
+
+class CustomOptimizer {
+public:
+    CustomOptimizer(ttml::serialization::NamedParameters parameters, const AdamWConfig &config) {
+        m_config = config;
+        m_parameters = std::move(parameters);
+
+        for (const auto &[key, tensor_ptr] : m_parameters) {
+            if (tensor_ptr->get_requires_grad()) {
+                m_first_moment.emplace(
+                    key,
+                    ttml::autograd::create_tensor(
+                        ttml::core::zeros_like(tensor_ptr->get_value(ttml::autograd::PreferredPrecision::FULL)),
+                        /* requires_grad */ false));
+                m_second_moment.emplace(
+                    key,
+                    ttml::autograd::create_tensor(
+                        ttml::core::zeros_like(tensor_ptr->get_value(ttml::autograd::PreferredPrecision::FULL)),
+                        /* requires_grad */ false));
+            }
+        }
+    }
+
+    void step(const std::string &key, const ttnn::Tensor &gradients) {
+        const auto &tensor_ptr = m_parameters.at(key);
+        auto &first_moment_ptr = m_first_moment.at(key);
+        auto &second_moment_ptr = m_second_moment.at(key);
+        const auto &first_moment = first_moment_ptr->get_value(ttml::autograd::PreferredPrecision::FULL);
+        const auto &second_moment = second_moment_ptr->get_value(ttml::autograd::PreferredPrecision::FULL);
+
+        auto output_tensor = tensor_ptr->get_value(ttml::autograd::PreferredPrecision::FULL);
+        ttnn::moreh_adamw(
+            tensor_ptr->get_value(ttml::autograd::PreferredPrecision::FULL),
+            gradients,
+            first_moment,
+            second_moment,
+            m_config.lr,
+            m_config.beta1,
+            m_config.beta2,
+            m_config.epsilon,
+            m_config.weight_decay,
+            m_steps,
+            /* amsgrad */ false,
+            /* max_exp_avg_sq_in */ std::nullopt,
+            /* param_out */ output_tensor,
+            /* exp_avg_out */ first_moment,
+            /* exp_avg_sq_out */ second_moment,
+            /* max_exp_avg_sq_out */ std::nullopt,
+            /* memory_config */ std::nullopt,
+            /* compute_kernel_config */ ttml::core::ComputeKernelConfig::precise());
+        tensor_ptr->set_value(output_tensor);
+        first_moment_ptr->set_value(first_moment);
+        second_moment_ptr->set_value(second_moment);
+    }
+
+    void increase_step() {
+        m_steps++;
+    }
+
+private:
+    AdamWConfig m_config;
+    uint32_t m_steps{0};
+    ttml::serialization::NamedParameters m_parameters;
+    ttml::serialization::NamedParameters m_first_moment;
+    ttml::serialization::NamedParameters m_second_moment;
+};
 
 int main(int argc, char **argv) {
     auto &ctx = ttml::autograd::ctx();
@@ -106,25 +175,46 @@ int main(int argc, char **argv) {
     adamw_params.weight_decay = config.weight_decay;
     adamw_params.use_kahan_summation = config.use_kahan_summation;
 
-    auto select_optimizer = [&model_parameters,
-                             &adamw_params](bool use_moreh_adamw) -> std::unique_ptr<ttml::optimizers::OptimizerBase> {
-        if (use_moreh_adamw) {
-            return std::make_unique<ttml::optimizers::MorehAdamW>(model_parameters, adamw_params);
-        } else {
-            return std::make_unique<ttml::optimizers::AdamW>(model_parameters, adamw_params);
-        }
-    };
+    // auto select_optimizer = [&model_parameters,
+    //                          &adamw_params](bool use_moreh_adamw) -> std::unique_ptr<ttml::optimizers::OptimizerBase>
+    //                          {
+    //     if (use_moreh_adamw) {
+    //         return std::make_unique<ttml::optimizers::MorehAdamW>(model_parameters, adamw_params);
+    //     } else {
+    //         return std::make_unique<ttml::optimizers::AdamW>(model_parameters, adamw_params);
+    //     }
+    // };
 
-    auto optimizer = select_optimizer(config.use_moreh_adamw);
+    // auto optimizer = select_optimizer(config.use_moreh_adamw);
+
+    auto optimizer = std::make_unique<CustomOptimizer>(model_parameters, adamw_params);
 
     send_weights_to_aggregator(*aggregator_and_optimizer_ctx, sorted_model_parameters);
 
     uint32_t global_step = 0;
     for (uint32_t epoch = 0; epoch < config.num_epochs; ++epoch) {
         for (uint32_t step = 0; step < steps_per_dataset; ++step, ++global_step) {
-            receive_gradients_from_aggregator(*aggregator_and_optimizer_ctx, sorted_model_parameters);
-            optimizer->step();
-            send_weights_to_aggregator(*aggregator_and_optimizer_ctx, sorted_model_parameters);
+            auto aggregator_rank = ttml::core::distributed::Rank(*(aggregator_and_optimizer_ctx->rank()) - 1);
+            for (auto &[name, tensor_ptr] : sorted_model_parameters) {
+                if (!tensor_ptr->get_requires_grad()) {
+                    continue;
+                }
+
+                auto grad = ttnn::empty_like(tensor_ptr->get_value());
+                ttml::core::distributed::recv_tensor(*aggregator_and_optimizer_ctx, grad, aggregator_rank);
+
+                optimizer->step(name, grad);
+            }
+
+            for (auto &[name, tensor_ptr] : sorted_model_parameters) {
+                if (!tensor_ptr->get_requires_grad()) {
+                    continue;
+                }
+
+                auto tensor = tensor_ptr->get_value();
+                ttml::core::distributed::send_tensor(*aggregator_and_optimizer_ctx, tensor, aggregator_rank);
+            }
+
             if (global_step >= config.max_steps) {
                 break;
             }
