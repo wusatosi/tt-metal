@@ -1247,9 +1247,10 @@ uint32_t process_set_ringbuffer_offset(uint32_t cmd_ptr) {
     volatile CQPrefetchCmd tt_l1_ptr* cmd = (volatile CQPrefetchCmd tt_l1_ptr*)cmd_ptr;
     uint32_t offset = cmd->set_ringbuffer_offset.offset;
 
-    ringbuffer_offset = offset;
-    if (offset == 0 and cmd->set_ringbuffer_offset.update_wp) {
-        ringbuffer_wp = scratch_db_base;
+    if (cmd->set_ringbuffer_offset.update_wp == true) {
+        ringbuffer_wp = scratch_db_base + offset;
+    } else {
+        ringbuffer_offset = offset;
     }
 
     // DPRINT << "set_ringbuffer_offset: " << HEX() << offset << DEC() << ENDL();
