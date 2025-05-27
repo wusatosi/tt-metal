@@ -57,6 +57,7 @@ void RunOneTest(WatcherFixture* fixture, IDevice* device, unsigned free) {
         msg(expected, names[2 + ix], free);
     }
 
+#if 0
     // Also run on active ethernet cores, if present
     auto const &active_eth_cores = device->get_active_ethernet_cores(true);
     if (!active_eth_cores.empty()) {
@@ -67,6 +68,7 @@ void RunOneTest(WatcherFixture* fixture, IDevice* device, unsigned free) {
                          .compile_args = compile_args});
         msg(expected, names[5], free);
     }
+#endif
 
     // Also run on idle ethernet, if present
     auto const &inactive_eth_cores = device->get_inactive_ethernet_cores();

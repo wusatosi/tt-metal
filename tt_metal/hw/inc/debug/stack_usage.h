@@ -29,7 +29,18 @@ static inline uint32_t measure_stack_usage() {
     // non-dirty value at some point (a set of return addresses).
     while (*stack_ptr == stack_usage_pattern)
         stack_ptr++;
+#if defined(COMPILE_FOR_BRISC)
+    uint32_t stack_top = MEM_LOCAL_BASE + MEM_BRISC_LOCAL_SIZE;
+#elif defined(COMPILE_FOR_NCRISC)
+    uint32_t stack_top = MEM_LOCAL_BASE + MEM_NCRISC_LOCAL_SIZE;
+#elif defined(COMPILE_FOR_IDLE_ERISC)
+    uint32_t stack_top = MEM_LOCAL_BASE + MEM_IERISC_LOCAL_SIZE;
+#endif
+#elif defined(COMPILE_FOR_TRISC)
+    uint32_t stack_top = MEM_LOCAL_BASE + MEM_TRISC_LOCAL_SIZE;
+#endif
     uint32_t stack_free = (uint32_t)stack_ptr - (uint32_t)&__stack_base[0];
+    stack_free = stack_top - (uint32_t)stack_ptr;
     return stack_free + 1;
 }
 
