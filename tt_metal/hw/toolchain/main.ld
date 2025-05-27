@@ -158,7 +158,7 @@ SECTIONS
 #if !defined(ARCH_WORMHOLE)
            ABSOLUTE(__fw_export_text_end)
 #else
-           TEXT_START
+           MEM_NCRISC_FIRMWARE_BASE
 #endif
            );
 #endif
