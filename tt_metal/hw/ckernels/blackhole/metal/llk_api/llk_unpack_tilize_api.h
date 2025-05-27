@@ -261,6 +261,8 @@ inline void llk_unpack_tilizeA_B(
 
         if constexpr (neginf_srcA) {
             TTI_UNPACR_NOP(SrcA,0,0,0,0,0,0,p_unpacr::UNP_CLRSRC_NEGINF, p_unpacr::UNP_CLRSRC);
+        } else if constexpr (zero_srcA) {
+            TTI_UNPACR_NOP(SrcA,0,0,0,0,0,0,p_unpacr::UNP_CLRSRC_ZERO, p_unpacr::UNP_CLRSRC);
         }
 
         // Get tile address
