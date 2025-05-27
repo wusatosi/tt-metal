@@ -3,11 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-import torch.nn.functional as F
-
 import ttnn
 from models.demos.yolov9c.runner.performant_runner_infra import YOLOv9PerformanceRunnerInfra
-from models.demos.yolov9c.tt.model_preprocessing import create_yolov9c_input_tensors
 from tests.ttnn.utils_for_testing import assert_with_pcc
 
 
@@ -91,18 +88,19 @@ class YOLOv9PerformantRunner:
             self.input_tensor = ttnn.reshard(self.tt_image_res, self.input_mem_config, self.input_tensor)
         self.op_event = ttnn.record_event(self.device, 0)
         ttnn.execute_trace(self.device, self.tid, cq_id=0, blocking=False)
-        return self.runner_infra.output_tensor
+        outputs = ttnn.from_device(self.runner_infra.output_tensor, blocking=True)
+        return outputs
 
     def _validate(self, input_tensor, result_output_tensor):
         torch_output_tensor = self.runner_infra.torch_output_tensor
         assert_with_pcc(torch_output_tensor, result_output_tensor, 0.99)
 
     def run(self, torch_input_tensor, check_pcc=False):
-        n, h, w, c = torch_input_tensor.shape
-        torch_input_tensor = F.pad(torch_input_tensor, (0, 29))
-        tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
-        tt_inputs = create_yolov9c_input_tensors(self.device, model=True)
-
+        # n, h, w, c = torch_input_tensor.shape
+        # torch_input_tensor = F.pad(torch_input_tensor, (0, 29))
+        # tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+        # tt_inputs = create_yolov9c_input_tensors(self.device, model=True)
+        tt_inputs_host = self.runner_infra._setup_l1_sharded_input(self.device, torch_input_tensor)
         output = self._execute_yolov9_trace_2cqs_inference(tt_inputs_host)
         if check_pcc:
             torch_input_tensor = torch_input_tensor.reshape(n, h, w, c)

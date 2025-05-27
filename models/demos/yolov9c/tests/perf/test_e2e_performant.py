@@ -2,11 +2,9 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-import time
 
 import pytest
 import torch
-import torch.nn.functional as F
 from loguru import logger
 
 import ttnn
@@ -50,14 +48,13 @@ def test_e2e_performant(
     performant_runner._capture_yolov9_trace_2cqs()
     input_shape = (1, *resolution, 3)
     torch_input_tensor = torch.randn(input_shape, dtype=torch.float32)
-    torch_input_tensor = F.pad(torch_input_tensor, (0, 29), mode="constant", value=0)
-    tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+    # torch_input_tensor = F.pad(torch_input_tensor, (0, 29), mode="constant", value=0)
+    # tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
 
     inference_times = []
     for _ in range(10):
-        t0 = time.time()
-        _ = performant_runner._execute_yolov9_trace_2cqs_inference(tt_inputs_host)
-        t1 = time.time()
+        # tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+        out = performant_runner.run(torch_input_tensor)
         inference_times.append(t1 - t0)
 
     performant_runner.release()
