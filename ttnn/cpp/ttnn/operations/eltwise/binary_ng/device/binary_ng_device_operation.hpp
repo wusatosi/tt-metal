@@ -59,6 +59,15 @@ struct BinaryNgDeviceOperation {
             tt::tt_metal::KernelHandle reader_kernel_id;
             tt::tt_metal::KernelHandle writer_kernel_id;
             tt::tt_metal::KernelHandle compute_kernel_id;
+            tt::tt_metal::CBHandle a_cb;
+            tt::tt_metal::CBHandle b_cb;
+            tt::tt_metal::CBHandle c_cb;
+            Buffer* a_buffer;
+            Buffer* b_buffer;
+            Buffer* c_buffer;
+            uint32_t a_single_tile_size;
+            uint32_t b_single_tile_size;
+            uint32_t c_single_tile_size;
         };
 
         using cached_program_t = ttnn::device_operation::CachedProgram<shared_variables_t>;

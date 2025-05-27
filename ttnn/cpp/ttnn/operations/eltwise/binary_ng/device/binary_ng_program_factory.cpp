@@ -175,6 +175,15 @@ public:
 template <typename F>
 void set_or_update_runtime_arguments(
     Program& program,
+    const tt::tt_metal::CBHandle a_cb,
+    const tt::tt_metal::CBHandle b_cb,
+    const tt::tt_metal::CBHandle c_cb,
+    Buffer* a_buffer,
+    Buffer* b_buffer,
+    Buffer* c_buffer,
+    uint32_t a_single_tile_size,
+    uint32_t b_single_tile_size,
+    uint32_t c_single_tile_size,
     KernelHandle reader_kernel_id,
     KernelHandle writer_kernel_id,
     KernelHandle compute_kernel_id,
@@ -395,6 +404,12 @@ void set_or_update_runtime_arguments(
 
         start_tile_id += c_num_tiles;
     }
+    UpdateDynamicCircularBufferAddressAndTotalSize(
+        program, a_cb, *a_buffer, num_tiles_per_core_group_1 * a_single_tile_size);
+    UpdateDynamicCircularBufferAddressAndTotalSize(
+        program, b_cb, *b_buffer, num_tiles_per_core_group_1 * b_single_tile_size);
+    UpdateDynamicCircularBufferAddressAndTotalSize(
+        program, c_cb, *c_buffer, num_tiles_per_core_group_1 * c_single_tile_size);
 }
 
 }  // namespace CMAKE_UNIQUE_NAMESPACE
@@ -644,6 +659,15 @@ BinaryNgDeviceOperation::ProgramFactory::cached_program_t BinaryNgDeviceOperatio
 
     CMAKE_UNIQUE_NAMESPACE::set_or_update_runtime_arguments(
         program,
+        a_cb,
+        b_cb,
+        c_cb,
+        a_buffer,
+        b_buffer,
+        c_buffer,
+        a_single_tile_size,
+        b_single_tile_size,
+        c_single_tile_size,
         reader_kernel_id,
         writer_kernel_id,
         compute_kernel_id,
@@ -652,7 +676,20 @@ BinaryNgDeviceOperation::ProgramFactory::cached_program_t BinaryNgDeviceOperatio
         c,
         set_runtime_args);
 
-    return {std::move(program), {reader_kernel_id, writer_kernel_id, compute_kernel_id}};
+    return {
+        std::move(program),
+        {reader_kernel_id,
+         writer_kernel_id,
+         compute_kernel_id,
+         a_cb,
+         b_cb,
+         c_cb,
+         a_buffer,
+         b_buffer,
+         c_buffer,
+         a_single_tile_size,
+         b_single_tile_size,
+         c_single_tile_size}};
 }
 
 void BinaryNgDeviceOperation::ProgramFactory::override_runtime_arguments(
@@ -668,6 +705,15 @@ void BinaryNgDeviceOperation::ProgramFactory::override_runtime_arguments(
 
     CMAKE_UNIQUE_NAMESPACE::set_or_update_runtime_arguments(
         cached_program.program,
+        cached_program.shared_variables.a_cb,
+        cached_program.shared_variables.b_cb,
+        cached_program.shared_variables.c_cb,
+        cached_program.shared_variables.a_buffer,
+        cached_program.shared_variables.b_buffer,
+        cached_program.shared_variables.c_buffer,
+        cached_program.shared_variables.a_single_tile_size,
+        cached_program.shared_variables.b_single_tile_size,
+        cached_program.shared_variables.c_single_tile_size,
         cached_program.shared_variables.reader_kernel_id,
         cached_program.shared_variables.writer_kernel_id,
         cached_program.shared_variables.compute_kernel_id,
