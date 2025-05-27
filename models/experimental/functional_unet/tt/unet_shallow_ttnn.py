@@ -61,7 +61,25 @@ def preprocess_unet_input_tensor(input_tensor, min_channels=16):
     """
     Pad (if needed) and reshape to [1,1,N*H*W,C] for downstream convolution
     """
-    N, C, H, W = input_tensor.shape
+    _, _, C, HW = input_tensor.shape
+
+    output_core_grid = ttnn.CoreRangeSet(
+        {
+            ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(7, 6)),
+            ttnn.CoreRange(ttnn.CoreCoord(0, 7), ttnn.CoreCoord(6, 7)),
+        }
+    )
+    output_shard_shape = (2688, C)
+    output_shard_spec = ttnn.ShardSpec(output_core_grid, output_shard_shape, ttnn.ShardOrientation.ROW_MAJOR)
+    output_memory_config = ttnn.MemoryConfig(
+        ttnn.TensorMemoryLayout.HEIGHT_SHARDED, ttnn.BufferType.L1, output_shard_spec
+    )
+
+    input_tensor = ttnn.experimental.convert_to_hwc(
+        input_tensor, memory_config=output_memory_config, dtype=ttnn.bfloat16
+    )
+    return input_tensor
+
     if C < min_channels:
         channel_padding_needed = min_channels - C
         nchw = ttnn.pad(input_tensor, ((0, 0), (0, channel_padding_needed), (0, 0), (0, 0)), value=0.0)
