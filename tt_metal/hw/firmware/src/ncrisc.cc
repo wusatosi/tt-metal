@@ -121,9 +121,10 @@ int main(int argc, char *argv[]) {
         uint32_t kernel_config_base = firmware_config_init(mailboxes, ProgrammableCoreType::TENSIX, DISPATCH_CLASS_TENSIX_DM1);
         int index = static_cast<std::underlying_type<TensixProcessorTypes>::type>(TensixProcessorTypes::DM1);
 
+        uint32_t kernel_lma = kernel_config_base + launch_msg->kernel_config.kernel_text_offset[index];
 #if defined(ARCH_WORMHOLE)
-        uint32_t ncrisc_kernel_src_address = kernel_config_base + launch_msg->kernel_config.kernel_text_offset[index];
-        l1_to_ncrisc_iram_copy(ncrisc_kernel_src_address >> 4, launch_msg->kernel_config.ncrisc_kernel_size16, 0);
+//        uint32_t ncrisc_kernel_address = kernel_config_base + launch_msg->kernel_config.kernel_text_offset[index];
+        l1_to_ncrisc_iram_copy(kernel_lma >> 4, launch_msg->kernel_config.ncrisc_kernel_size16, 0);
 #endif
         uint32_t tt_l1_ptr* cb_l1_base =
             (uint32_t tt_l1_ptr*)(kernel_config_base + launch_msg->kernel_config.local_cb_offset);
@@ -143,17 +144,19 @@ int main(int argc, char *argv[]) {
 
         WAYPOINT("R");
 
-        uint32_t (*kernel_address)(uint32_t) = (uint32_t (*)(uint32_t))
-            (kernel_config_base + launch_msg->kernel_config.kernel_text_offset[index]);
+        auto *kernel_address (uint32_t (*)())(kernel_lma);
 #if !defined(ARCH_WORMHOLE)
         while (*ncrisc_run != RUN_SYNC_MSG_GO) {
             invalidate_l1_cache();
         }
-        auto stack_free = (*kernel_address)((uint32_t)kernel_address);
+        auto stack_free = (*kernel_address)(0);
 #else
-        // Jumping to IRAM causes bizarre behavior, so signal the brisc to reset the ncrisc to the IRAM address.
-        mailboxes->ncrisc_halt.resume_addr = (uint32_t)kernel_init;
-        auto stack_free = notify_brisc_and_halt_to_iram(RUN_SYNC_MSG_WAITING_FOR_RESET, (uint32_t)kernel_address);
+        // Jumping to IRAM causes bizarre behavior, so signal the
+        // brisc to reset the ncrisc to the IRAM address
+        uint32_t kernel_vma = uint32t(kernel_init);
+        mailboxes->ncrisc_halt.resume_addr = kernel_vma;
+        auto stack_free = notify_brisc_and_halt_to_iram(RUN_SYNC_MSG_WAITING_FOR_RESET,
+                                                        kernel_lma - kernel_vma);
 #endif
         record_stack_usage(stack_free);
         WAYPOINT("D");

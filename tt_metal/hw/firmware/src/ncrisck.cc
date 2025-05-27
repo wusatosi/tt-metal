@@ -31,7 +31,7 @@ uint32_t noc_nonposted_writes_acked[NUM_NOCS];
 uint32_t noc_nonposted_atomics_acked[NUM_NOCS];
 uint32_t noc_posted_writes_num_issued[NUM_NOCS];
 
-extern "C" uint32_t kernel_launch(uint32_t kernel_base_addr) {
+extern "C" uint32_t kernel_launch(uint32_t offset) {
     mark_stack_usage();
 #if defined(DEBUG_NULL_KERNELS) && !defined(DISPATCH_KERNEL)
     wait_for_go_message();
@@ -41,14 +41,14 @@ extern "C" uint32_t kernel_launch(uint32_t kernel_base_addr) {
     while (c_tensix_core::read_wall_clock() < end_time);
 #endif
 #else
-#if defined(__riscv_tt_wormhole)
+#if false && defined(__riscv_tt_wormhole)
     extern uint32_t __kernel_init_local_l1_base[];
     extern uint32_t __kernel_text_start[];
     do_crt1((uint32_t tt_l1_ptr*)(kernel_base_addr + (uint32_t)__kernel_init_local_l1_base -
                                   (uint32_t)__kernel_text_start));
 #else
     extern uint32_t __kernel_data_lma[];
-    do_crt1((uint32_t tt_l1_ptr*)__kernel_data_lma);
+    do_crt1((uint32_t tt_l1_ptr*)((uint32_t)&__kernel_data_lma[0] + offset));
 #endif
 
     if constexpr (NOC_MODE == DM_DEDICATED_NOC) {
