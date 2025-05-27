@@ -62,6 +62,23 @@ def generate_wo_program_config(seq_len):
     )
 
 
+def generate_wo_program_config_new(seq_len):
+    if seq_len == 128:
+        return ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+            compute_with_storage_grid_size=(7, 10),
+            in0_block_w=4,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
+            out_subblock_h=2,  # Must be divisible by per_core_M
+            out_subblock_w=4,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
+            out_block_h=8,
+            out_block_w=4,
+            per_core_M=8,  # M / TILE_HEIGHT / Grid_Size (dynamic based on seqlen)
+            per_core_N=12,  # N / TILE_WIDTH / grid width
+            transpose_mcast=False,
+            fused_activation=None,
+            fuse_batch=False,
+        )
+
+
 def create_dram_sharded_mem_config(k, n):
     """Create DRAM-sharded memory config for width-sharded tensors"""
     dram_cores = 12
@@ -143,7 +160,7 @@ def test_kqv_projection(device, seq_len):
     SEQ_LENS,
 )
 def test_wo(device, seq_len):
-    activations = torch.randn((1, 1, seq_len, 1024)) if (seq_len >= 1024) else torch.randn((1, 1, seq_len, 1024))
+    activations = torch.randn((1, 1, seq_len, 1024))
     wo = torch.randn((1, 1, 1024, 2048))
 
     golden = activations @ wo.squeeze()
@@ -174,17 +191,7 @@ def test_wo(device, seq_len):
             packer_l1_acc=True,
             dst_full_sync_en=True,
         ),
-        program_config=ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-            compute_with_storage_grid_size=(7, 10),
-            in0_block_w=2,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
-            out_subblock_h=2,  # Must be divisible by per_core_M
-            out_subblock_w=4,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
-            per_core_M=8,  # M / TILE_HEIGHT / Grid_Size (dynamic based on seqlen)
-            per_core_N=8,  # N / TILE_WIDTH / grid width
-            transpose_mcast=False,
-            fused_activation=None,
-            fuse_batch=seq_len <= 2048,
-        ),
+        program_config=generate_wo_program_config_new(seq_len),
         dtype=ttnn.bfloat8_b,
         memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
