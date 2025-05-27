@@ -20,7 +20,9 @@ from tt_metal.tools.profiler.process_model_log import (
 
 
 def run_device_perf(command, subdir, num_iterations, cols, batch_size, op_name="", has_signposts=False):
-    duration_cols = [col + " DURATION [ns]" for col in cols]
+    # Include in all perf reports, since it op to op + kernel time equals the total time.
+    COMMON_COLS = ["OP TO OP LATENCY [ns]"]
+    duration_cols = [col + " DURATION [ns]" for col in cols] + COMMON_COLS
     samples_cols = [col + " SAMPLES/S" for col in cols]
 
     clear_profiler_runtime_artifacts()
@@ -44,6 +46,8 @@ def run_device_perf(command, subdir, num_iterations, cols, batch_size, op_name="
         post_processed_results[f"AVG {s_col}"] = get_samples_per_s(results[f"AVG {d_col}"] / num_iterations, batch_size)
         post_processed_results[f"MIN {s_col}"] = get_samples_per_s(results[f"MAX {d_col}"], batch_size)
         post_processed_results[f"MAX {s_col}"] = get_samples_per_s(results[f"MIN {d_col}"], batch_size)
+
+    for d_col in duration_cols:
         post_processed_results[f"AVG {d_col}"] = results[f"AVG {d_col}"] / num_iterations
         post_processed_results[f"MIN {d_col}"] = results[f"MIN {d_col}"]
         post_processed_results[f"MAX {d_col}"] = results[f"MAX {d_col}"]
