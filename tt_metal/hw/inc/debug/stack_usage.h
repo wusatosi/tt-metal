@@ -33,9 +33,10 @@ static inline uint32_t measure_stack_usage() {
     uint32_t stack_top = MEM_LOCAL_BASE + MEM_BRISC_LOCAL_SIZE;
 #elif defined(COMPILE_FOR_NCRISC)
     uint32_t stack_top = MEM_LOCAL_BASE + MEM_NCRISC_LOCAL_SIZE;
+#elif defined(COMPILE_FOR_ERISC)
+    uint32_t stack_top = 0;
 #elif defined(COMPILE_FOR_IDLE_ERISC)
     uint32_t stack_top = MEM_LOCAL_BASE + MEM_IERISC_LOCAL_SIZE;
-#endif
 #elif defined(COMPILE_FOR_TRISC)
     uint32_t stack_top = MEM_LOCAL_BASE + MEM_TRISC_LOCAL_SIZE;
 #endif
