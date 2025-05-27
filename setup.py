@@ -205,10 +205,6 @@ class CMakeBuild(build_ext):
                 "riscv32-unknown-elf-gcc-nm",
                 "riscv32-unknown-elf-gdb-add-index",
             ]
-        ttnn_patterns = [
-            # These weren't supposed to be in the JIT API, but one file currently is
-            "api/ttnn/tensor/types.hpp",
-        ]
         ttnn_cpp_patterns = [
             "ttnn/deprecated/**/kernels/**/*",
             "ttnn/operations/**/kernels/**/*",
@@ -243,7 +239,6 @@ class CMakeBuild(build_ext):
         copy_tree_with_patterns(
             source_dir / "runtime", self.build_lib + "/ttnn/runtime", runtime_patterns, runtime_exclude_files
         )
-        copy_tree_with_patterns(source_dir / "ttnn", self.build_lib + "/ttnn", ttnn_patterns)
         copy_tree_with_patterns(source_dir / "ttnn/cpp", self.build_lib + "/ttnn/cpp", ttnn_cpp_patterns)
         copy_tree_with_patterns(source_dir / "tt_metal", self.build_lib + "/ttnn/tt_metal", tt_metal_patterns)
 
