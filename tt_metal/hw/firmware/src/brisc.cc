@@ -272,7 +272,7 @@ inline void start_ncrisc_kernel_run_early(dispatch_core_processor_masks enables)
     // On Wormhole, start_ncrisc_kernel_run will reset NCRISC to start the
     // kernel running. We delay it until later to give the NCRISC time to load
     // CBs before we wait on it.
-#if !defined(NCRISC_FIRMWARE_KERNEL_SPLIT)
+#if !defined(ARCH_WORMHOLE)
     if (enables & DISPATCH_CLASS_MASK_TENSIX_ENABLE_DM1) {
         mailboxes->subordinate_sync.dm1 = RUN_SYNC_MSG_GO;
     }
@@ -280,7 +280,7 @@ inline void start_ncrisc_kernel_run_early(dispatch_core_processor_masks enables)
 }
 
 inline void start_ncrisc_kernel_run(dispatch_core_processor_masks enables) {
-#ifdef NCRISC_FIRMWARE_KERNEL_SPLIT
+#if defined(ARCH_WORMHOLE)
     if (enables & DISPATCH_CLASS_MASK_TENSIX_ENABLE_DM1) {
         // The NCRISC behaves badly if it jumps from L1 to IRAM, so instead halt it and then reset it to the IRAM
         // address it provides.
