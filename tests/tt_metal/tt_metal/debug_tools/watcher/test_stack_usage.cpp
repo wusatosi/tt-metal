@@ -57,6 +57,17 @@ void RunOneTest(WatcherFixture* fixture, IDevice* device, unsigned free) {
         msg(expected, names[2 + ix], free);
     }
 
+    // Also run on active ethernet cores, if present
+    auto const &active_eth_cores = device->get_active_ethernet_cores(true);
+    if (!active_eth_cores.empty()) {
+        // Just pick the first core
+        CoreCoord eth_coord = CoreCoord(*active_eth_cores.begin());
+        CreateKernel(program, path, eth_coord,
+                     tt_metal::EthernetConfig{.noc = tt_metal::NOC::NOC_0,
+                         .compile_args = compile_args});
+        msg(expected, names[5], free);
+    }
+
     // Also run on idle ethernet, if present
     auto const &inactive_eth_cores = device->get_inactive_ethernet_cores();
     if (!inactive_eth_cores.empty() && fixture->IsSlowDispatch()) {
@@ -75,7 +86,7 @@ void RunOneTest(WatcherFixture* fixture, IDevice* device, unsigned free) {
 
 template<uint32_t Free>
 void RunTest(WatcherFixture* fixture, IDevice* device) {
-    RunOneTest(fixture, device, Free);
+    RunOneTest(fixture, device, Free ? 8192 : 0);
 }
 
 } // namespace

@@ -309,6 +309,14 @@ void WatcherDeviceReader::Dump(FILE* file) {
                 info.stack_free,
                 info.core.coord.str().c_str(),
                 kernel_names[info.kernel_id].c_str());
+            log_warning(
+                "Watcher detected stack {} bytes free on Device {} Core {}: "
+                    "{}! Kernel {}",
+                    info.stack_free,
+                    device_id,
+                    info.core.coord.str(),
+                    riscv_name,
+                    kernel_names[info.kernel_id].c_str());
             if (info.stack_free == 0) {
                 // We had no free stack, this probably means we
                 // overflowed, but it could be a remarkable coincidence.
