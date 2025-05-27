@@ -6,6 +6,8 @@
 #pragma once
 
 #include "device/example_device_operation.hpp"
+#include <tt-metalium/host_api.hpp>
+#include <vector>
 
 namespace ttnn::operations::examples {
 
@@ -14,9 +16,9 @@ namespace ttnn::operations::examples {
 struct CompositeExampleOperation {
     // The user will be able to call this method as `Tensor output = ttnn::composite_example(input_tensor)` after the op
     // is registered
-    static Tensor invoke(const Tensor& input_tensor) {
-        auto copy = prim::example(input_tensor);
-        auto another_copy = prim::example(copy);
+    static Tensor invoke(const Tensor& input_tensor, const Tensor& output_tensor) {
+        auto copy = prim::example(input_tensor, output_tensor);
+        auto another_copy = prim::example(copy, output_tensor);
         return another_copy;
     }
 };

@@ -7,38 +7,40 @@
 #include "compute_kernel_api/tile_move_copy.h"
 #include "compute_kernel_api/eltwise_unary/eltwise_unary.h"
 #include "compute_kernel_api/eltwise_unary/sfpu_split_includes.h"
+#include "debug/dprint_tensix.h"
+// #include "ttnn/cpp/ttnn/operations/examples/example/device/kernels/compute/utils.hpp"
 
 namespace NAMESPACE {
 void MAIN {
     uint32_t per_core_block_cnt = get_compile_time_arg_val(0);
     uint32_t per_core_block_dim = get_compile_time_arg_val(1);
 
-    init_sfpu(tt::CBIndex::c_0, tt::CBIndex::c_2);
+    DPRINT << "per_core_block_cnt : " << per_core_block_cnt << ENDL();
+    DPRINT << "per_core_block_dim : " << per_core_block_dim << ENDL();
+
+    constexpr tt::CBIndex cb_in = tt::CBIndex::c_0;
+    constexpr tt::CBIndex cb_out = tt::CBIndex::c_1;
+
+    init_sfpu(cb_in, cb_out);
+    // uint32_t copy_count = 0;
+    // uint32_t pack_count = 0;
     for (uint32_t block_index = 0; block_index < per_core_block_cnt; block_index++) {
-        cb_reserve_back(tt::CBIndex::c_2, per_core_block_dim);
         for (uint32_t tile_index = 0; tile_index < per_core_block_dim; ++tile_index) {
+            cb_wait_front(cb_in, 1);
             tile_regs_acquire();
-
-            // Pop tile after tile, copy to DST and pack
-            cb_wait_front(tt::CBIndex::c_0, 1);
-
-            copy_tile(tt::CBIndex::c_0, 0, 0);
-
-#ifdef SFPU_OP_CHAIN_0
-            SFPU_OP_CHAIN_0
-#endif
-
+            copy_tile_to_dst_init_short(cb_in);
+            copy_tile(cb_in, 0, 0);
             tile_regs_commit();
+            cb_pop_front(cb_in, 1);
 
+            cb_reserve_back(cb_out, 1);
             tile_regs_wait();
-
-            pack_tile(0, tt::CBIndex::c_2);
-
-            cb_pop_front(tt::CBIndex::c_0, 1);
-
+            pack_tile(0, cb_out);
             tile_regs_release();
+            cb_push_back(cb_out, 1);
         }
-        cb_push_back(tt::CBIndex::c_2, per_core_block_dim);
     }
+
+    DPRINT << "TR ends" << ENDL();
 }
 }  // namespace NAMESPACE
