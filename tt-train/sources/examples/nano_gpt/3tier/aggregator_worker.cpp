@@ -31,7 +31,7 @@ void send_aggregated_gradients_from_workers_to_optimizer(
             continue;
         }
 
-        auto tensor = ttnn::empty_like(tensor_ptr->get_value());
+        auto tensor = tensor_ptr->get_value();
         ttml::core::distributed::recv_tensor(workers_and_aggregator_ctx, tensor, ttml::core::distributed::Rank{0});
         for (int worker_id = 1; worker_id < workers; ++worker_id) {
             auto tensor_to_add = ttnn::empty_like(tensor_ptr->get_value());
@@ -40,6 +40,7 @@ void send_aggregated_gradients_from_workers_to_optimizer(
             tensor = ttnn::add(tensor, tensor_to_add);
         }
         tensor = ttnn::multiply(tensor, 1.0F / static_cast<float>(workers));
+
         ttml::core::distributed::send_tensor(aggregator_and_optimizer_ctx, tensor, optimizer_rank);
     }
 }
@@ -151,11 +152,6 @@ void send_weights_from_optimizer_to_workers(
             tensor,
             optimizer_rank,
             workers_and_aggregator_ctx.rank());
-        // ttml::core::distributed::recv_tensor(
-        //     aggregator_and_optimizer_ctx, tensor, ttml::core::distributed::Rank{optimizer_rank});
-
-        // ttml::core::distributed::broadcast_tensor(
-        //     workers_and_aggregator_ctx, tensor, workers_and_aggregator_ctx.rank());
     }
 }
 

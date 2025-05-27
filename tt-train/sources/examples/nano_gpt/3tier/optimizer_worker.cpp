@@ -6,6 +6,7 @@
 
 #include <CLI/CLI.hpp>
 #include <core/ttnn_all_includes.hpp>
+#include <ttnn/operations/creation.hpp>
 
 #include "autograd/auto_context.hpp"
 #include "common.hpp"
@@ -191,16 +192,25 @@ int main(int argc, char **argv) {
 
     send_weights_to_aggregator(*aggregator_and_optimizer_ctx, sorted_model_parameters);
 
+    for (auto &[name, tensor_ptr] : sorted_model_parameters) {
+        if (!tensor_ptr->get_requires_grad()) {
+            continue;
+        }
+        auto grad = ttnn::empty_like(tensor_ptr->get_value());
+        tensor_ptr->set_grad(grad);
+    }
+
     uint32_t global_step = 0;
     for (uint32_t epoch = 0; epoch < config.num_epochs; ++epoch) {
         for (uint32_t step = 0; step < steps_per_dataset; ++step, ++global_step) {
+            optimizer->increase_step();
             auto aggregator_rank = ttml::core::distributed::Rank(*(aggregator_and_optimizer_ctx->rank()) - 1);
             for (auto &[name, tensor_ptr] : sorted_model_parameters) {
                 if (!tensor_ptr->get_requires_grad()) {
                     continue;
                 }
 
-                auto grad = ttnn::empty_like(tensor_ptr->get_value());
+                auto grad = tensor_ptr->get_grad();
                 ttml::core::distributed::recv_tensor(*aggregator_and_optimizer_ctx, grad, aggregator_rank);
 
                 optimizer->step(name, grad);
