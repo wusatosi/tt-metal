@@ -699,7 +699,6 @@ void DeviceProfiler::logNocTracePacketDataToJson(
             auto phys_coord =
                 getPhysicalAddressFromVirtual(device_id, {fabric_noc_event.dst_x, fabric_noc_event.dst_y});
             noc_trace_json_log.push_back(nlohmann::ordered_json{
-                {"run_id", run_id},
                 {"run_host_id", run_host_id},
                 {"op_name", opname},
                 {"proc", risc_name},
