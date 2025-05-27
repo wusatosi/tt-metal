@@ -144,7 +144,7 @@ int main(int argc, char *argv[]) {
 
         WAYPOINT("R");
 
-        auto *kernel_address = (uint32_t (*)())(kernel_lma);
+        auto *kernel_address = (uint32_t (*)(uint32_t))(kernel_lma);
 #if !defined(ARCH_WORMHOLE)
         while (*ncrisc_run != RUN_SYNC_MSG_GO) {
             invalidate_l1_cache();
