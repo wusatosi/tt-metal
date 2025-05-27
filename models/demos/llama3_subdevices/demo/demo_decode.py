@@ -337,7 +337,7 @@ def run_llama3_demo(
         # )
 
         # Sampling
-        tt_out_tok = tt_sampling(tt_out[0])
+        _ = tt_sampling(tt_out[0], tt_out_tok)
         logger.info(f"sampling done")
 
     if not stress_test:
@@ -382,7 +382,7 @@ def run_llama3_demo(
     # )
 
     # Sampling
-    tt_out_tok = tt_sampling(tt_out[0])
+    _ = tt_sampling(tt_out[0], tt_out_tok)
 
     if not stress_test:
         ttnn.plus_one(

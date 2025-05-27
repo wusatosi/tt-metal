@@ -48,7 +48,7 @@ class TTSampling(LightweightModule):
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
         )
 
-    def forward(self, x: ttnn.Tensor):
+    def forward(self, x: ttnn.Tensor, tt_out_tok: ttnn.Tensor):
         # Local top k
         topk_values, topk_indices = ttnn.topk(x, k=32, dim=-1, sub_core_grids=self.args.sub_core_grid_topk)
 
@@ -116,7 +116,7 @@ class TTSampling(LightweightModule):
         ttnn.deallocate(topk_global_indices_interleaved)
 
         # Sampling
-        tt_out_tok = ttnn.sampling(
+        _ = ttnn.sampling(
             topk_values_gathered_bf16_interleaved,
             topk_global_indices_interleaved_untilised,
             k=self.k,
@@ -126,6 +126,7 @@ class TTSampling(LightweightModule):
             sub_core_grids=ttnn.num_cores_to_corerangeset_in_subcoregrids(
                 self.args.start_core, self.max_batch_size, self.args.sub_core_grids, row_wise=True
             ),
+            output_tensor=tt_out_tok,
         )
         ttnn.deallocate(topk_values_gathered_bf16_interleaved)
         ttnn.deallocate(topk_global_indices_interleaved_untilised)
