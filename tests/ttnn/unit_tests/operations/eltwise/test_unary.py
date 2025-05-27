@@ -46,22 +46,30 @@ def run_unary_with_approx_mode_test(device, h, w, ttnn_function, vector_mode, ap
 
 
 def run_unary_with_aprox_mode_fruit_test(
-    device, h, w, shard_shape, ttnn_function, vector_mode, approx_mode, pcc=0.9999
+    device, h, w, memory_type, shard_shape, ttnn_function, vector_mode, approx_mode, pcc=0.9999
 ):
     torch.manual_seed(0)
 
     torch_input_tensor = torch.rand((1, 1, h, w), dtype=torch.bfloat16)
     golden_function = ttnn.get_golden_function(ttnn_function)
     torch_output_tensor = golden_function(torch_input_tensor, device=device)
+    if memory_type == "L1":
+        core_grid = device.compute_with_storage_grid_size()
+        num_cores = core_grid.x * core_grid.y
+        assert num_cores == 64
 
-    shard_spec = ttnn.ShardSpec(
-        grid=ttnn.num_cores_to_corerangeset(64, device.compute_with_storage_grid_size()),
-        shard_shape=shard_shape,
-        shard_orientation=ttnn.ShardOrientation.ROW_MAJOR,
-    )
-    memory_config = ttnn.MemoryConfig(
-        memory_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED, buffer_type=ttnn.BufferType.L1, shard_spec=shard_spec
-    )
+        shard_spec = ttnn.ShardSpec(
+            grid=ttnn.num_cores_to_corerangeset(num_cores, device.compute_with_storage_grid_size()),
+            shard_shape=shard_shape,
+            shard_orientation=ttnn.ShardOrientation.ROW_MAJOR,
+        )
+        memory_config = ttnn.MemoryConfig(
+            memory_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED, buffer_type=ttnn.BufferType.L1, shard_spec=shard_spec
+        )
+    else:  # memory_type == "DRAM":
+        memory_config = ttnn.MemoryConfig(
+            memory_layout=ttnn.TensorMemoryLayout.INTERLEAVED, buffer_type=ttnn.BufferType.DRAM
+        )
     input_tensor = ttnn.from_torch(
         torch_input_tensor, layout=ttnn.TILE_LAYOUT, device=device, memory_config=memory_config
     )
@@ -296,12 +304,21 @@ def test_sigmoid(device, h, w, vector_mode, approx_mode):
 
 @pytest.mark.parametrize("h", [1024 * 128])
 @pytest.mark.parametrize("w", [1])
+@pytest.mark.parametrize("memory_type", ["L1", "DRAM"])
 @pytest.mark.parametrize("shard_shape", [(2048, 32)])
 @pytest.mark.parametrize("approx_mode", [True, False])
 @pytest.mark.parametrize("vector_mode", [4])
-def test_sigmoid_fruit(device, h, w, shard_shape, vector_mode, approx_mode):
+def test_sigmoid_fruit(device, h, w, memory_type, shard_shape, vector_mode, approx_mode):
     run_unary_with_aprox_mode_fruit_test(
-        device, h, w, shard_shape, ttnn.sigmoid, vector_mode=vector_mode, approx_mode=approx_mode, pcc=0.999
+        device,
+        h,
+        w,
+        memory_type,
+        shard_shape,
+        ttnn.sigmoid,
+        vector_mode=vector_mode,
+        approx_mode=approx_mode,
+        pcc=0.999,
     )
 
 
