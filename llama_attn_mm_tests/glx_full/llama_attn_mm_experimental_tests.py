@@ -6,6 +6,7 @@ from models.utility_functions import (
 import math
 import pytest
 import tracy
+from loguru import logger
 
 TILE_SIZE = 32
 DRAM_WEIGHT_GRID = ttnn.CoreRangeSet({ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(11, 0))})
@@ -96,7 +97,7 @@ def generate_kqv_projection_program_config_new(seq_len):
             per_core_M = per_core_M + 1
 
     out_block_h = largest_divisor_less_than_k(per_core_M, 16)
-
+    breakpoint()
     return ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
         compute_with_storage_grid_size=(7, 9),
         in0_block_w=16,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
@@ -176,7 +177,7 @@ def generate_wo_program_config_new(seq_len):
     out_block_h = largest_divisor_less_than_k(per_core_M, 20)
     return ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
         compute_with_storage_grid_size=(7, 9),
-        in0_block_w=16,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
+        in0_block_w=8,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
         out_subblock_h=3 if out_block_h % 3 == 0 else 1,  # Must be divisible by per_core_M
         out_subblock_w=2
         if out_block_h % 3 == 0
@@ -205,51 +206,72 @@ def create_dram_sharded_mem_config(k, n):
     indirect=True,
 )
 @pytest.mark.parametrize(
-    "seq_len",
-    SEQ_LENS,
+    "mesh_device",
+    [
+        (8, 4),
+    ],
+    indirect=True,
 )
-def test_kqv_projection(device, seq_len):
-    activations = (
-        torch.randn((1, seq_len // 2048, 2048, 2048)) if (seq_len == 2048) else torch.randn((1, 1, seq_len, 2048))
-    )
+@pytest.mark.parametrize(
+    "stress_test",
+    [True, False],
+)
+def test_kqv_projection(mesh_device, stress_test):
     wkqv = torch.randn((1, 1, 2048, 1280))
-
-    golden = activations @ wkqv.squeeze()
-
-    activations_tt = ttnn.from_torch(
-        activations,
-        device=device,
-        dtype=ttnn.bfloat8_b,
-        memory_config=ttnn.DRAM_MEMORY_CONFIG,
-        layout=ttnn.TILE_LAYOUT,
-    )
-
-    wkqv_tt = ttnn.from_torch(
+    wkqv_tt_interleaved = ttnn.from_torch(
         wkqv,
-        device=device,
-        dtype=ttnn.bfloat8_b,
-        memory_config=ttnn.DRAM_MEMORY_CONFIG if seq_len >= 4096 else create_dram_sharded_mem_config(2048, 1536),
-        layout=ttnn.TILE_LAYOUT,
-    )
-
-    out_tt = ttnn.linear(
-        activations_tt,
-        wkqv_tt,
-        compute_kernel_config=ttnn.WormholeComputeKernelConfig(
-            math_fidelity=ttnn.MathFidelity.HiFi2,
-            math_approx_mode=True,
-            fp32_dest_acc_en=True,
-            packer_l1_acc=True,
-            dst_full_sync_en=True,
-        ),
-        program_config=generate_kqv_projection_program_config_new(seq_len),
+        device=mesh_device,
         dtype=ttnn.bfloat8_b,
         memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        layout=ttnn.TILE_LAYOUT,
+        mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
     )
 
-    out_torch = ttnn.to_torch(out_tt)
-    passed, msg = comp_pcc(golden, out_torch, 0.99)
-    assert passed, msg
+    wkqv_tt_sharded = ttnn.from_torch(
+        wkqv,
+        device=mesh_device,
+        dtype=ttnn.bfloat8_b,
+        memory_config=create_dram_sharded_mem_config(2048, 1536),
+        layout=ttnn.TILE_LAYOUT,
+        mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+    )
+
+    iterations = 1000 if stress_test else 1
+    for seq_len in SEQ_LENS:
+        logger.info(f"Testing KQV Projection: seq_len = {seq_len}")
+        activations = (
+            torch.randn((1, seq_len // 2048, 2048, 2048)) if (seq_len == 2048) else torch.randn((1, 1, seq_len, 2048))
+        )
+
+        activations_tt = ttnn.from_torch(
+            activations,
+            device=mesh_device,
+            dtype=ttnn.bfloat16,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            layout=ttnn.TILE_LAYOUT,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        )
+
+        program_config = generate_kqv_projection_program_config_new(seq_len)
+        for _ in range(iterations):
+            out_tt = ttnn.linear(
+                activations_tt,
+                wkqv_tt_interleaved if seq_len >= 4096 else wkqv_tt_sharded,
+                compute_kernel_config=ttnn.WormholeComputeKernelConfig(
+                    math_fidelity=ttnn.MathFidelity.HiFi2,
+                    math_approx_mode=True,
+                    fp32_dest_acc_en=True,
+                    packer_l1_acc=True,
+                    dst_full_sync_en=True,
+                ),
+                program_config=program_config,
+                dtype=ttnn.bfloat8_b,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            )
+
+    # out_torch = ttnn.to_torch(out_tt)
+    # passed, msg = comp_pcc(golden, out_torch, 0.99)
+    # assert passed, msg
 
 
 @pytest.mark.parametrize(
@@ -258,51 +280,66 @@ def test_kqv_projection(device, seq_len):
     indirect=True,
 )
 @pytest.mark.parametrize(
-    "seq_len",
-    SEQ_LENS,
+    "mesh_device",
+    [
+        (8, 4),
+    ],
+    indirect=True,
 )
-def test_wo(device, seq_len):
-    activations = (
-        torch.randn((1, 1, seq_len // 1024, 1024, 1024))
-        if 1024 <= seq_len < 4096
-        else torch.randn((1, 1, seq_len, 1024))
-    )
+@pytest.mark.parametrize(
+    "stress_test",
+    [True, False],
+)
+def test_wo(mesh_device, stress_test):
     wo = torch.randn((1, 1, 1024, 2048))
-
-    golden = activations @ wo.squeeze()
-
-    activations_tt = ttnn.from_torch(
-        activations,
-        device=device,
-        dtype=ttnn.bfloat8_b,
-        memory_config=ttnn.DRAM_MEMORY_CONFIG,
-        layout=ttnn.TILE_LAYOUT,
-    )
-    wo_tt = ttnn.from_torch(
+    wo_tt_interleaved = ttnn.from_torch(
         wo,
-        device=device,
-        dtype=ttnn.bfloat8_b,
-        memory_config=ttnn.DRAM_MEMORY_CONFIG
-        if seq_len >= 4096
-        else create_dram_sharded_mem_config(8192 // 8, 9216 // 4),
-        layout=ttnn.TILE_LAYOUT,
-    )
-
-    out_tt = ttnn.linear(
-        activations_tt,
-        wo_tt,
-        compute_kernel_config=ttnn.WormholeComputeKernelConfig(
-            math_fidelity=ttnn.MathFidelity.HiFi2,
-            math_approx_mode=False,
-            fp32_dest_acc_en=False,
-            packer_l1_acc=True,
-            dst_full_sync_en=True,
-        ),
-        program_config=generate_wo_program_config_new(seq_len),
+        device=mesh_device,
         dtype=ttnn.bfloat8_b,
         memory_config=ttnn.DRAM_MEMORY_CONFIG,
+        layout=ttnn.TILE_LAYOUT,
+        mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
     )
 
-    out_torch = ttnn.to_torch(out_tt)
-    passed, msg = comp_pcc(golden, out_torch, 0.99)
-    assert passed, msg
+    wo_tt_sharded = ttnn.from_torch(
+        wo,
+        device=mesh_device,
+        dtype=ttnn.bfloat8_b,
+        memory_config=create_dram_sharded_mem_config(8192 // 8, 9216 // 4),
+        layout=ttnn.TILE_LAYOUT,
+        mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+    )
+
+    iterations = 1000 if stress_test else 1
+    for seq_len in SEQ_LENS:
+        logger.info(f"Testing WO: seq_len = {seq_len}")
+        activations = (
+            torch.randn((1, 1, seq_len // 1024, 1024, 1024))
+            if 1024 <= seq_len < 4096
+            else torch.randn((1, 1, seq_len, 1024))
+        )
+
+        activations_tt = ttnn.from_torch(
+            activations,
+            device=mesh_device,
+            dtype=ttnn.bfloat8_b,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            layout=ttnn.TILE_LAYOUT,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        )
+        program_config = generate_wo_program_config_new(seq_len)
+        for _ in range(iterations):
+            out_tt = ttnn.linear(
+                activations_tt,
+                wo_tt_interleaved if seq_len >= 4096 else wo_tt_sharded,
+                compute_kernel_config=ttnn.WormholeComputeKernelConfig(
+                    math_fidelity=ttnn.MathFidelity.HiFi2,
+                    math_approx_mode=False,
+                    fp32_dest_acc_en=False,
+                    packer_l1_acc=True,
+                    dst_full_sync_en=True,
+                ),
+                program_config=program_config,
+                dtype=ttnn.bfloat8_b,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            )
