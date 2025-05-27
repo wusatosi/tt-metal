@@ -62,11 +62,11 @@ def generate_wo_program_config(seq_len):
     )
 
 
-def create_dram_sharded_mem_config(self, k, n):
+def create_dram_sharded_mem_config(k, n):
     """Create DRAM-sharded memory config for width-sharded tensors"""
     dram_cores = 12
     padded_size = math.ceil(n / (TILE_SIZE * dram_cores)) * (TILE_SIZE * dram_cores)
-    shard_spec = ttnn.ShardSpec(self.dram_weight_grid, (k, padded_size // dram_cores), ttnn.ShardOrientation.ROW_MAJOR)
+    shard_spec = ttnn.ShardSpec(DRAM_WEIGHT_GRID, (k, padded_size // dram_cores), ttnn.ShardOrientation.ROW_MAJOR)
     return ttnn.MemoryConfig(ttnn.TensorMemoryLayout.WIDTH_SHARDED, ttnn.BufferType.DRAM, shard_spec)
 
 

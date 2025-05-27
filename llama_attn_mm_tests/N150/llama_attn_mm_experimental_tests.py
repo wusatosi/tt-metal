@@ -48,6 +48,86 @@ def generate_kqv_projection_program_config(seq_len):
     )
 
 
+def generate_kqv_projection_program_config_new(seq_len):
+    if seq_len < 4096:
+        return generate_kqv_projection_program_config(seq_len)
+
+    # if seq_len == 4096:
+    #     # breakpoint()
+    #     return ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+    #         compute_with_storage_grid_size=(7, 9),
+    #         in0_block_w=8,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
+    #         out_subblock_h=1,  # Must be divisible by per_core_M
+    #         out_subblock_w=3,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
+    #         out_block_h=19,
+    #         out_block_w=6,
+    #         per_core_M=19,  # M / TILE_HEIGHT / Grid_Size (dynamic based on seqlen)
+    #         per_core_N=6,  # N / TILE_WIDTH / grid width
+    #         transpose_mcast=False,
+    #         fused_activation=None,
+    #         fuse_batch=False,
+    #     )
+
+    def largest_divisor_less_than_k(n, k):
+        # Start from k-1 and work down
+        for i in range(k, 0, -1):
+            if n % i == 0:
+                return i
+
+        # If no divisor is found (other than 1), return None
+        # return None
+        assert False, "No divisor fount"
+
+    def count_prime_factors(n):
+        if n <= 1:
+            return 0
+
+        count = 0
+
+        # Check divisibility by 2
+        while n % 2 == 0:
+            count += 1
+            n //= 2
+
+        # Check divisibility by odd numbers starting from 3
+        i = 3
+        while i * i <= n:
+            while n % i == 0:
+                count += 1
+                n //= i
+            i += 2
+
+        # If n > 1, it is a prime factor itself
+        if n > 1:
+            count += 1
+
+        return count
+
+    out_block_w = 6
+    per_core_N = 6
+
+    per_core_M = math.ceil(seq_len / (TILE_SIZE * 9))
+    if per_core_M > 20:
+        while count_prime_factors(per_core_M) < 4:
+            per_core_M = per_core_M + 1
+
+    out_block_h = largest_divisor_less_than_k(per_core_M, 16)
+    # breakpoint()
+    return ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+        compute_with_storage_grid_size=(7, 9),
+        in0_block_w=16,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
+        out_subblock_h=1,  # Must be divisible by per_core_M
+        out_subblock_w=3,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
+        out_block_h=out_block_h,
+        out_block_w=out_block_w,
+        per_core_M=per_core_M,  # M / TILE_HEIGHT / Grid_Size (dynamic based on seqlen)
+        per_core_N=per_core_N,  # N / TILE_WIDTH / grid width
+        transpose_mcast=False,
+        fused_activation=None,
+        fuse_batch=False,
+    )
+
+
 def generate_wo_program_config(seq_len):
     return ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
         compute_with_storage_grid_size=(7, 10),
@@ -63,20 +143,68 @@ def generate_wo_program_config(seq_len):
 
 
 def generate_wo_program_config_new(seq_len):
-    if seq_len == 128:
-        return ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-            compute_with_storage_grid_size=(7, 10),
-            in0_block_w=4,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
-            out_subblock_h=2,  # Must be divisible by per_core_M
-            out_subblock_w=4,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
-            out_block_h=8,
-            out_block_w=4,
-            per_core_M=8,  # M / TILE_HEIGHT / Grid_Size (dynamic based on seqlen)
-            per_core_N=12,  # N / TILE_WIDTH / grid width
-            transpose_mcast=False,
-            fused_activation=None,
-            fuse_batch=False,
-        )
+    if seq_len < 4096:
+        return generate_wo_program_config(seq_len)
+
+    def largest_divisor_less_than_k(n, k):
+        # Start from k-1 and work down
+        for i in range(k, 0, -1):
+            if n % i == 0:
+                return i
+
+        # If no divisor is found (other than 1), return None
+        # return None
+        assert False, "No divisor fount"
+
+    def count_prime_factors(n):
+        if n <= 1:
+            return 0
+
+        count = 0
+
+        # Check divisibility by 2
+        while n % 2 == 0:
+            count += 1
+            n //= 2
+
+        # Check divisibility by odd numbers starting from 3
+        i = 3
+        while i * i <= n:
+            while n % i == 0:
+                count += 1
+                n //= i
+            i += 2
+
+        # If n > 1, it is a prime factor itself
+        if n > 1:
+            count += 1
+
+        return count
+
+    out_block_w = 10
+    per_core_N = 10
+
+    per_core_M = math.ceil(seq_len / (TILE_SIZE * 9))
+    if per_core_M > 20:
+        while count_prime_factors(per_core_M) < 4:
+            per_core_M = per_core_M + 1
+
+    out_block_h = largest_divisor_less_than_k(per_core_M, 20)
+    return ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+        compute_with_storage_grid_size=(7, 9),
+        in0_block_w=16,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
+        out_subblock_h=3 if out_block_h % 3 == 0 else 1,  # Must be divisible by per_core_M
+        out_subblock_w=2
+        if out_block_h % 3 == 0
+        else 5,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
+        out_block_h=out_block_h,
+        out_block_w=out_block_w,
+        per_core_M=per_core_M,  # M / TILE_HEIGHT / Grid_Size (dynamic based on seqlen)
+        per_core_N=per_core_N,  # N / TILE_WIDTH / grid width
+        transpose_mcast=False,
+        fused_activation=None,
+        fuse_batch=False,
+    )
 
 
 def create_dram_sharded_mem_config(k, n):
@@ -98,7 +226,7 @@ def create_dram_sharded_mem_config(k, n):
 )
 def test_kqv_projection(device, seq_len):
     activations = (
-        torch.randn((1, seq_len // 2048, 2048, 2048)) if (seq_len >= 2048) else torch.randn((1, 1, seq_len, 2048))
+        torch.randn((1, seq_len // 2048, 2048, 2048)) if (seq_len == 2048) else torch.randn((1, 1, seq_len, 2048))
     )
     wkqv = torch.randn((1, 1, 2048, 1280))
 
@@ -116,7 +244,7 @@ def test_kqv_projection(device, seq_len):
         wkqv,
         device=device,
         dtype=ttnn.bfloat8_b,
-        memory_config=create_dram_sharded_mem_config(2048, 1536),
+        memory_config=ttnn.DRAM_MEMORY_CONFIG if seq_len >= 4096 else create_dram_sharded_mem_config(2048, 1536),
         layout=ttnn.TILE_LAYOUT,
     )
 
@@ -130,17 +258,7 @@ def test_kqv_projection(device, seq_len):
             packer_l1_acc=True,
             dst_full_sync_en=True,
         ),
-        program_config=ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-            compute_with_storage_grid_size=(7, 10),
-            in0_block_w=8,
-            out_subblock_h=1,
-            out_subblock_w=2,
-            per_core_M=8,
-            per_core_N=6,
-            transpose_mcast=False,
-            fused_activation=None,
-            fuse_batch=seq_len <= 1024,
-        ),
+        program_config=generate_kqv_projection_program_config_new(seq_len),
         dtype=ttnn.bfloat8_b,
         memory_config=ttnn.DRAM_MEMORY_CONFIG,
     )
@@ -160,7 +278,11 @@ def test_kqv_projection(device, seq_len):
     SEQ_LENS,
 )
 def test_wo(device, seq_len):
-    activations = torch.randn((1, 1, seq_len, 1024))
+    activations = (
+        torch.randn((1, 1, seq_len // 1024, 1024, 1024))
+        if 1024 <= seq_len < 4096
+        else torch.randn((1, 1, seq_len, 1024))
+    )
     wo = torch.randn((1, 1, 1024, 2048))
 
     golden = activations @ wo.squeeze()
@@ -176,8 +298,9 @@ def test_wo(device, seq_len):
         wo,
         device=device,
         dtype=ttnn.bfloat8_b,
-        memory_config=ttnn.DRAM_MEMORY_CONFIG,
-        # memory_config=create_dram_sharded_mem_config(8192 // 8, 9216 // 4),
+        memory_config=ttnn.DRAM_MEMORY_CONFIG
+        if seq_len >= 4096
+        else create_dram_sharded_mem_config(8192 // 8, 9216 // 4),
         layout=ttnn.TILE_LAYOUT,
     )
 
