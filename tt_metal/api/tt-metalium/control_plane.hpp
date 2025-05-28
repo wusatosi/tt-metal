@@ -86,6 +86,9 @@ public:
 
     void clear_fabric_context();
 
+    // Calculate number of active routing planes for each mesh
+    size_t get_num_active_routing_planes(const IntraMeshConnectivity& intra_mesh_connectivity);
+
 private:
     uint16_t routing_mode_ = 0;  // ROUTING_MODE_UNDEFINED
     // TODO: remove this from local node control plane. Can get it from the global control plane
@@ -95,6 +98,9 @@ private:
     // map[mesh_fabric_id][direction] has a vector of ethernet channels in that direction
     std::map<FabricNodeId, std::unordered_map<RoutingDirection, std::vector<chan_id_t>>>
         router_port_directions_to_physical_eth_chan_map_;
+    // map[mesh_fabric_id][direction] has the number of routing planes in that direction
+    std::map<FabricNodeId, std::unordered_map<RoutingDirection, size_t>>
+        router_port_directions_to_num_routing_planes_map_;
     // tables[mesh_fabric_id][eth_chan]
     std::map<FabricNodeId, std::vector<std::vector<chan_id_t>>>
         intra_mesh_routing_tables_;  // table that will be written to each ethernet core
@@ -119,6 +125,7 @@ private:
 
     void load_physical_chip_mapping(
         const std::map<FabricNodeId, chip_id_t>& logical_mesh_chip_id_to_physical_chip_id_mapping);
+    size_t initialize_dynamic_routing_plane_counts(const IntraMeshConnectivity& intra_mesh_connectivity);
 
     void validate_mesh_connections(mesh_id_t mesh_id) const;
     void validate_mesh_connections() const;
