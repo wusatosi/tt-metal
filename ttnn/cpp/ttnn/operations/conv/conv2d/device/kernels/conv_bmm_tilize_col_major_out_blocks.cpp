@@ -20,12 +20,44 @@
 
 #define DEBUG_PRINT 0
 
+FORCE_INLINE uint32_t get_local_cb_rd_ptr(uint32_t cb_id) {
+    LocalCBInterface& local_cb = get_local_cb_interface(cb_id);
+    return local_cb.fifo_rd_ptr;
+}
+
+FORCE_INLINE void update_local_cb_rd_ptr(uint32_t cb_id, uint32_t val) {
+    LocalCBInterface& local_cb = get_local_cb_interface(cb_id);
+    local_cb.fifo_rd_ptr = val;
+}
+
 inline void tilize_in(
-    uint32_t in_cb_id, uint32_t in_subblock_h, uint32_t in_block_w, uint32_t in_num_subblocks, uint32_t out_cb_id) {
+    uint32_t in_cb_id,
+    uint32_t in_subblock_h,
+    uint32_t in_block_w,
+    uint32_t in_num_subblocks,
+    uint32_t out_cb_id,
+    uint32_t in1_block_w_i,
+    uint32_t out_block) {
+    UNPACK((DPRINT << "in1_block_w_i " << in1_block_w_i << ", out_block " << out_block << ENDL()));
     tilize_init_short(in_cb_id, in_block_w, out_cb_id);
     for (uint32_t in_subblock = 0; in_subblock < in_num_subblocks; ++in_subblock) {
         for (uint32_t h = 0; h < in_subblock_h; ++h) {
             cb_wait_front(in_cb_id, in_block_w);
+
+            if (out_block > 0 && in1_block_w_i == 0) {
+                uint32_t read_ptr = get_local_cb_rd_ptr(in_cb_id);
+                uint32_t new_read_ptr = read_ptr + 384;
+                if (new_read_ptr == 7230) {
+                    new_read_ptr = 6078;
+                }
+
+                UNPACK((DPRINT << "new read ptr " << new_read_ptr << ENDL()));
+
+                UNPACK((update_local_cb_rd_ptr(in_cb_id, new_read_ptr)));
+
+                // UNPACK((DPRINT << "address: " << get_local_cb_interface(in_cb_id).fifo_rd_ptr << ENDL()));
+            }
+
             UNPACK((DPRINT << "address: " << get_local_cb_interface(in_cb_id).fifo_rd_ptr << ENDL()));
             // UNPACK((tt::compute::common::print_full_tile(in_cb_id, 0, false)));
             // UNPACK((tt::compute::common::print_full_tile(in_cb_id, 1, false)));
@@ -184,7 +216,14 @@ void MAIN {
 
                     reconfig_data_format_srca(in1_cb_id, in0_cb_id);
 
-                    tilize_in(in0_cb_id, in0_subblock_h, in0_block_w, in0_num_subblocks_read, tilized_in0_cb_id);
+                    tilize_in(
+                        in0_cb_id,
+                        in0_subblock_h,
+                        in0_block_w,
+                        in0_num_subblocks_read,
+                        tilized_in0_cb_id,
+                        in0_block_w_i,
+                        in0_block_h_i);
 #ifdef SPLIT_READER
                     tilize_in(
                         in0_cb_second_reader_id,
