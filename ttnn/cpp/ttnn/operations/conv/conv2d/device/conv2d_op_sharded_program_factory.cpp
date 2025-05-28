@@ -1052,6 +1052,8 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_optimized_conv_sharded_
         }
     }
 
+    tt::log_info("MCAST senders: {} \n recv:{}", mcast_sender_cores, mcast_receiver_cores);
+
     bool read_window_in_inner_loop = false;
     uint32_t num_weight_cb_tiles = weight_block_h_ntiles * weight_block_w_ntiles / conv_act_c_blocks;
     bool fully_buffer_weights = false;
@@ -1274,6 +1276,7 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_optimized_conv_sharded_
                 "ttnn/cpp/ttnn/operations/conv/conv2d/device/kernels/"
                 "reader_writer_tiled_out_1d_mcast_receiver_conv_weights_tiled_col_to_rm_blocks.cpp";
         }
+        tt::log_info("mcast sender kernel name = {}", writer_mcast_sender_kernel);
         // Local L1 to store array for reader indices
         // All convs use packed uint16 indices, so each entry can be 2B (not 4)
         CBHandle cb_for_reader_indices_id = 0;
@@ -1655,6 +1658,7 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_optimized_conv_sharded_
                     writer_rt_args.push_back(weights_mcast_receiver_semaphore_id);
                     writer_rt_args.push_back(output.buffer()->aligned_page_size());
 
+                    tt::log_info("sender runtime args = {}, core = {}", writer_rt_args, core);
                     SetRuntimeArgs(program, writer_mcast_receiver_id, core, writer_rt_args);
                 }
             } else {
@@ -1713,6 +1717,7 @@ tt::tt_metal::operation::ProgramWithCallbacks multi_core_optimized_conv_sharded_
                 writer_rt_args.push_back(weights_mcast_sender_semaphore_id);
                 writer_rt_args.push_back(weights_mcast_receiver_semaphore_id);
 
+                tt::log_info("1d sender runtime args = {}, core = {}", writer_rt_args, core);
                 SetRuntimeArgs(program, writer_mcast_sender_id, core, writer_rt_args);
             } else {
                 // receiver

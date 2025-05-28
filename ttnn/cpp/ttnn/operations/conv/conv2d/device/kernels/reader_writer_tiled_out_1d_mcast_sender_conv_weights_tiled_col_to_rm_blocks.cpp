@@ -88,6 +88,9 @@ void kernel_main() {
         reader_idx = 0;
     }
 
+    uint32_t TOTAL_WEIGHT_TILES = out_num_blocks_w * weight_block_height_num_outer * num_blocks_weight_h *
+                                  weight_block_height_ntiles * weight_block_width_ntiles;
+
 #ifndef SKIP_MCAST
     // Set ur local VALID value, to be mcasted to destinations flag address after the data has been mcasted
     volatile tt_l1_ptr uint32_t* weights_mcast_receiver_semaphore_addr_ptr =
@@ -120,6 +123,7 @@ void kernel_main() {
 #endif
 
     constexpr uint32_t weight_tile_nbytes = get_tile_size(cb_id_weight);
+    DPRINT << " --- weight tile nbytes " << weight_tile_nbytes << ENDL();
     constexpr DataFormat weight_df = get_dataformat(cb_id_weight);
     const InterleavedAddrGenFast<true> s_weight = {
         .bank_base_address = weight_addr_dram_base, .page_size = weight_tile_nbytes, .data_format = weight_df};
@@ -136,6 +140,21 @@ void kernel_main() {
         weight_next_block_stride_h / weight_block_height_num_outer;  // TODO: Pass as args
     const uint32_t act_l1_read_addr = get_read_ptr(cb_id_sharded_act);
     // DPRINT << "weight_start_tile_id=" << weight_start_tile_id << ENDL();
+
+    {
+        DeviceZoneScopedN("READING_WEIGHTS_ZONE");
+        uint32_t weight_write_l1_addr = get_write_ptr(cb_id_weight);
+        uint64_t noc_read_addr0 = get_noc_addr_from_bank_id<true>(0, 32);
+        uint64_t noc_read_addr1 = get_noc_addr_from_bank_id<true>(1, 32);
+        // uint64_t noc_read_addr2 = get_noc_addr_from_bank_id<true>(2, 32);
+        // uint64_t noc_read_addr3 = get_noc_addr_from_bank_id<true>(3, 32);
+        noc_async_read(noc_read_addr0, weight_write_l1_addr, TOTAL_WEIGHT_TILES * 1088 / 2);
+        noc_async_read(noc_read_addr1, weight_write_l1_addr, TOTAL_WEIGHT_TILES * 1088 / 2);
+        // noc_async_read(noc_read_addr2, weight_write_l1_addr, TOTAL_WEIGHT_TILES * 1088 / 4);
+        // noc_async_read(noc_read_addr3, weight_write_l1_addr, TOTAL_WEIGHT_TILES * 1088 / 4);
+        noc_async_read_barrier();
+    }
+
     for (uint32_t bw = 0; bw < out_num_blocks_w; bw++) {
         // coalesce reads along weight_size_w
         uint32_t start_reader_idx;
@@ -153,6 +172,8 @@ void kernel_main() {
 
             // TODO: Not sure how this loop works with the additional reader; we don't have a use case for this right
             // now
+            DPRINT << "out num blocks " << out_num_blocks_h
+                   << " weight block height outer: " << weight_block_height_num_outer << ENDL();
             for (uint32_t weight_tile_h_outer_i = 0; weight_tile_h_outer_i < weight_block_height_num_outer;
                  weight_tile_h_outer_i++) {
                 uint32_t weight_current_block_start_tile_id = weight_start_tile_id;
@@ -195,22 +216,31 @@ void kernel_main() {
                         uint32_t weights_start_address = weight_write_l1_addr;
                         uint32_t weights_block_size_bytes = 0;
 
-                        // loop over weight block tiles along h
-                        for (uint32_t weight_tile_h_i = 0; weight_tile_h_i < weight_block_height_ntiles;
-                             ++weight_tile_h_i) {
-                            uint32_t weight_tile_id = weight_row_start_tile_id;
-                            // loop over weight block tiles along w
-                            for (uint32_t weight_tile_w_i = 0; weight_tile_w_i < weight_block_width_ntiles;
-                                 ++weight_tile_w_i) {
-                                // DPRINT << "weight_tile_id=" << weight_tile_id << ENDL();
-                                noc_async_read_tile(weight_tile_id, s_weight, weight_write_l1_addr);
-                                weight_write_l1_addr += weight_tile_nbytes;
-                                weights_block_size_bytes += weight_tile_nbytes;
-                                weight_tile_id += 1;
-                            }  // for weight_block_w
-                            weight_row_start_tile_id += weight_stride_h;
-                        }  // for weight_block_h
-                        noc_async_read_barrier();
+                        /*
+                        {
+                            DeviceZoneScopedN("READING_WEIGHTS_ZONE");
+                            // loop over weight block tiles along h
+                            for (uint32_t weight_tile_h_i = 0; weight_tile_h_i < weight_block_height_ntiles;
+                                 ++weight_tile_h_i) {
+                                uint32_t weight_tile_id = weight_row_start_tile_id;
+                                // loop over weight block tiles along w
+                                for (uint32_t weight_tile_w_i = 0; weight_tile_w_i < weight_block_width_ntiles;
+                                     ++weight_tile_w_i) {
+                                    DPRINT << "weight_tile_id=" << weight_tile_id << " width_ntiles=" << weight_tile_w_i
+                                           << " height_ntiles=" << weight_tile_h_i
+                                           << " weight h_outpuer =" << weight_tile_h_outer_i << " x =" << x << ENDL();
+                                    noc_async_read_tile(weight_tile_id, s_weight, weight_write_l1_addr);
+                                    weight_write_l1_addr += weight_tile_nbytes;
+                                    weights_block_size_bytes += weight_tile_nbytes;
+                                    weight_tile_id += 1;
+                                }  // for weight_block_w
+                                weight_row_start_tile_id += weight_stride_h;
+                            }  // for weight_block_h
+                            //
+                            DPRINT << "weight block size = " << weights_block_size_bytes << ENDL();
+                            noc_async_read_barrier();
+                        }
+                        */
 
 #ifndef SKIP_MCAST
                         // wait until all weights mcast destinations have atomically incremented the weights

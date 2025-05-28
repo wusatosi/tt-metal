@@ -30,6 +30,8 @@ FORCE_INLINE void copy_segment_from_dram(
     uint32_t read_addr = base_read_addr + read_offset;
     uint64_t noc_read_addr = get_noc_addr_from_bank_id<true>(bank_id, read_addr);
 
+    DPRINT << bank_id << " " << base_read_addr << ENDL();
+
     noc_async_read_one_packet_set_state(noc_read_addr, copy_size);
     for (uint32_t j = 0; j < NumSticks; ++j) {
         noc_async_read_one_packet_with_state<true>(noc_read_addr, l1_write_addr);
