@@ -10,8 +10,6 @@
 #include "cpp/ttnn/operations/ccl/common/uops/ccl_command_device.hpp"
 #include "cpp/ttnn/operations/ccl/common/types/ccl_types.hpp"
 
-#include "api/ttnn/tensor/types.hpp"
-
 #include "dataflow_api.h"  // for interleaved addrgen
 #include "cpp/ttnn/operations/ccl/shared_with_host/sharded_tensor_addr_gen.hpp"
 #include "cpp/ttnn/operations/ccl/common/interpreter_backends/kernel_common/algorithms.hpp"
