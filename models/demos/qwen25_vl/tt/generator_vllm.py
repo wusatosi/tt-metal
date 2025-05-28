@@ -31,7 +31,7 @@ def get_platform_specific_optimizations(model_name):
     is_72B = "72B" in model_name
 
     optimizations = ModelOptimizations.performance if is_72B else ModelOptimizations.accuracy
-    max_seq_len = 4096 if is_72B else 131072
+    max_seq_len = 4096 if is_72B else 12288
 
     return optimizations, max_seq_len
 
@@ -189,6 +189,7 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
         return self.model_args[0].model_cache_path
 
     def allocate_kv_cache(self, *args, **kwargs):
+        self.zero_out_kv_cache()
         return self.kv_cache
 
     def zero_out_kv_cache(self):
@@ -254,9 +255,6 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
             prompt_lens=decoding_pos,
         )
 
-        # Reset KV caches to zero after warmup to avoid interference between users
-        self.zero_out_kv_cache()
-
         logits = self.prefill_forward_text(
             input_prefill_pt,
             page_table=self.page_table,
@@ -280,7 +278,7 @@ class Qwen2_5_VLForConditionalGeneration(QwenVLGenerator, SupportsMultiModal):
             start_pos=start_pos,
             page_table=self.page_table,
             kv_cache=kv_cache,
-            enable_trace=enable_trace,
+            enable_trace=False,  # [INFO] work around tracing bug
             read_from_device=read_from_device,
             argmax_on_device=False,
         )
