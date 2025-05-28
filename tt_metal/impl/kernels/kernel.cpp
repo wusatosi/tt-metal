@@ -501,8 +501,8 @@ void EthernetKernel::read_binaries(IDevice* device) {
         device->build_id(), erisc_core_type, dm_class_idx, erisc_id);
     // TODO: fix when active eth supports relo
     auto arch = MetalContext::instance().hal().get_arch();
-    auto load_type = (this->config_.eth_mode == Eth::IDLE /*or arch == tt::ARCH::BLACKHOLE*/)
-                         ? ll_api::memory::Loading::CONTIGUOUS_XIP
+    auto load_type = (this->config_.eth_mode == Eth::IDLE or arch == tt::ARCH::BLACKHOLE)
+                         ? ll_api::memory::Loading::CONTIGUOUS
                          : ll_api::memory::Loading::DISCRETE;
     ll_api::memory const& binary_mem = llrt::get_risc_binary(
         build_state.get_target_out_path(this->kernel_full_name_),

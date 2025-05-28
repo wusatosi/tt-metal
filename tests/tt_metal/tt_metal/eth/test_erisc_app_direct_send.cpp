@@ -946,4 +946,72 @@ TEST_F(CommandQueueMultiDeviceProgramFixture, ActiveEthKernelsDirectSendAllConne
     }
 }
 
+TEST_F(CommandQueueMultiDeviceProgramFixture, SendToRemoteStreamReg) {
+    using namespace CMAKE_UNIQUE_NAMESPACE;
+    const size_t handshake_addr =
+        MetalContext::instance().hal().get_dev_addr(HalProgrammableCoreType::ACTIVE_ETH, HalL1MemAddrType::UNRESERVED);
+    for (const auto& sender_device : devices_) {
+        for (const auto& receiver_device : devices_) {
+            if (sender_device->id() >= receiver_device->id()) {
+                continue;
+            }
+            for (const auto& sender_core : sender_device->get_active_ethernet_cores(true)) {
+                if (not tt::tt_metal::MetalContext::instance().get_cluster().is_ethernet_link_up(
+                        sender_device->id(), sender_core)) {
+                    std::cout << "Link down" << std::endl;
+                    continue;
+                }
+                auto [device_id, receiver_core] = sender_device->get_connected_ethernet_core(sender_core);
+                if (receiver_device->id() != device_id) {
+                    continue;
+                }
+                auto sender_translated = sender_device->ethernet_core_from_logical_core(sender_core);
+                auto receiver_translated = receiver_device->ethernet_core_from_logical_core(receiver_core);
+                if (sender_device->id() != 0 or sender_core.y != 4) {
+                    continue;
+                }
+
+                std::cout << "Sender device " << sender_device->id() << " core " << sender_core.str()
+                          << " receiver device " << receiver_device->id() << " core " << receiver_core.str()
+                          << std::endl;
+
+                tt_metal::Program sender_program = tt_metal::Program();
+
+                auto sender_eth_kernel = tt_metal::CreateKernel(
+                    sender_program,
+                    "tests/tt_metal/tt_metal/test_kernels/dataflow/unit_tests/erisc/eth_send_receive_stream_reg.cpp",
+                    sender_core,
+                    tt_metal::EthernetConfig{.noc = tt_metal::NOC::NOC_0});
+
+                tt_metal::SetRuntimeArgs(
+                    sender_program,
+                    sender_eth_kernel,
+                    sender_core,
+                    {(uint32_t)1, (uint32_t)handshake_addr, (uint32_t)0});
+
+                tt_metal::Program receiver_program = tt_metal::Program();
+
+                auto receiver_eth_kernel = tt_metal::CreateKernel(
+                    receiver_program,
+                    "tests/tt_metal/tt_metal/test_kernels/dataflow/unit_tests/erisc/eth_send_receive_stream_reg.cpp",
+                    receiver_core,
+                    tt_metal::EthernetConfig{
+                        .noc = tt_metal::NOC::NOC_0, .compile_args = {0, (uint32_t)handshake_addr, 0}});
+
+                tt_metal::SetRuntimeArgs(
+                    receiver_program,
+                    receiver_eth_kernel,
+                    receiver_core,
+                    {(uint32_t)0, (uint32_t)handshake_addr, (uint32_t)0});
+
+                this->RunProgram(sender_device, sender_program, true);
+                this->RunProgram(receiver_device, receiver_program, true);
+
+                this->FinishCommands(sender_device);
+                this->FinishCommands(receiver_device);
+            }
+        }
+    }
+}
+
 }  // namespace tt::tt_metal

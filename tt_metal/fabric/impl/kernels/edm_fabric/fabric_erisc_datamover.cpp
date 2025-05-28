@@ -256,7 +256,7 @@ FORCE_INLINE int32_t get_ptr_val() {
     return NOC_STREAM_READ_REG(stream_id, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX);
 #else
     return (
-        NOC_STREAM_READ_REG(0, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX) &
+        NOC_STREAM_READ_REG(stream_id, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX) &
         ((1 << REMOTE_DEST_WORDS_FREE_WIDTH) - 1));
 #endif
 }
@@ -265,7 +265,7 @@ FORCE_INLINE int32_t get_ptr_val(uint8_t stream_id) {
     return NOC_STREAM_READ_REG(stream_id, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX);
 #else
     return (
-        NOC_STREAM_READ_REG(0, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX) &
+        NOC_STREAM_READ_REG(stream_id, STREAM_REMOTE_DEST_BUF_SPACE_AVAILABLE_REG_INDEX) &
         ((1 << REMOTE_DEST_WORDS_FREE_WIDTH) - 1));
 #endif
 }
@@ -396,6 +396,8 @@ FORCE_INLINE void send_next_data(
 
     auto src_addr = (uint32_t)pkt_header;
     auto dest_addr = receiver_buffer_channel.get_buffer_address(remote_receiver_buffer_index);
+    WATCHER_RING_BUFFER_PUSH(dest_addr);
+    // DPRINT << "Sending eth packet to " << HEX() << (uint32_t)dest_addr << DEC() << ENDL();
     while (internal_::eth_txq_is_busy(DEFAULT_ETH_TXQ)) {
     };
     internal_::eth_send_packet_bytes_unsafe(DEFAULT_ETH_TXQ, src_addr, dest_addr, payload_size_bytes);
@@ -413,6 +415,11 @@ FORCE_INLINE void send_next_data(
     static constexpr uint32_t words_to_forward = 1;
     while (internal_::eth_txq_is_busy(DEFAULT_ETH_TXQ)) {
     };
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)to_receiver_pkts_sent_id);
+
+    // volatile tt_l1_ptr uint32_t* port_addr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(0x7CC04);
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)port_addr[0]);
+
     remote_update_ptr_val<to_receiver_pkts_sent_id>(words_to_forward);
     WATCHER_RING_BUFFER_PUSH(0xfacefeed);
 }
@@ -833,7 +840,7 @@ void run_sender_channel_step(
         can_send = can_send && !sender_backpressured_from_sender_side;
     }
     if (can_send) {
-        WATCHER_RING_BUFFER_PUSH(0xfacefeed);
+        WATCHER_RING_BUFFER_PUSH(0x34078765);
         did_something = true;
         if constexpr (enable_packet_header_recording) {
             auto packet_header = reinterpret_cast<PACKET_HEADER_TYPE*>(local_sender_channel.get_buffer_address(
@@ -927,9 +934,16 @@ void run_receiver_channel_step(
     uint8_t rx_channel_id,
     std::array<uint8_t, num_eth_ports>& port_direction_table) {
     auto& ack_counter = receiver_channel_pointers.ack_counter;
+
+    // WATCHER_RING_BUFFER_PUSH(0x31182413);
+
     auto pkts_received_since_last_check = get_ptr_val<to_receiver_pkts_sent_id>();
+
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)to_receiver_pkts_sent_id);
+    // WATCHER_RING_BUFFER_PUSH(pkts_received_since_last_check);
+
     // WATCHER_RING_BUFFER_PUSH(0xcabebabe);
-    // WATCHER_RING_BUFFER_PUSH((uint32_t)pkts_received_since_last_check);
+    // WATCHER_RING_BUFFER_PUSH((uint32_t)enable_first_level_ack);
     if constexpr (enable_first_level_ack) {
         bool pkts_received = pkts_received_since_last_check > 0;
         ASSERT(receiver_channel_pointers.completion_ptr.distance_behind(ack_counter) < RECEIVER_NUM_BUFFERS);
@@ -943,11 +957,12 @@ void run_receiver_channel_step(
         increment_local_update_ptr_val<to_receiver_pkts_sent_id>(-pkts_received_since_last_check);
         ack_counter.increment_n(pkts_received_since_last_check);
     }
-    WAYPOINT("SQRT");
+    // WAYPOINT("SQRT");
 
     auto& wr_sent_counter = receiver_channel_pointers.wr_sent_counter;
     bool unwritten_packets = !wr_sent_counter.is_caught_up_to(ack_counter);
     if (unwritten_packets) {
+        WATCHER_RING_BUFFER_PUSH(0x8BADF00D);
         auto receiver_buffer_index = wr_sent_counter.get_buffer_index();
         tt_l1_ptr PACKET_HEADER_TYPE* packet_header = const_cast<PACKET_HEADER_TYPE*>(
             local_receiver_channel.template get_packet_header<PACKET_HEADER_TYPE>(receiver_buffer_index));
@@ -1193,6 +1208,7 @@ void run_fabric_edm_main_loop(
                 channel_connection_established[0],
                 0);
             if constexpr (!dateline_connection) {
+                // WATCHER_RING_BUFFER_PUSH(0x55554323);
                 run_receiver_channel_step<
                     enable_packet_header_recording,
                     enable_fabric_counters,
@@ -1416,32 +1432,6 @@ void __attribute__((noinline)) init_local_sender_channel_worker_interfaces(
 }
 
 void kernel_main() {
-    eth_chan_to_noc_xy[0][0] = (((25 << NOC_ADDR_NODE_ID_BITS) | 20) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[0][1] = (((25 << NOC_ADDR_NODE_ID_BITS) | 21) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[0][2] = (((25 << NOC_ADDR_NODE_ID_BITS) | 22) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[0][3] = (((25 << NOC_ADDR_NODE_ID_BITS) | 23) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[0][4] = (((25 << NOC_ADDR_NODE_ID_BITS) | 24) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[0][5] = (((25 << NOC_ADDR_NODE_ID_BITS) | 25) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[0][6] = (((25 << NOC_ADDR_NODE_ID_BITS) | 26) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[0][7] = (((25 << NOC_ADDR_NODE_ID_BITS) | 27) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[0][8] = (((25 << NOC_ADDR_NODE_ID_BITS) | 28) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[0][9] = (((25 << NOC_ADDR_NODE_ID_BITS) | 29) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[0][10] = (((25 << NOC_ADDR_NODE_ID_BITS) | 30) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[0][11] = (((25 << NOC_ADDR_NODE_ID_BITS) | 31) << NOC_COORD_REG_OFFSET);
-
-    eth_chan_to_noc_xy[1][0] = (((25 << NOC_ADDR_NODE_ID_BITS) | 20) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[1][1] = (((25 << NOC_ADDR_NODE_ID_BITS) | 21) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[1][2] = (((25 << NOC_ADDR_NODE_ID_BITS) | 22) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[1][3] = (((25 << NOC_ADDR_NODE_ID_BITS) | 23) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[1][4] = (((25 << NOC_ADDR_NODE_ID_BITS) | 24) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[1][5] = (((25 << NOC_ADDR_NODE_ID_BITS) | 25) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[1][6] = (((25 << NOC_ADDR_NODE_ID_BITS) | 26) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[1][7] = (((25 << NOC_ADDR_NODE_ID_BITS) | 27) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[1][8] = (((25 << NOC_ADDR_NODE_ID_BITS) | 28) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[1][9] = (((25 << NOC_ADDR_NODE_ID_BITS) | 29) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[1][10] = (((25 << NOC_ADDR_NODE_ID_BITS) | 30) << NOC_COORD_REG_OFFSET);
-    eth_chan_to_noc_xy[1][11] = (((25 << NOC_ADDR_NODE_ID_BITS) | 31) << NOC_COORD_REG_OFFSET);
-
     eth_txq_reg_write(DEFAULT_ETH_TXQ, ETH_TXQ_DATA_PACKET_ACCEPT_AHEAD, DEFAULT_NUM_ETH_TXQ_DATA_PACKET_ACCEPT_AHEAD);
     //
     // COMMON CT ARGS (not specific to sender or receiver)

@@ -10,9 +10,7 @@
 // (((25 << NOC_ADDR_NODE_ID_BITS) | 24) << NOC_COORD_REG_OFFSET),
 // ((0x19 << 0x6) | 0x18)) << 0
 
-uint16_t eth_chan_to_noc_xy[2][12] __attribute__((used));
-
-/*= {
+uint16_t eth_chan_to_noc_xy[2][12] __attribute__((used)) = {
     {
         // noc=0
         (((25 << NOC_ADDR_NODE_ID_BITS) | 20) << NOC_COORD_REG_OFFSET),
@@ -44,4 +42,3 @@ uint16_t eth_chan_to_noc_xy[2][12] __attribute__((used));
         (((25 << NOC_ADDR_NODE_ID_BITS) | 31) << NOC_COORD_REG_OFFSET),
     },
 };
-*/
