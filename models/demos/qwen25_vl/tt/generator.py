@@ -197,6 +197,12 @@ class Generator:
 
             logits = self.model.process_output_prefill(tt_logits, last_token_idx=(last_token_idx % 32))
 
+            # deallocate device tensors that are not needed by decode
+            # [INFO] logits is a torch tensor
+            ttnn.deallocate(tt_logits)
+            ttnn.deallocate(prefill_input)
+            ttnn.deallocate(page_table_tt)
+
             return logits
 
     def _decode_forward_no_trace_text(

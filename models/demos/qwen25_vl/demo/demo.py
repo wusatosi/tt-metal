@@ -542,6 +542,13 @@ def test_demo(
 
         profiler.end(f"inference_decode", iteration=batch_idx)
 
+        # when doing repeating batches, set kv-caches to zero, to avoid context leaking
+        if batch_idx != 0:
+            for layer in model.layers:
+                k_cache, v_cache = layer.attention.layer_past
+                k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
+                v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
+
         # release the trace to allow the next batch to capture a new trace
         if hasattr(generator._ttt_generator, "trace_id_text"):
             logger.info(f"trace_id_text={generator._ttt_generator.trace_id_text} released")

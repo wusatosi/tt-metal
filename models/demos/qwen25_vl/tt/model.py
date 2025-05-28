@@ -282,12 +282,20 @@ class DropInVisionTransformer(torch.nn.Module):
                 rot_mats=rot_mats,  # Use rot_mats generated in this forward pass
             )
 
+            # deallocate device tensors that are not needed by decode
+            ttnn.deallocate(tt_input)
+            for member in rot_mats:
+                ttnn.deallocate(member)
+
             # --- Postprocessing ---
             # 1. Convert TT output back to torch tensor
             mesh_composer = ttnn.ConcatMesh2dToTensor(
                 self.model_args.mesh_device, dims=(1, 3), mesh_shape=self.model_args.cluster_shape
             )
             tt_output_torch = ttnn.to_torch(tt_out, mesh_composer=mesh_composer)
+
+            # deallocate TT output
+            ttnn.deallocate(tt_out)
 
             # 2. Extract the relevant output part and adjust shape (matching test logic)
             out_hidden_size = self.model_args.hf_config.vision_config.out_hidden_size
