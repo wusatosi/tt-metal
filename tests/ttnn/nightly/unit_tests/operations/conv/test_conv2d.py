@@ -63,7 +63,7 @@ def run_conv(
     device,
     torch_tensor_map,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -116,9 +116,9 @@ def run_conv(
     else:
         total_batch_size = batch_size
 
-    if output_layout == ttnn.ROW_MAJOR_LAYOUT and activations_dtype == ttnn.bfloat8_b:
+    if output_layout == ttnn.ROW_MAJOR_LAYOUT and output_dtype == ttnn.bfloat8_b:
         pytest.skip("Row major layout not compatible with bfloat8_b")
-    if slice_config and activations_dtype != ttnn.bfloat16:
+    if slice_config and output_dtype != ttnn.bfloat16:
         pytest.xfail("Conv2d with DRAM Slicing only supports BFloat16 for activation dtype")
 
     if hasattr(padding, "__len__"):
@@ -141,7 +141,7 @@ def run_conv(
         pad_right = padding
 
     if input_dtype is None:
-        input_dtype = activations_dtype
+        input_dtype = output_dtype
     torch.manual_seed(0)
     conv_input_shape = (total_batch_size, input_channels, input_height, input_width)
     conv_weight_shape = (output_channels, input_channels // groups, filter_height, filter_width)
@@ -193,7 +193,7 @@ def run_conv(
     )
 
     conv_config = ttnn.Conv2dConfig(
-        dtype=activations_dtype,
+        dtype=output_dtype,
         weights_dtype=weights_dtype,
         shard_layout=shard_layout if not auto_shard else None,
         deallocate_activation=deallocate_activation,
@@ -284,7 +284,7 @@ def run_conv(
         pcc = 0.985
         if input_channels * filter_height * filter_width > 10000:
             pcc = 0.97
-    elif math_fidelity == ttnn.MathFidelity.LoFi and activations_dtype == ttnn.bfloat8_b:
+    elif math_fidelity == ttnn.MathFidelity.LoFi and output_dtype == ttnn.bfloat8_b:
         pcc = 0.996
     else:
         pcc = 0.997
@@ -314,7 +314,7 @@ def run_conv_with_split(
     device,
     torch_tensor_map,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -399,7 +399,7 @@ def run_conv_with_split(
         split_weight_tensors[i] = torch.split(split_weight_tensors[i], split_input_channels, 1)
 
     conv_config = ttnn.Conv2dConfig(
-        dtype=activations_dtype,
+        dtype=output_dtype,
         weights_dtype=weights_dtype,
         shard_layout=shard_layout if not auto_shard else None,
     )
@@ -426,9 +426,9 @@ def run_conv_with_split(
             torch_input_tensor = torch.permute(split_input_tensors[i], (0, 2, 3, 1))
             tt_input_tensor = ttnn.from_torch(
                 torch_input_tensor,
-                activations_dtype,
+                output_dtype,
                 layout=input_layout,
-                device=device if activations_dtype == ttnn.bfloat8_b else None,
+                device=device if output_dtype == ttnn.bfloat8_b else None,
             )
             [tt_output_tensor_on_device, [out_height, out_width]] = ttnn.conv2d(
                 input_tensor=tt_input_tensor,
@@ -488,7 +488,7 @@ def run_conv_with_split(
     [ttnn.bfloat8_b, ttnn.bfloat16],
 )
 @pytest.mark.parametrize(
-    "activations_dtype",
+    "output_dtype",
     [ttnn.bfloat8_b, ttnn.bfloat16],
 )
 @pytest.mark.parametrize(
@@ -504,7 +504,7 @@ def test_conv_features_multi_device(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -519,17 +519,17 @@ def test_conv_features_multi_device(
     output_layout,
     groups,
 ):
-    if output_layout == ttnn.ROW_MAJOR_LAYOUT and activations_dtype == ttnn.bfloat8_b:
+    if output_layout == ttnn.ROW_MAJOR_LAYOUT and output_dtype == ttnn.bfloat8_b:
         pytest.skip("Row major layout not compatible with bfloat8_b")
 
-    if activations_dtype == ttnn.bfloat8_b and shard_layout == WS:
+    if output_dtype == ttnn.bfloat8_b and shard_layout == WS:
         pytest.skip("Skipping until Issue: #21209 is fixed")
 
     run_conv(
         mesh_device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         output_channels,
@@ -549,7 +549,7 @@ def test_conv_features_multi_device(
         weight_mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
         output_mesh_composer=ttnn.ConcatMeshToTensor(mesh_device, dim=0),
         groups=groups,
-        input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+        input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
     )
 
 
@@ -569,7 +569,7 @@ def test_conv_features_multi_device(
     [ttnn.bfloat16],
 )
 @pytest.mark.parametrize(
-    "activations_dtype, output_layout",
+    "output_dtype, output_layout",
     [
         [ttnn.bfloat16, ttnn.ROW_MAJOR_LAYOUT],
         [ttnn.bfloat8_b, ttnn.TILE_LAYOUT],
@@ -596,7 +596,7 @@ def test_conv_activation(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -613,10 +613,10 @@ def test_conv_activation(
     has_bias,
     activation,
 ):
-    if output_layout == ttnn.ROW_MAJOR_LAYOUT and activations_dtype == ttnn.bfloat8_b:
+    if output_layout == ttnn.ROW_MAJOR_LAYOUT and output_dtype == ttnn.bfloat8_b:
         pytest.skip("Row major layout not compatible with bfloat8_b")
 
-    if activations_dtype == ttnn.bfloat8_b and shard_layout == HS and activation == "sqrt":
+    if output_dtype == ttnn.bfloat8_b and shard_layout == HS and activation == "sqrt":
         pytest.skip(
             "Skipping sqrt activation for bfloat8_b and height sharded due to PCC error that occurs due to how sqrt over negative numbers is handled in bfloat8_b vs bfloat16"
         )
@@ -625,7 +625,7 @@ def test_conv_activation(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         output_channels,
@@ -644,7 +644,7 @@ def test_conv_activation(
         fp32_accum=fp32_accum,
         packer_l1_acc=False,
         activation=activation,
-        input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+        input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
     )
 
 
@@ -654,7 +654,7 @@ SliceWidth = ttnn.Conv2dSliceWidth
 
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 32768}], indirect=True)
 @pytest.mark.parametrize(
-    "input_channels, output_channels, input_height, input_width, slice_type, num_slices, weights_dtype, activations_dtype, kernel, stride, padding, dilation, act_block_h_override,  math_fidelity",
+    "input_channels, output_channels, input_height, input_width, slice_type, num_slices, weights_dtype, output_dtype, kernel, stride, padding, dilation, act_block_h_override,  math_fidelity",
     # fmt: off
     (
         (10,    64,  4096,   512,  SliceHeight,   4,  ttnn.bfloat8_b, ttnn.bfloat16, (4, 4), (2, 2), (1, 1), (1, 1),  32 * 8, ttnn.MathFidelity.LoFi  ),
@@ -692,7 +692,7 @@ def test_conv_dram(
     input_width,
     has_bias,
     weights_dtype,
-    activations_dtype,
+    output_dtype,
     slice_type,
     num_slices,
     kernel,
@@ -715,7 +715,7 @@ def test_conv_dram(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         output_channels,
@@ -772,7 +772,7 @@ def test_conv_dram(
     [ttnn.bfloat16],
 )
 @pytest.mark.parametrize(
-    "activations_dtype",
+    "output_dtype",
     [ttnn.bfloat16, ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize("auto_shard", [True, False], ids=["auto_shard", "no_auto_shard"])
@@ -794,7 +794,7 @@ def test_conv_ws(
     stride,
     has_bias,
     weights_dtype,
-    activations_dtype,
+    output_dtype,
     auto_shard,
     tilized_input,
 ):
@@ -849,7 +849,7 @@ def test_conv_ws(
             pytest.skip("Test is not supported on n300 (8,7) grid due to #13541")
 
     conv_config = ttnn.Conv2dConfig(
-        dtype=activations_dtype,
+        dtype=output_dtype,
         weights_dtype=weights_dtype,
         shard_layout=ttnn.TensorMemoryLayout.WIDTH_SHARDED if not auto_shard else None,
         deallocate_activation=deallocate_activation,
@@ -935,7 +935,7 @@ def test_conv_ws(
     [ttnn.bfloat16],
 )
 @pytest.mark.parametrize(
-    "activations_dtype",
+    "output_dtype",
     [ttnn.bfloat16],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
@@ -946,7 +946,7 @@ def test_conv_for_segformer_512x512(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -969,7 +969,7 @@ def test_conv_for_segformer_512x512(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         output_channels,
@@ -1046,7 +1046,7 @@ def test_conv_for_segformer_512x512(
     [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize(
-    "activations_dtype",
+    "output_dtype",
     [ttnn.bfloat16, ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
@@ -1058,7 +1058,7 @@ def test_resnet50_conv_wh(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -1084,7 +1084,7 @@ def test_resnet50_conv_wh(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         output_channels,
@@ -1102,7 +1102,7 @@ def test_resnet50_conv_wh(
         has_bias=has_bias,
         auto_shard=auto_shard,
         shard_layout=shard_layout,
-        input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+        input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
     )
 
 
@@ -1205,7 +1205,7 @@ def test_conv_mem_config_wh(
     [ttnn.float32, ttnn.bfloat16],
 )
 @pytest.mark.parametrize(
-    "activations_dtype",
+    "output_dtype",
     [ttnn.float32, ttnn.bfloat16],
 )
 @pytest.mark.parametrize(
@@ -1224,7 +1224,7 @@ def test_resnet50_conv_wh_fp32(
     use_program_cache,
     math_fidelity,
     fp32_accum,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -1242,11 +1242,11 @@ def test_resnet50_conv_wh_fp32(
     packer_l1_acc,
     auto_shard,
 ):
-    if batch_size > 8 and (activations_dtype != ttnn.bfloat8_b or weights_dtype != ttnn.bfloat8_b):
+    if batch_size > 8 and (output_dtype != ttnn.bfloat8_b or weights_dtype != ttnn.bfloat8_b):
         pytest.skip("Batch > 8 must be run fully bfp8")
 
     if (
-        activations_dtype == ttnn.bfloat16
+        output_dtype == ttnn.bfloat16
         and batch_size == 20
         and (
             output_channels == 64
@@ -1262,7 +1262,7 @@ def test_resnet50_conv_wh_fp32(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         output_channels,
@@ -1340,7 +1340,7 @@ def test_resnet50_conv_wh_fp32(
     [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize(
-    "activations_dtype",
+    "output_dtype",
     [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
@@ -1352,7 +1352,7 @@ def test_sd_conv(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -1377,7 +1377,7 @@ def test_sd_conv(
             device,
             torch_tensor_map,
             math_fidelity,
-            activations_dtype,
+            output_dtype,
             weights_dtype,
             batch_size,
             output_channels,
@@ -1392,14 +1392,14 @@ def test_sd_conv(
             config_override,
             shard_layout=shard_layout,
             split_input_channels_factor=3 if input_channels == 1920 else 2,
-            input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+            input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
         )
     else:
         run_conv(
             device,
             torch_tensor_map,
             math_fidelity,
-            activations_dtype,
+            output_dtype,
             weights_dtype,
             batch_size,
             output_channels,
@@ -1414,7 +1414,7 @@ def test_sd_conv(
             config_override,
             shard_layout=shard_layout,
             auto_shard=auto_shard,
-            input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+            input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
         )
 
 
@@ -1476,7 +1476,7 @@ def test_sd_conv(
     [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize(
-    "activations_dtype, output_layout",
+    "output_dtype, output_layout",
     [(ttnn.bfloat16, ttnn.ROW_MAJOR_LAYOUT), (ttnn.bfloat8_b, ttnn.TILE_LAYOUT)],
 )
 @pytest.mark.parametrize(
@@ -1491,7 +1491,7 @@ def test_sd_conv_wh(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     fp32_accum,
     batch_size,
@@ -1514,12 +1514,12 @@ def test_sd_conv_wh(
 
     # Skip test cases raising OOM, but do not affect the SD e2e test
     if (
-        (input_channels == 320 and config_override == None and activations_dtype == ttnn.bfloat16)
+        (input_channels == 320 and config_override == None and output_dtype == ttnn.bfloat16)
         or (input_channels == 960 and config_override == None and fp32_accum == True)
         or (
             output_channels == 1280
             and input_height == 32
-            and activations_dtype == ttnn.bfloat16
+            and output_dtype == ttnn.bfloat16
             and weights_dtype == ttnn.bfloat16
         )
     ):
@@ -1530,7 +1530,7 @@ def test_sd_conv_wh(
             device,
             torch_tensor_map,
             math_fidelity,
-            activations_dtype,
+            output_dtype,
             weights_dtype,
             batch_size,
             output_channels,
@@ -1547,14 +1547,14 @@ def test_sd_conv_wh(
             split_input_channels_factor=3 if input_channels == 1920 else 2,
             fp32_accum=fp32_accum,
             packer_l1_acc=True,
-            input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+            input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
         )
     else:
         run_conv(
             device,
             torch_tensor_map,
             math_fidelity,
-            activations_dtype,
+            output_dtype,
             weights_dtype,
             batch_size,
             output_channels,
@@ -1571,7 +1571,7 @@ def test_sd_conv_wh(
             fp32_accum=fp32_accum,
             packer_l1_acc=True,
             output_layout=output_layout,
-            input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+            input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
         )
 
 
@@ -1638,7 +1638,7 @@ def test_sd14_vae_conv(
             device=device,
             torch_tensor_map=torch_tensor_map,
             math_fidelity=ttnn.MathFidelity.LoFi,
-            activations_dtype=dtype,
+            output_dtype=dtype,
             weights_dtype=dtype,
             batch_size=batch,
             output_channels=output_channels,
@@ -1688,7 +1688,7 @@ def test_sd14_vae_conv(
     [ttnn.bfloat8_b, ttnn.bfloat16],
 )
 @pytest.mark.parametrize(
-    "activations_dtype, output_layout",
+    "output_dtype, output_layout",
     [(ttnn.bfloat16, ttnn.ROW_MAJOR_LAYOUT), (ttnn.bfloat8_b, ttnn.TILE_LAYOUT)],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
@@ -1698,7 +1698,7 @@ def test_unet_conv_wh(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -1718,7 +1718,7 @@ def test_unet_conv_wh(
 ):
     if (device.compute_with_storage_grid_size().x, device.compute_with_storage_grid_size().y) == (8, 7):
         pytest.skip("Test is not supported on n300 (8,7) grid")
-    if output_layout == ttnn.ROW_MAJOR_LAYOUT and activations_dtype == ttnn.bfloat8_b:
+    if output_layout == ttnn.ROW_MAJOR_LAYOUT and output_dtype == ttnn.bfloat8_b:
         pytest.skip("Row major layout not compatible with bfloat8_b")
     if output_layout == ttnn.ROW_MAJOR_LAYOUT and input_height >= 1056:
         pytest.skip("OOM")
@@ -1726,7 +1726,7 @@ def test_unet_conv_wh(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         output_channels,
@@ -1742,7 +1742,7 @@ def test_unet_conv_wh(
         shard_layout=shard_layout,
         output_layout=output_layout,
         auto_shard=auto_shard,
-        input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+        input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
     )
 
 
@@ -1781,7 +1781,7 @@ def test_unet_conv_wh(
     [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize(
-    "activations_dtype",
+    "output_dtype",
     [ttnn.bfloat16],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
@@ -1792,7 +1792,7 @@ def test_unet_conv_groups_2_wh(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -1813,7 +1813,7 @@ def test_unet_conv_groups_2_wh(
 ):
     if (device.compute_with_storage_grid_size().x, device.compute_with_storage_grid_size().y) == (8, 7):
         pytest.skip("Test is not supported on n300 (8,7) grid")
-    if output_layout == ttnn.ROW_MAJOR_LAYOUT and activations_dtype == ttnn.bfloat8_b:
+    if output_layout == ttnn.ROW_MAJOR_LAYOUT and output_dtype == ttnn.bfloat8_b:
         pytest.skip("Row major layout not compatible with bfloat8_b")
     if output_layout == ttnn.ROW_MAJOR_LAYOUT and input_height >= 1056:
         pytest.skip("OOM")
@@ -1821,7 +1821,7 @@ def test_unet_conv_groups_2_wh(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         groups * output_channels,
@@ -1838,7 +1838,7 @@ def test_unet_conv_groups_2_wh(
         output_layout=output_layout,
         auto_shard=auto_shard,
         groups=groups,
-        input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+        input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
     )
 
 
@@ -1878,7 +1878,7 @@ def test_unet_conv_groups_2_wh(
     [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize(
-    "activations_dtype",
+    "output_dtype",
     [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
@@ -1888,7 +1888,7 @@ def test_unet_conv_groups_4_6_wh(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -1909,7 +1909,7 @@ def test_unet_conv_groups_4_6_wh(
 ):
     if (device.compute_with_storage_grid_size().x, device.compute_with_storage_grid_size().y) == (8, 7):
         pytest.skip("Test is not supported on n300 (8,7) grid")
-    if output_layout == ttnn.ROW_MAJOR_LAYOUT and activations_dtype == ttnn.bfloat8_b:
+    if output_layout == ttnn.ROW_MAJOR_LAYOUT and output_dtype == ttnn.bfloat8_b:
         pytest.skip("Row major layout not compatible with bfloat8_b")
     if output_layout == ttnn.ROW_MAJOR_LAYOUT and input_height >= 1056:
         pytest.skip("OOM")
@@ -1919,7 +1919,7 @@ def test_unet_conv_groups_4_6_wh(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         groups * output_channels,
@@ -1933,7 +1933,7 @@ def test_unet_conv_groups_4_6_wh(
         (pad_h, pad_w),
         config_override,
         shard_layout=shard_layout,
-        input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else ttnn.ROW_MAJOR_LAYOUT,
+        input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else ttnn.ROW_MAJOR_LAYOUT,
         output_layout=output_layout,
         groups=groups,
         in_place=in_place,
@@ -1975,7 +1975,7 @@ def test_unet_conv_groups_4_6_wh(
     [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize(
-    "activations_dtype",
+    "output_dtype",
     [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
@@ -1986,7 +1986,7 @@ def test_unet_conv_groups_8_wh(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -2007,7 +2007,7 @@ def test_unet_conv_groups_8_wh(
 ):
     if (device.compute_with_storage_grid_size().x, device.compute_with_storage_grid_size().y) == (8, 7):
         pytest.skip("Test is not supported on n300 (8,7) grid")
-    if output_layout == ttnn.ROW_MAJOR_LAYOUT and activations_dtype == ttnn.bfloat8_b:
+    if output_layout == ttnn.ROW_MAJOR_LAYOUT and output_dtype == ttnn.bfloat8_b:
         pytest.skip("Row major layout not compatible with bfloat8_b")
     if output_layout == ttnn.ROW_MAJOR_LAYOUT and input_height >= 1056:
         pytest.skip("OOM")
@@ -2015,7 +2015,7 @@ def test_unet_conv_groups_8_wh(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         groups * output_channels,
@@ -2032,7 +2032,7 @@ def test_unet_conv_groups_8_wh(
         output_layout=output_layout,
         auto_shard=auto_shard,
         groups=groups,
-        input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+        input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
     )
 
 
@@ -2071,14 +2071,14 @@ def test_halo_reshard_conv(
     auto_shard,
 ):
     math_fidelity = ttnn.MathFidelity.HiFi4
-    activations_dtype = ttnn.bfloat16
+    output_dtype = ttnn.bfloat16
     weights_dtype = ttnn.bfloat8_b
 
     run_conv(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         output_channels,
@@ -2134,14 +2134,14 @@ def test_conv_core_nondivis(
         pytest.xfail()
 
     math_fidelity = ttnn.MathFidelity.HiFi4
-    activations_dtype = ttnn.bfloat16
+    output_dtype = ttnn.bfloat16
     weights_dtype = ttnn.bfloat8_b
 
     run_conv(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         output_channels,
@@ -2186,7 +2186,7 @@ def test_conv_core_nondivis(
     [ttnn.bfloat16],
 )
 @pytest.mark.parametrize(
-    "activations_dtype",
+    "output_dtype",
     [ttnn.bfloat16],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
@@ -2207,7 +2207,7 @@ def test_conv_dilation(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -2229,7 +2229,7 @@ def test_conv_dilation(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         output_channels,
@@ -2249,7 +2249,7 @@ def test_conv_dilation(
         has_bias=False,
         auto_shard=auto_shard,
         enable_split_reader=split_reader,
-        input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+        input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
     )
 
 
@@ -2291,7 +2291,7 @@ def test_conv_dilation(
     [ttnn.bfloat16],
 )
 @pytest.mark.parametrize(
-    "activations_dtype",
+    "output_dtype",
     [ttnn.bfloat8_b, ttnn.bfloat16],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
@@ -2302,7 +2302,7 @@ def test_conv_groups(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -2325,7 +2325,7 @@ def test_conv_groups(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         output_channels,
@@ -2342,7 +2342,7 @@ def test_conv_groups(
         groups=groups,
         output_layout=output_layout,
         auto_shard=auto_shard,
-        input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+        input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
     )
 
 
@@ -2405,7 +2405,7 @@ def test_conv_groups(
     [ttnn.bfloat16],
 )
 @pytest.mark.parametrize(
-    "activations_dtype",
+    "output_dtype",
     [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
@@ -2416,7 +2416,7 @@ def test_yolov4_conv_groups_larger_than_one(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -2435,7 +2435,7 @@ def test_yolov4_conv_groups_larger_than_one(
     output_layout,
     auto_shard,
 ):
-    if output_layout == ttnn.ROW_MAJOR_LAYOUT and activations_dtype == ttnn.bfloat8_b:
+    if output_layout == ttnn.ROW_MAJOR_LAYOUT and output_dtype == ttnn.bfloat8_b:
         pytest.skip("Row major layout not compatible with bfloat8_b")
     if output_layout == ttnn.ROW_MAJOR_LAYOUT and input_height >= 1056:
         pytest.skip("OOM")
@@ -2443,7 +2443,7 @@ def test_yolov4_conv_groups_larger_than_one(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         output_channels,
@@ -2460,7 +2460,7 @@ def test_yolov4_conv_groups_larger_than_one(
         groups=groups,
         output_layout=output_layout,
         auto_shard=auto_shard,
-        input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+        input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
     )
 
 
@@ -2478,7 +2478,7 @@ def test_yolov4_conv_groups_larger_than_one(
     [1, 8],
 )
 @pytest.mark.parametrize(
-    "activations_dtype",
+    "output_dtype",
     [ttnn.bfloat8_b, ttnn.bfloat16],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
@@ -2489,7 +2489,7 @@ def test_swin_s_conv(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -2516,7 +2516,7 @@ def test_swin_s_conv(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         output_channels,
@@ -2533,7 +2533,7 @@ def test_swin_s_conv(
         groups=groups,
         output_layout=output_layout,
         auto_shard=auto_shard,
-        input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+        input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
     )
 
 
@@ -2553,7 +2553,7 @@ def test_swin_s_conv(
     [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize(
-    "activations_dtype",
+    "output_dtype",
     [ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
@@ -2563,7 +2563,7 @@ def test_model_k_256x256(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -2584,7 +2584,7 @@ def test_model_k_256x256(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         output_channels,
@@ -2601,7 +2601,7 @@ def test_model_k_256x256(
         dilation_h=dilation,
         dilation_w=dilation,
         auto_shard=auto_shard,
-        input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+        input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
     )
 
 
@@ -2632,7 +2632,7 @@ def test_model_k_256x256(
     [ttnn.bfloat16],
 )
 @pytest.mark.parametrize(
-    "activations_dtype",
+    "output_dtype",
     [ttnn.bfloat16, ttnn.bfloat8_b],
 )
 @pytest.mark.parametrize("math_fidelity", [ttnn.MathFidelity.LoFi])
@@ -2642,7 +2642,7 @@ def test_conv_for_vanilla_unet(
     torch_tensor_map,
     use_program_cache,
     math_fidelity,
-    activations_dtype,
+    output_dtype,
     weights_dtype,
     batch_size,
     output_channels,
@@ -2665,7 +2665,7 @@ def test_conv_for_vanilla_unet(
         device,
         torch_tensor_map,
         math_fidelity,
-        activations_dtype,
+        output_dtype,
         weights_dtype,
         batch_size,
         output_channels,
@@ -2682,7 +2682,7 @@ def test_conv_for_vanilla_unet(
         groups=1,
         output_layout=output_layout,
         has_bias=False,
-        input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+        input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
     )
 
 
@@ -2978,7 +2978,7 @@ def test_block_sharding_relu_act_block_h(
 
 # fmt: off
 @pytest.mark.parametrize(
-    "batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation, auto_shard, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, enable_split_reader",
+    "batch, input_channels, output_channels, input_height, input_width, weights_dtype, output_dtype, groups, kernel, stride, padding, dilation, auto_shard, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, enable_split_reader",
     (
         # model strawberry
         (1, 10,   64, 1024, 128, ttnn.bfloat8_b, ttnn.bfloat8_b, 1, (4, 4), (2, 2), (1, 1), (1, 1), True, 0, 1, True, ttnn.MathFidelity.LoFi, False, False, False),
@@ -3009,7 +3009,7 @@ def test_conv2d_model_fruit(
     input_height,
     input_width,
     weights_dtype,
-    activations_dtype,
+    output_dtype,
     groups,
     kernel,
     stride,
@@ -3032,7 +3032,7 @@ def test_conv2d_model_fruit(
         device=device,
         torch_tensor_map=torch_tensor_map,
         math_fidelity=math_fidelity,
-        activations_dtype=activations_dtype,
+        output_dtype=output_dtype,
         weights_dtype=weights_dtype,
         batch_size=batch,
         output_channels=output_channels,
@@ -3060,13 +3060,13 @@ def test_conv2d_model_fruit(
         weight_mesh_mapper=None,
         output_mesh_composer=None,
         enable_split_reader=enable_split_reader,
-        input_layout= ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+        input_layout= ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
     )
 
 
 
 @pytest.mark.parametrize(
-    "batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation, auto_shard, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, enable_split_reader, split_input_channels_factor, split_output_channels_factor",
+    "batch, input_channels, output_channels, input_height, input_width, weights_dtype, output_dtype, groups, kernel, stride, padding, dilation, auto_shard, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, enable_split_reader, split_input_channels_factor, split_output_channels_factor",
     (
         # 1024x1024 resolution
 
@@ -3122,7 +3122,7 @@ def test_conv2d_sdxl(
     input_height,
     input_width,
     weights_dtype,
-    activations_dtype,
+    output_dtype,
     groups,
     kernel,
     stride,
@@ -3149,7 +3149,7 @@ def test_conv2d_sdxl(
             device,
             torch_tensor_map,
             math_fidelity,
-            activations_dtype,
+            output_dtype,
             weights_dtype,
             batch,
             output_channels,
@@ -3168,14 +3168,14 @@ def test_conv2d_sdxl(
             fp32_accum=fp32_accum,
             packer_l1_acc=packer_l1_acc,
             auto_shard=auto_shard,
-            input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+            input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
         )
     else:
         run_conv(
             device=device,
             torch_tensor_map=torch_tensor_map,
             math_fidelity=math_fidelity,
-            activations_dtype=activations_dtype,
+            output_dtype=output_dtype,
             weights_dtype=weights_dtype,
             batch_size=batch,
             output_channels=output_channels,
@@ -3203,12 +3203,12 @@ def test_conv2d_sdxl(
             weight_mesh_mapper=None,
             output_mesh_composer=None,
             enable_split_reader=enable_split_reader,
-            input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+            input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
         )
 
 
 @pytest.mark.parametrize(
-    "batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation, auto_shard, deallocate_activation, split_factor_input_channels, split_factor_output_channels, slice_type, num_slices",
+    "batch, input_channels, output_channels, input_height, input_width, weights_dtype, output_dtype, groups, kernel, stride, padding, dilation, auto_shard, deallocate_activation, split_factor_input_channels, split_factor_output_channels, slice_type, num_slices",
     (
         # 1024x1024 resolution
 
@@ -3248,7 +3248,7 @@ def test_conv2d_vae_sdxl(
     input_height,
     input_width,
     weights_dtype,
-    activations_dtype,
+    output_dtype,
     groups,
     kernel,
     stride,
@@ -3276,7 +3276,7 @@ def test_conv2d_vae_sdxl(
             device,
             torch_tensor_map,
             ttnn.MathFidelity.LoFi,
-            activations_dtype,
+            output_dtype,
             weights_dtype,
             batch,
             output_channels,
@@ -3294,14 +3294,14 @@ def test_conv2d_vae_sdxl(
             split_output_channels_factor=split_factor_output_channels,
             auto_shard=True,
             pcc=0.97,
-            input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+            input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
         )
     else:
         run_conv(
             device=device,
             torch_tensor_map=torch_tensor_map,
             math_fidelity=ttnn.MathFidelity.LoFi,
-            activations_dtype=activations_dtype,
+            output_dtype=output_dtype,
             weights_dtype=weights_dtype,
             batch_size=batch,
             output_channels=output_channels,
@@ -3330,12 +3330,12 @@ def test_conv2d_vae_sdxl(
             output_mesh_composer=None,
             enable_split_reader=False,
             slice_config=slice_config,
-            input_layout=ttnn.TILE_LAYOUT if activations_dtype == ttnn.bfloat8_b else None,
+            input_layout=ttnn.TILE_LAYOUT if output_dtype == ttnn.bfloat8_b else None,
         )
 
 
 @pytest.mark.parametrize(
-    "batch, input_channels, output_channels, input_height, input_width, weights_dtype, activations_dtype, groups, kernel, stride, padding, dilation, auto_shard, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, enable_split_reader",
+    "batch, input_channels, output_channels, input_height, input_width, weights_dtype, output_dtype, groups, kernel, stride, padding, dilation, auto_shard, act_block_h_override, act_block_w_div, deallocate_activation, math_fidelity, fp32_accum, packer_l1_acc, enable_split_reader",
     (
         (1, (1920, 1280, 1920), 1280, 32, 32, ttnn.bfloat8_b, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, 0, 1, False, ttnn.MathFidelity.LoFi, False, False, False),
     ),
@@ -3351,7 +3351,7 @@ def test_conv2d_ws_program_cache(
     input_height,
     input_width,
     weights_dtype,
-    activations_dtype,
+    output_dtype,
     groups,
     kernel,
     stride,
@@ -3377,7 +3377,7 @@ def test_conv2d_ws_program_cache(
             device=device,
             torch_tensor_map=torch_tensor_map,
             math_fidelity=math_fidelity,
-            activations_dtype=activations_dtype,
+            output_dtype=output_dtype,
             weights_dtype=weights_dtype,
             batch_size=batch,
             output_channels=output_channels,
@@ -3579,7 +3579,7 @@ def test_conv2d_with_fold(
         device=device,
         torch_tensor_map=torch_tensor_map,
         math_fidelity=ttnn.MathFidelity.LoFi,
-        activations_dtype=ttnn.bfloat16,
+        output_dtype=ttnn.bfloat16,
         weights_dtype=ttnn.bfloat16,
         batch_size=batch_size,
         output_channels=output_channels,
