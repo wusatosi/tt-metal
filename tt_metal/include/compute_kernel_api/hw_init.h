@@ -19,11 +19,11 @@ namespace ckernel {
 *
 * Return value: None
 *
-* | Argument       | Description                                                     | Type     | Valid Range                                    | Required |
-* |----------------|-----------------------------------------------------------------|----------|------------------------------------------------|----------|
-* | icb0           | The identifier of the circular buffer (CB) containing operand A | uint32_t | 0 to 31                                        | True     |
-* | icb1           | The identifier of the circular buffer (CB) containing operand B | uint32_t | 0 to 31                                        | True     |
-* | ocb            | The identifier of the output circular buffer (CB)               | uint32_t | 0 to 31                                        | True     |
+* | Function Argument | Description                                                     | Type     | Valid Range                                    | Required |
+* |-------------------|-----------------------------------------------------------------|----------|------------------------------------------------|----------|
+* | icb0              | The identifier of the circular buffer (CB) containing operand A | uint32_t | 0 to 31                                        | True     |
+* | icb1              | The identifier of the circular buffer (CB) containing operand B | uint32_t | 0 to 31                                        | True     |
+* | ocb               | The identifier of the output circular buffer (CB)               | uint32_t | 0 to 31                                        | True     |
 */
 // clang-format on
 ALWI void hw_start_init(uint32_t icb0, uint32_t icb1, uint32_t ocb) {

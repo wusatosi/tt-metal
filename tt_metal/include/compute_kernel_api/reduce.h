@@ -15,9 +15,28 @@
 
 namespace ckernel {
 
+// clang-format off
+/**
+* Performs the necessary hardware initialization for reduce operation. Needs to be called once, after hw_start_init function. Meant to be called only once
+* at the beginning of the compute kernel.
+*
+* Return value: None
+*
+* | Template Argument | Description                                                     | Type      | Valid Range                                    | Required |
+* |-------------------|-----------------------------------------------------------------|-----------|------------------------------------------------|----------|
+* | reduce_type       | The type of reduce op - sum, average or maximum                 | PoolType  | {SUM, AVG, MAX}                                | True     |
+* | reduce_dim        | The dimension of reduce op - row, column or both                | ReduceDim | {REDUCE_ROW, REDUCE_COL, REDUCE_SCALAR}        | True     |
+* |-------------------|-----------------------------------------------------------------|-----------|------------------------------------------------|----------|
+* | Function Argument | Description                                                     | Type      | Valid Range                                    | Required |
+* |-------------------|-----------------------------------------------------------------|-----------|------------------------------------------------|----------|
+* | icb0              | The identifier of the circular buffer (CB) containing operand A | uint32_t  | 0 to 31                                        | True     |
+* | icb1              | CB for Scaling factor applied to each element of the result.    | uint32_t  | 0 to 31                                        | True     |
+* | ocb               | The identifier of the output circular buffer (CB)               | uint32_t  | 0 to 31                                        | True     |
+*/
+// clang-format on
 template <PoolType reduce_type = REDUCE_OP, ReduceDim reduce_dim = REDUCE_DIM>
-ALWI void reduce_init(uint32_t icb, uint32_t icb_scaler, uint32_t ocb) {
-    UNPACK((llk_unpack_AB_reduce_init<reduce_dim>(icb, icb_scaler)));
+ALWI void reduce_init(uint32_t icb, uint32_t icb1, uint32_t ocb) {
+    UNPACK((llk_unpack_AB_reduce_init<reduce_dim>(icb, icb1)));
     MATH((llk_math_reduce_init<reduce_type, reduce_dim, MATH_FIDELITY>()));
     PACK((llk_pack_reduce_mask_config<false /*untilize*/, reduce_dim>()));
 }
@@ -65,7 +84,7 @@ ALWI void reduce_revert_delta() { PACK((llk_pack_reduce_mask_clear())); }
  *
  * | Argument       | Description                                                     | Type     | Valid Range                                    | Required |
  * |----------------|-----------------------------------------------------------------|----------|------------------------------------------------|----------|
- * | icb0           | The identifier of the circular buffer (CB) containing A         | uint32_t | 0 to 31                                        | True     |
+ * | icb0           | The identifier of the circular buffer (CB) containing operand A | uint32_t | 0 to 31                                        | True     |
  * | icb1           | CB for Scaling factor applied to each element of the result.    | uint32_t | 0 to 31                                        | True     |
  * | itile0         | The index of the tile within the first CB                       | uint32_t | Must be less than the size of the CB           | True     |
  * | itile1         | The index of the tile within the scaling factor CB.             | uint32_t | Must be less than the size of the CB           | True     |
