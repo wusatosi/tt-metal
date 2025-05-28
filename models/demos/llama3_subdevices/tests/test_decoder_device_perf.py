@@ -224,7 +224,7 @@ perf_targets = {
     },
     "Untilize_0": {
         "op_name": "Untilize",
-        "kernel_duration": 1517.3333333333335,
+        "kernel_duration": 1032.88888888888,
         "op_to_op": 800,
         "first_to_last_start": 2043.3333333333333,
         "non-overlapped-dispatch-time": 3113.6,
