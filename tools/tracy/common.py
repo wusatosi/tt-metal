@@ -4,7 +4,10 @@
 
 import os
 import shutil
+import sys
 from pathlib import Path
+
+from loguru import logger
 
 ENVS = dict(os.environ)
 TT_METAL_HOME = ""
