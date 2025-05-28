@@ -116,4 +116,5 @@ void kernel_main() {
     }
 
     noc_semaphore_set(out_ready_sem_addr, 0);
+    DPRINT << "Done RECEIVER READER\n";
 }

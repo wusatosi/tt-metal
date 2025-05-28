@@ -342,6 +342,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
     const auto& op_config = ttnn::ccl::CCLOpConfig(input_tensors, output_tensors, topology);
     auto [num_targets_forward, num_targets_backward, dynamic_alternate] =
         ccl::get_forward_backward_configuration(ring_size, ring_index, topology);
+    std::cout << "deb: " << num_targets_forward << " " << num_targets_backward << " " << dynamic_alternate << "\n";
     TT_ASSERT(!((topology == ccl::Topology::Linear) && fuse_op));
     if (topology == ccl::Topology::Ring && ring_index % 2 == 0) {
         std::swap(num_targets_forward, num_targets_backward);
@@ -361,12 +362,35 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
         core_grid_offset);
     const auto receiver_worker_core_range = total_worker_core_range.subtract(sender_worker_core_range);
     const auto receiver_worker_cores = corerange_to_cores(receiver_worker_core_range, std::nullopt, true);
+
+    // print all sender and receiver cores
+    std::string sender_cores_str = "";
+    for (const auto& core : sender_worker_cores) {
+        sender_cores_str += std::to_string(core.x) + "," + std::to_string(core.y) + " ";
+    }
+    std::cout << "Sender cores: " << sender_cores_str << std::endl;
+    std::string receiver_cores_str = "";
+    for (const auto& core : receiver_worker_cores) {
+        receiver_cores_str += std::to_string(core.x) + "," + std::to_string(core.y) + " ";
+    }
+    std::cout << "Receiver cores: " << receiver_cores_str << std::endl;
     std::set<CoreRange> receiver_forward_core_ranges;
-    receiver_forward_core_ranges.insert(CoreRange(receiver_worker_cores[1]));
-    CoreRangeSet receiver_forward_core_range_set = CoreRangeSet(receiver_forward_core_ranges);
     std::set<CoreRange> receiver_backward_core_ranges;
-    receiver_backward_core_ranges.insert(CoreRange(receiver_worker_cores[0]));
+    // change this to every odd and even core
+    // receiver_forward_core_ranges.insert(CoreRange(receiver_worker_cores[1]));
+    // CoreRangeSet receiver_forward_core_range_set = CoreRangeSet(receiver_forward_core_ranges);
+    // receiver_backward_core_ranges.insert(CoreRange(receiver_worker_cores[0]));
+    // CoreRangeSet receiver_backward_core_range_set = CoreRangeSet(receiver_backward_core_ranges)
+    for (const auto& core : receiver_worker_cores) {
+        if (core.x % 2 == 1) {
+            receiver_forward_core_ranges.insert(CoreRange(core));
+        } else {
+            receiver_backward_core_ranges.insert(CoreRange(core));
+        }
+    }
+    CoreRangeSet receiver_forward_core_range_set = CoreRangeSet(receiver_forward_core_ranges);
     CoreRangeSet receiver_backward_core_range_set = CoreRangeSet(receiver_backward_core_ranges);
+
     // L1 Scratch CB Creation
     const size_t packet_size_bytes = tt::tt_fabric::get_1d_fabric_config().channel_buffer_size_bytes;
     uint32_t l1_scratch_cb_page_size_bytes = op_config.get_page_size();
@@ -571,10 +595,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
                                 // semaphore
     for (uint32_t link = 0; link < num_links; link++) {
         CoreCoord core = sender_worker_cores[link];
-        if (link == 0) {
-            // drain sync core is the first worker core
-            drain_sync_core = mesh_device->worker_core_from_logical_core(core);
-        }
+        drain_sync_core = mesh_device->worker_core_from_logical_core(core);
 
         /* All gather fusion */
         if (fuse_op) {
@@ -598,27 +619,28 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
         uint32_t output_tensor_Wt = output_tensor_shape[3] / TILE_WIDTH;
 
         std::set<CoreRange> receiver_forward_semaphore_core_ranges;
-        receiver_forward_semaphore_core_ranges.insert(CoreRange(receiver_worker_cores[1]));
-        receiver_forward_semaphore_core_ranges.insert(CoreRange(sender_worker_cores[0]));
+        receiver_forward_semaphore_core_ranges.insert(CoreRange(receiver_worker_cores[link * 2 + 1]));
+        receiver_forward_semaphore_core_ranges.insert(CoreRange(sender_worker_cores[link]));
         CoreRangeSet receiver_forward_semaphore_core_range_set = CoreRangeSet(receiver_forward_semaphore_core_ranges);
         auto sender_to_forward_receiver_semaphore_id =
             CreateSemaphore(program, receiver_forward_semaphore_core_range_set, 0);
         std::set<CoreRange> receiver_backward_semaphore_core_ranges;
-        receiver_backward_semaphore_core_ranges.insert(CoreRange(receiver_worker_cores[0]));
-        receiver_backward_semaphore_core_ranges.insert(CoreRange(sender_worker_cores[0]));
+        receiver_backward_semaphore_core_ranges.insert(CoreRange(receiver_worker_cores[link * 2]));
+        receiver_backward_semaphore_core_ranges.insert(CoreRange(sender_worker_cores[link]));
         CoreRangeSet receiver_backward_semaphore_core_range_set = CoreRangeSet(receiver_backward_semaphore_core_ranges);
         auto sender_to_backward_receiver_semaphore_id =
             CreateSemaphore(program, receiver_backward_semaphore_core_range_set, 0);
         std::vector<CoreCoord> receiver_worker_cores_noc;
-        for (const auto& core : receiver_worker_cores) {
-            receiver_worker_cores_noc.push_back(mesh_device->worker_core_from_logical_core(core));
+        for (size_t i = link * 2; i < link * 2 + 2; ++i) {
+            receiver_worker_cores_noc.push_back(mesh_device->worker_core_from_logical_core(receiver_worker_cores[i]));
         }
 
         std::vector<uint32_t> reader_rt_args = {
             input_tensor.buffer()->address(),          // input_tensor_address
             intermediate_tensor.buffer()->address(),   // output_tensor_address
             input_tensor_Wt,                           // width in tiles of the output shard
-            input_tile_id_end,                         // slice_num_pages
+            input_tile_id_start,                       // slice_num_pages start
+            input_tile_id_end,                         // slice_num_pages end
             ring_size,                                 // ring_size
             semaphore.at(0).address(),                 // out_ready_semaphore_forward
             semaphore.at(1).address(),                 // out_ready_semaphore_backward
@@ -639,12 +661,14 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
             output_tensor.buffer()->address(),        // output_tensor_address
             input_tensor_Wt,                          // width in tiles of the output shard
             output_tensor_Wt,                         // width in tiles of entire output
-            input_tensor_num_pages,                   // slice_num_pages
-            drain_sync_core.x,                        // out_ready_sem_noc0_x
-            drain_sync_core.y,                        // out_ready_sem_noc0_y
-            ring_size,                                // ring_size
-            semaphore.at(0).address(),                // out_ready_semaphore_forward
-            semaphore.at(1).address()                 // out_ready_semaphore_backward
+            input_tile_id_start,                      // slice_num_pages start
+            input_tile_id_end,                        // slice_num_pages end
+            // input_tensor_num_pages,                   // slice_num_pages
+            drain_sync_core.x,          // out_ready_sem_noc0_x
+            drain_sync_core.y,          // out_ready_sem_noc0_y
+            ring_size,                  // ring_size
+            semaphore.at(0).address(),  // out_ready_semaphore_forward
+            semaphore.at(1).address()   // out_ready_semaphore_backward
         };
         writer_rt_args.push_back(forward_device.has_value());
         if (forward_device.has_value()) {
@@ -665,25 +689,32 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
         // Reader
         std::vector<uint32_t> forward_receiver_reader_rt_args = {
             intermediate_tensor.buffer()->address(),  // input_tensor_address
+            input_tile_id_start,                      // slice_num_pages start
             input_tile_id_end,                        // slice_num_pages
             ring_size,                                // ring_size
             sender_to_forward_receiver_semaphore_id,  // signal_receiver_sem_forward
         };
+        std::cout << "Current link: " << link << std::endl;
+        std::cout << "Setting forward reader kernel on " << receiver_worker_cores[link * 2 + 1].x << ", "
+                  << receiver_worker_cores[link * 2 + 1].y << std::endl;
         tt::tt_metal::SetRuntimeArgs(
             program,
             worker_forward_receiver_reader_kernel_id,
-            {receiver_worker_cores[1]},
+            {receiver_worker_cores[link * 2 + 1]},
             forward_receiver_reader_rt_args);
         std::vector<uint32_t> backward_receiver_reader_rt_args = {
             intermediate_tensor.buffer()->address(),   // input_tensor_address
+            input_tile_id_start,                       // slice_num_pages start
             input_tile_id_end,                         // slice_num_pages
             ring_size,                                 // ring_size
             sender_to_backward_receiver_semaphore_id,  // signal_receiver_sem_backward
         };
+        std::cout << "Setting backward reader kernel on " << receiver_worker_cores[link * 2].x << ", "
+                  << receiver_worker_cores[link * 2].y << std::endl;
         tt::tt_metal::SetRuntimeArgs(
             program,
             worker_backward_receiver_reader_kernel_id,
-            {receiver_worker_cores[0]},
+            {receiver_worker_cores[link * 2]},
             backward_receiver_reader_rt_args);
 
         // Writer
@@ -691,31 +722,37 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
             output_tensor.buffer()->address(),  // output_tensor_address
             input_tensor_Wt,                    // width in tiles of the output shard
             output_tensor_Wt,                   // width in tiles of entire output
+            input_tile_id_start,                // slice_num_pages start
             input_tile_id_end,                  // slice_num_pages
             ring_size,                          // ring_size
         };
         if (fuse_op) {
             fused_op_signaler_forward->push_all_gather_fused_op_rt_args(forward_receiver_writer_rt_args, 1, 0, 1);
         }
+        std::cout << "Setting forward writer kernel on " << receiver_worker_cores[link * 2 + 1].x << ", "
+                  << receiver_worker_cores[link * 2 + 1].y << std::endl;
         tt::tt_metal::SetRuntimeArgs(
             program,
             worker_forward_receiver_writer_kernel_id,
-            {receiver_worker_cores[1]},
+            {receiver_worker_cores[link * 2 + 1]},
             forward_receiver_writer_rt_args);
         std::vector<uint32_t> backward_receiver_writer_rt_args = {
             output_tensor.buffer()->address(),  // output_tensor_address
             input_tensor_Wt,                    // width in tiles of the output shard
             output_tensor_Wt,                   // width in tiles of entire output
+            input_tile_id_start,                // slice_num_pages start
             input_tile_id_end,                  // slice_num_pages
             ring_size,                          // ring_size
         };
         if (fuse_op) {
             fused_op_signaler_backward->push_all_gather_fused_op_rt_args(backward_receiver_writer_rt_args, 1, 0, 0);
         }
+        std::cout << "Setting backward writer kernel on " << receiver_worker_cores[link * 2].x << ", "
+                  << receiver_worker_cores[link * 2].y << std::endl;
         tt::tt_metal::SetRuntimeArgs(
             program,
             worker_backward_receiver_writer_kernel_id,
-            {receiver_worker_cores[0]},
+            {receiver_worker_cores[link * 2]},
             backward_receiver_writer_rt_args);
     }
 
@@ -780,7 +817,7 @@ tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_minimal_interleav
         worker_backward_receiver_writer_runtime_args[0] = output.buffer()->address();
     };
 
-    return {.program = std::move(program), .override_runtime_arguments_callback = override_runtime_arguments_callback};
+    return {.program = std::move(program), .override_runtime_arguments_callback = std::nullopt};
 }
 
 tt::tt_metal::operation::ProgramWithCallbacks all_gather_async_llama_sharded(

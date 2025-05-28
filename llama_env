@@ -1,0 +1,5 @@
+export TT_METAL_HOME=/localdev/pglusac/tt-metal
+source ${TT_METAL_HOME}/python_env/bin/activate
+export FAKE_DEVICE=TG
+export MESH_DEVICE=TG
+export LLAMA_DIR=/proj_sw/user_dev/llama31-70b-data/Meta-Llama-3.1-70B/

@@ -54,6 +54,7 @@ def run_with_trace(
     input_tensor,
     dim,
     persistent_output_tensor,
+    persistent_intermediate_buffer,
     num_links,
     cluster_axis,
     output_mem_config,
@@ -105,13 +106,11 @@ def run_with_trace(
                 tt_out_tensor = ttnn.experimental.all_gather_async(
                     input_tensor,
                     dim,
-                    cluster_axis=cluster_axis,
                     mesh_device=mesh_device,
                     topology=all_gather_topology,
-                    multi_device_global_semaphore=ccl_semaphore_handles[i % NUM_BUFFERS]
-                    if type(ccl_semaphore_handles) == list
-                    else ccl_semaphore_handles,
-                    persistent_output_tensor=persistent_output_tensor,
+                    persistent_intermediate_buffer=ttnn_persistent_intermediate_tensor,
+                    multi_device_global_semaphore=ccl_semaphore_handles[i % NUM_BUFFERS],
+                    persistent_output_buffer=ttnn_persistent_output_tensor,
                     num_links=num_links,
                     memory_config=output_mem_config,
                     subdevice_id=worker_sub_device_id,
@@ -240,7 +239,7 @@ def run_line_all_gather_on_TG_with_mesh_tensor_along_rows(
     ttnn_tensor = ttnn.to_device(ttnn_tensor, mesh_device)
     ttnn_tensor = ttnn.to_memory_config(ttnn_tensor, input_mem_config)
     # TODO: Take as an arg
-    linear = True
+    linear = False
     if linear:
         all_gather_topology = ttnn.Topology.Linear
         wrap_mesh = False
@@ -251,6 +250,16 @@ def run_line_all_gather_on_TG_with_mesh_tensor_along_rows(
     ttnn_persistent_output_tensor = None
     if use_persistent_output:
         ttnn_persistent_output_tensor = ttnn.from_torch(
+            torch.zeros(per_chip_output_shape),
+            tile=ttnn.Tile(tile),
+            dtype=input_dtype,
+            device=mesh_device,
+            layout=layout,
+            memory_config=output_mem_config,
+            mesh_mapper=ttnn.ReplicateTensorToMesh(mesh_device),
+        )
+
+        ttnn_persistent_intermediate_tensor = ttnn.from_torch(
             torch.zeros(per_chip_output_shape),
             tile=ttnn.Tile(tile),
             dtype=input_dtype,
@@ -278,7 +287,8 @@ def run_line_all_gather_on_TG_with_mesh_tensor_along_rows(
         mesh_device.set_sub_device_stall_group(sub_device_stall_group)
         # create global semaphore handles
         ccl_semaphore_handles = [
-            ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0) for _ in range(NUM_BUFFERS)
+            [ttnn.create_global_semaphore(mesh_device, ccl_sub_device_crs, 0) for nsem in range(2)]
+            for _ in range(NUM_BUFFERS)
         ]
     try:
         # ttnn.visualize_mesh_device(mesh_device, tensor=ttnn_tensor)
@@ -288,6 +298,7 @@ def run_line_all_gather_on_TG_with_mesh_tensor_along_rows(
                 dim=dim,
                 cluster_axis=cluster_axis,
                 mesh_device=mesh_device,
+                persistent_intermediate_buffer=ttnn_persistent_intermediate_tensor,
                 persistent_output_tensor=ttnn_persistent_output_tensor,
                 num_links=num_links,
                 output_mem_config=output_mem_config,
@@ -307,14 +318,15 @@ def run_line_all_gather_on_TG_with_mesh_tensor_along_rows(
                     logger.info("Running all-gather async")
                     ttnn_tensor_out = ttnn.experimental.all_gather_async(
                         ttnn_tensor,
-                        dim,
-                        cluster_axis=cluster_axis,
-                        mesh_device=mesh_device,
-                        topology=all_gather_topology,
+                        dim=dim,
+                        # cluster_axis=cluster_axis,
+                        # mesh_device=mesh_device,
+                        persistent_intermediate_buffer=ttnn_persistent_intermediate_tensor,
+                        persistent_output_buffer=ttnn_persistent_output_tensor,
                         multi_device_global_semaphore=ccl_semaphore_handles[i % NUM_BUFFERS],
-                        persistent_output_tensor=ttnn_persistent_output_tensor,
                         num_links=num_links,
                         memory_config=output_mem_config,
+                        topology=all_gather_topology,
                         subdevice_id=worker_sub_device_id,
                     )
                 else:

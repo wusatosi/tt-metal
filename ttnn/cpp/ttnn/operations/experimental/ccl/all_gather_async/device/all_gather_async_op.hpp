@@ -41,7 +41,7 @@ struct AllGatherAsync {
     const ccl::Topology topology;
     const std::vector<GlobalSemaphore> semaphore;
     std::optional<tt::tt_metal::SubDeviceId> sub_device_id;
-    std::optional<uint32_t> cluster_axis;
+    std::optional<uint32_t> cluster_axis = 0;
 
     AllGatherAsync(
         std::vector<IDevice*> devices,

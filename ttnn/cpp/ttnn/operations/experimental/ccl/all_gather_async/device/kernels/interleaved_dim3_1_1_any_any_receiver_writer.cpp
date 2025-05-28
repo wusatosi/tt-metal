@@ -136,4 +136,5 @@ void kernel_main() {
     }
 
     noc_async_write_barrier();
+    DPRINT << "Done RECEIVER WRITER\n";
 }
