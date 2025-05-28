@@ -164,7 +164,7 @@ class TT_CCL:
         )
         persistent_buffers["LAYERNORM"] = tt_buffer
 
-        # Sampling # TODO: remove this
+        # Sampling # TODO: remove this when not needed for llama_model ttnn_decode_forward anymore
         tt_buffer = ttnn.from_torch(
             torch.zeros((1, 1, 32, 128 * 1024)),
             device=self.mesh_device,
