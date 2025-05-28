@@ -30,7 +30,7 @@ jobs:
             model: "meta-llama/Llama-3.1-8B-Instruct",
             server_timeout: 10,
             benchmark_timeout: 10,
-            runner-label: config-tg,
+            runner-label: "N300",
             co-owner-1_id: U08E1JCDVNX, # Pavle Petrovic
             co-owner-2_id: U08CEGF78ET, # Salar Hosseini Khorasgani
           },
@@ -89,6 +89,10 @@ jobs:
         timeout-minutes: 1
         run: |
           case "${{ matrix.test-group.runner-label }}" in
+            "N300")
+              export WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml
+              export MESH_DEVICE="N300"
+              ;;
             "config-t3000")
               export WH_ARCH_YAML=wormhole_b0_80_arch_eth_dispatch.yaml
               export MESH_DEVICE="T3K"
