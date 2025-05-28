@@ -24,27 +24,27 @@ class Generator:
 
         """
         # favor composition over inheritance: __ is convention for private variables
-        self.__ttt_generator = TTTGenerator(model, model_args, mesh_device, tokenizer, formatter)
+        self._ttt_generator = TTTGenerator(model, model_args, mesh_device, tokenizer, formatter)
 
     @property
     def model(self):
-        return self.__ttt_generator.model
+        return self._ttt_generator.model
 
     @property
     def model_args(self):
-        return self.__ttt_generator.model_args
+        return self._ttt_generator.model_args
 
     @property
     def mesh_device(self):
-        return self.__ttt_generator.mesh_device
+        return self._ttt_generator.mesh_device
 
     @property
     def tokenizer(self):
-        return self.__ttt_generator.tokenizer
+        return self._ttt_generator.tokenizer
 
     @property
     def formatter(self):
-        return self.__ttt_generator.formatter
+        return self._ttt_generator.formatter
 
     def prefill_forward_text(self, tokens: torch.Tensor, page_table=None, kv_cache=None, prompt_lens=None):
         batch, batch_seq_len = tokens.shape[:2]
@@ -100,7 +100,7 @@ class Generator:
         read_from_device=True,
         argmax_on_device=False,
     ):
-        return self.__ttt_generator.decode_forward_text(
+        return self._ttt_generator.decode_forward_text(
             tokens=tokens,
             start_pos=start_pos,
             page_table=page_table,
@@ -112,7 +112,7 @@ class Generator:
 
     def __get_prefill_user_page_table(self, page_table, kv_cache, prefill_len):
         # Ensure page_table is not padded with extra blocks for paged_fill_cache to work properly
-        return self.__ttt_generator._get_prefill_user_page_table(page_table, kv_cache, prefill_len)
+        return self._ttt_generator._get_prefill_user_page_table(page_table, kv_cache, prefill_len)
 
     def __prefill_forward_single_user_text(self, tokens, page_table, user_id, last_token_idx, kv_cache=None):
         seq_len = tokens.shape[1]
@@ -207,7 +207,7 @@ class Generator:
         kv_cache=None,
         argmax_on_device=False,
     ):
-        return self.__ttt_generator._decode_forward_no_trace_text(
+        return self._ttt_generator._decode_forward_no_trace_text(
             tokens=tokens,
             current_pos=current_pos,
             page_table=page_table,
@@ -223,7 +223,7 @@ class Generator:
         kv_cache=None,
         argmax_on_device=False,
     ):
-        return self.__ttt_generator._capture_trace_text(
+        return self._ttt_generator._capture_trace_text(
             tokens=tokens,
             current_pos=current_pos,
             page_table=page_table,
@@ -240,7 +240,7 @@ class Generator:
         current_pos,
         page_table=None,
     ):
-        return self.__ttt_generator._decode_forward_trace_text(
+        return self._ttt_generator._decode_forward_trace_text(
             trace_id=trace_id,
             device_inputs=device_inputs,
             tt_out_trace=tt_out_trace,
@@ -257,7 +257,7 @@ class Generator:
         kv_cache=None,
         argmax_on_device=False,
     ):
-        return self.__ttt_generator._easy_trace_text(
+        return self._ttt_generator._easy_trace_text(
             tokens=tokens,
             current_pos=current_pos,
             page_table=page_table,
@@ -266,7 +266,7 @@ class Generator:
         )
 
     def read_decode_output(self, tt_logits, unpadded_batch, argmax_on_device=False):
-        return self.__ttt_generator.read_decode_output(
+        return self._ttt_generator.read_decode_output(
             tt_logits=tt_logits, unpadded_batch=unpadded_batch, argmax_on_device=argmax_on_device
         )
 
@@ -281,7 +281,7 @@ class Generator:
         kv_cache=None,
         cross_page_table=None,
     ):
-        return self.__ttt_generator._capture_trace(
+        return self._ttt_generator._capture_trace(
             position_id=position_id,
             tokens=tokens,
             cross_attention_masks=cross_attention_masks,
@@ -311,7 +311,7 @@ class Generator:
         trace_page_table,
         trace_cross_page_table,
     ):
-        return self.__ttt_generator._decode_forward_trace(
+        return self._ttt_generator._decode_forward_trace(
             position_id=position_id,
             tokens=tokens,
             cross_attention_masks=cross_attention_masks,
@@ -341,7 +341,7 @@ class Generator:
         kv_cache=None,
         cross_page_table=None,
     ):
-        return self.__ttt_generator._easy_trace(
+        return self._ttt_generator._easy_trace(
             position_id=position_id,
             tokens=tokens,
             cross_attention_masks=cross_attention_masks,
@@ -355,10 +355,4 @@ class Generator:
     ## Destructor (used to delete ttnn trace if exists)
 
     def __del__(self):
-        if hasattr(self, "trace_id"):
-            ttnn.release_trace(self.mesh_device, self.trace_id)
-
-        if hasattr(self, "trace_id_text"):
-            ttnn.release_trace(self.mesh_device, self.trace_id_text)
-
-        self.__ttt_generator.__del__()
+        self._ttt_generator.__del__()

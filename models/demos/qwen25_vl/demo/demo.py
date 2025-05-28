@@ -154,12 +154,26 @@ def create_tt_model(
             False,  # stop_at_eos
             True,  # ci_only
         ),
+        (  # Batch-2 run with single decoder layer (CI only) - two users repeated batch
+            "models/demos/qwen25_vl/demo/sample_prompts/multi_prompts.json",  # real multi-user prompts
+            True,  # instruct mode
+            2,  # repeat_batches to simulate multiple users with the same prompt
+            4096,  # max_seq_len, allow for image tokens
+            2,  # batch_size -- samples to load from the prompt JSON
+            200,  # max_generated_tokens
+            True,  # paged_attention
+            {"page_block_size": 32, "page_max_num_blocks": 1024},  # page_params
+            {"temperature": 0, "top_p": 0.08},  # sampling_params (argmax)
+            False,  # stop_at_eos
+            True,  # ci_only
+        ),
     ],
     ids=[
         "batch-1",  # latency
         "batch-4",  # multi-user
         "batch-32",  # 32 users (special because it fills tile size)
         "ci-only",  # ci_only batch-2 for faster testing coverage in CI pipelines
+        "ci-only-repeated-batch",  # ci_only repeated batch for faster testing coverage in CI pipelines
     ],
 )
 @pytest.mark.parametrize(
@@ -369,13 +383,6 @@ def test_demo(
         model.rope_setup.set_cos_sin(cos, sin)
         profiler.end(f"preprocess_prefill_inputs", iteration=batch_idx)
 
-        # when doing repeating batches, set kv-caches to zero, to avoid context leaking
-        if batch_idx != 0:
-            for layer in model.layers:
-                k_cache, v_cache = layer.attention.layer_past
-                k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
-                v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
-
         logger.info("Starting prefill warmup...")
         profiler.start(f"compile_prefill", iteration=batch_idx)
         logits = generator.prefill_forward_text(
@@ -386,12 +393,6 @@ def test_demo(
         )
         profiler.end(f"compile_prefill", iteration=batch_idx)
         logger.info("Finished prefill warmup")
-
-        # Reset KV caches to zero after warmup to avoid interference between users
-        for layer in model.layers:
-            k_cache, v_cache = layer.attention.layer_past
-            k_cache = ttnn.mul(k_cache, 0, output_tensor=k_cache)
-            v_cache = ttnn.mul(v_cache, 0, output_tensor=v_cache)
 
         logger.info("KV cache reset after warmup to prevent interference between users")
 
@@ -539,7 +540,13 @@ def test_demo(
 
         num_tokens_generated_decode.append(iteration)  # Save the number of tokens generated for each repeat batch
 
-    profiler.end(f"inference_decode", iteration=batch_idx)
+        profiler.end(f"inference_decode", iteration=batch_idx)
+
+        # release the trace to allow the next batch to capture a new trace
+        if hasattr(generator._ttt_generator, "trace_id_text"):
+            logger.info(f"trace_id_text={generator._ttt_generator.trace_id_text} released")
+            ttnn.release_trace(generator.mesh_device, generator._ttt_generator.trace_id_text)
+            del generator._ttt_generator.trace_id_text
 
     # Finish profiling at the end of inference for all repeated batches
     profiler.end("run")
