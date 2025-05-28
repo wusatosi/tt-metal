@@ -27,12 +27,12 @@
 #include "core_coord.hpp"
 #include "fabric_host_interface.h"
 #include "hal_types.hpp"
+#include "impl/context/metal_context.hpp"
 #include "logger.hpp"
 #include "mesh_coord.hpp"
 #include "mesh_graph.hpp"
 #include "metal_soc_descriptor.h"
 #include "routing_table_generator.hpp"
-#include "impl/context/metal_context.hpp"
 #include <umd/device/tt_core_coordinates.h>
 #include <umd/device/tt_xy_pair.h>
 #include <umd/device/types/cluster_descriptor_types.h>
@@ -60,22 +60,36 @@ std::uint32_t get_ubb_asic_id(chip_id_t physical_chip_id) {
     return ((ubb_asic_loc_vec[0] >> 24) & 0xFF);
 }
 
-bool is_external_ubb_cable(chip_id_t physical_chip_id, CoreCoord eth_core) {
+// TODO: move to separate system descriptor class
+// return enum for connection type, Internal, QSFP, Other, Unknown
+bool is_external_cable(chip_id_t physical_chip_id, CoreCoord eth_core) {
     auto chan_id = tt::tt_metal::MetalContext::instance()
                        .get_cluster()
                        .get_soc_desc(physical_chip_id)
                        .logical_eth_core_to_chan_map.at(eth_core);
-    auto ubb_asic_id = get_ubb_asic_id(physical_chip_id);
     bool is_external_cable = false;
-    if (ubb_asic_id == 1) {
-        // UBB 1 has external cables on channesl 0-7
-        is_external_cable = (chan_id >= 0 and chan_id <= 7);
-    } else if (ubb_asic_id >= 2 and ubb_asic_id <= 4) {
-        // UBB 2 to 4 has external cables on channesl 0-3
-        is_external_cable = (chan_id >= 0 and chan_id <= 3);
-    } else if (ubb_asic_id == 5) {
-        // UBB 5 has external cables on channesl 4-7
-        is_external_cable = (chan_id >= 4 and chan_id <= 7);
+    auto board_type = tt::tt_metal::MetalContext::instance().get_cluster().get_board_type(physical_chip_id);
+    if (board_type == BoardType::UBB) {
+        auto ubb_asic_id = get_ubb_asic_id(physical_chip_id);
+        if (ubb_asic_id == 1) {
+            // UBB 1 has external cables on channels 0-7
+            is_external_cable = (chan_id >= 0 and chan_id <= 7);
+        } else if (ubb_asic_id >= 2 and ubb_asic_id <= 4) {
+            // UBB 2 to 4 has external cables on channels 0-3
+            is_external_cable = (chan_id >= 0 and chan_id <= 3);
+        } else if (ubb_asic_id == 5) {
+            // UBB 5 has external cables on channels 4-7
+            is_external_cable = (chan_id >= 4 and chan_id <= 7);
+        }
+    } else if (board_type == BoardType::N300) {
+        // N300 has external cables on channels 8-9 on MMIO chips and channels 0-1 on non-MMIO chips
+        auto mmio_device_id =
+            tt::tt_metal::MetalContext::instance().get_cluster().get_associated_mmio_device(physical_chip_id);
+        if (mmio_device_id == physical_chip_id) {
+            is_external_cable = (chan_id != 8 and chan_id != 9);
+        } else {
+            is_external_cable = (chan_id != 0 and chan_id != 1);
+        }
     }
     return is_external_cable;
 }
@@ -256,7 +270,7 @@ std::vector<chip_id_t> ControlPlane::get_mesh_physical_chip_ids(
             // Do not include any corner to corner links on UBB
             if (tt::tt_metal::MetalContext::instance().get_cluster().get_board_type(connected_chip_id) ==
                 BoardType::UBB) {
-                if (is_external_ubb_cable(current_chip_id, eth_ports[0])) {
+                if (is_external_cable(current_chip_id, eth_ports[0])) {
                     continue;
                 }
             }
@@ -325,8 +339,11 @@ std::vector<chip_id_t> ControlPlane::get_mesh_physical_chip_ids(
                 get_ethernet_cores_grouped_by_connected_chips(physical_chip_id_from_north);
             bool found_chip = false;
             for (const auto& [connected_chip_id, eth_ports] : eth_links_grouped_by_connected_chips) {
-                if (is_external_ubb_cable(physical_chip_id_from_north, eth_ports[0])) {
-                    continue;
+                if (tt::tt_metal::MetalContext::instance().get_cluster().get_board_type(connected_chip_id) ==
+                    BoardType::UBB) {
+                    if (is_external_cable(physical_chip_id_from_north, eth_ports[0])) {
+                        continue;
+                    }
                 }
                 if (visited_physical_chips.find(connected_chip_id) == visited_physical_chips.end() and
                     eth_ports.size() >= num_ports_per_side) {
