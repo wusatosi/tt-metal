@@ -164,7 +164,7 @@ void reduce_max_value() {
     const uint32_t reduction_register = 0;
     tile_regs_acquire();
     reconfig_data_format(cb_max_value_before_reduction, cb_scaler);
-    reduce_init_delta<false, PoolType::MAX, ReduceDim::REDUCE_ROW>(
+    reduce_init<PoolType::MAX, ReduceDim::REDUCE_ROW>(
         cb_max_value_before_reduction, cb_scaler, cb_max_value_after_reduction);
     reduce_tile<PoolType::MAX, ReduceDim::REDUCE_ROW>(
         cb_max_value_before_reduction,
@@ -315,7 +315,7 @@ void reduce_log_sum_exp_x() {
     tile_regs_acquire();
     const uint32_t reduction_register = 0;
     reconfig_data_format(cb_exp_sum_before_reduction, cb_scaler);
-    reduce_init_delta<false, PoolType::SUM, ReduceDim::REDUCE_ROW>(
+    reduce_init<PoolType::SUM, ReduceDim::REDUCE_ROW>(
         cb_exp_sum_before_reduction, cb_scaler, cb_exp_sum_after_reduction);
     reduce_tile<PoolType::SUM, ReduceDim::REDUCE_ROW>(
         cb_exp_sum_before_reduction,

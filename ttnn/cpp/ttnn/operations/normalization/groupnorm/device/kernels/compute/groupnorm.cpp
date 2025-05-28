@@ -315,7 +315,7 @@ void MAIN {
 
                 // Partial/E[x]
                 index_h_offset = 0;
-                reduce_init_delta<false>(cb_x, cb_scaler, cb_ex_partial);
+                reduce_init(cb_x, cb_scaler, cb_ex_partial);
                 cb_reserve_back(cb_ex_partial, 1);
                 tile_regs_acquire();
                 cb_wait_front(cb_scaler, 1);
@@ -341,7 +341,7 @@ void MAIN {
             // End Local Redcue
             // Start Global Reduce
             if constexpr (is_mcast_sender) {
-                reduce_init_delta<false>(cb_ex_external, cb_scaler_global, cb_ex_global);
+                reduce_init(cb_ex_external, cb_scaler_global, cb_ex_global);
                 cb_reserve_back(cb_ex_global, 1);
                 if (num_cores_per_mcast_group > 1) {
                     cb_reserve_back(cb_ex, 1);
@@ -465,7 +465,7 @@ void MAIN {
 
                 // Partial-Var(x)
                 index_h_offset = 0;
-                reduce_init_delta<false>(cb_xmm, cb_scaler, cb_ex2_partial);
+                reduce_init(cb_xmm, cb_scaler, cb_ex2_partial);
                 cb_reserve_back(cb_ex2_partial, 1);
                 tile_regs_acquire();
                 cb_wait_front(cb_xmm, out_block_hw_normal);
@@ -488,7 +488,7 @@ void MAIN {
             // End Local Reduce
             // Start Global Reduce
             if constexpr (is_mcast_sender) {
-                reduce_init_delta<false>(cb_ex_external, cb_scaler_global, cb_ex2_global);
+                reduce_init(cb_ex_external, cb_scaler_global, cb_ex2_global);
                 cb_reserve_back(cb_ex2_global, 1);
                 if (num_cores_per_mcast_group > 1) {
                     cb_reserve_back(cb_ex2, 1);

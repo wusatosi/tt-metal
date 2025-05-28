@@ -297,7 +297,7 @@ void MAIN {
 
             const uint32_t reduction_register = 0;
             reconfig_data_format(cb_rms_before_reduction_intermediate, cb_scaler);
-            reduce_init_delta<false, PoolType::SUM, ReduceDim::REDUCE_ROW>(
+            reduce_init<PoolType::SUM, ReduceDim::REDUCE_ROW>(
                 cb_rms_before_reduction_intermediate, cb_scaler, cb_rms_after_reduction_intermediate);
             reduce_tile<PoolType::SUM, ReduceDim::REDUCE_ROW>(
                 cb_rms_before_reduction_intermediate,

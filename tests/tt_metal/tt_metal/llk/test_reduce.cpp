@@ -659,7 +659,7 @@ TEST_F(DeviceFixture, TensixComputeReduceWMathOnly) {
     }
 }
 // Disabled due to GH issue #14510
-TEST_F(DeviceFixture, DISABLED_TensixComputeReduceHWMathOnly) {
+TEST_F(DeviceFixture, TensixComputeReduceHWMathOnly) {
     std::vector<uint32_t> shape = {1, 2, 7 * TILE_HEIGHT, 5 * TILE_WIDTH};
     std::vector<uint32_t> result_shape = {shape[0], shape[1], 32, 32};
     for (uint8_t math_fid = uint8_t(MathFidelity::LoFi); math_fid <= uint8_t(MathFidelity::HiFi4); math_fid++) {
@@ -778,7 +778,7 @@ TEST_F(DeviceFixture, TensixComputeReduceWShortInit) {
     }
 }
 // Disabled due to GH issue #14510
-TEST_F(DeviceFixture, DISABLED_TensixComputeReduceHWShortInit) {
+TEST_F(DeviceFixture, TensixComputeReduceHWShortInit) {
     std::vector<uint32_t> shape = {1, 2, 7 * TILE_HEIGHT, 5 * TILE_WIDTH};
     std::vector<uint32_t> result_shape = {shape[0], shape[1], 32, 32};
     for (uint8_t math_fid = uint8_t(MathFidelity::LoFi); math_fid <= uint8_t(MathFidelity::HiFi4); math_fid++) {

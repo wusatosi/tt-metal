@@ -79,7 +79,7 @@ void MAIN {
         reconfig_data_format(cb_in, cb_scaler);
         pack_reconfig_data_format(cb_ex);
         cb_reserve_back(cb_ex, onetile);
-        reduce_init_delta<false>(cb_in, cb_scaler, cb_ex);
+        reduce_init(cb_in, cb_scaler, cb_ex);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
             cb_wait_front(cb_in, blk);
             for (uint32_t j = 0; j < blk; j++) {
@@ -89,7 +89,7 @@ void MAIN {
         }
 #ifdef FUSE_PRE_ADD
         reconfig_data_format_srca(cb_in, cb_inb);
-        reduce_init_delta<false>(cb_inb, cb_scaler, cb_ex);
+        reduce_init(cb_inb, cb_scaler, cb_ex);
         for (uint32_t wt = 0; wt < Wt; wt += blk) {
             cb_wait_front(cb_inb, blk);
             for (uint32_t j = 0; j < blk; j++) {
@@ -167,7 +167,7 @@ void MAIN {
             }
             cb_wait_front(cb_xmm, blk);
             reconfig_data_format(cb_xmm, cb_scaler);
-            reduce_init_delta<false>(cb_xmm, cb_scaler, cb_ex2);
+            reduce_init(cb_xmm, cb_scaler, cb_ex2);
             // accumulates squared residual
             for (uint32_t j = 0; j < blk; j++) {
                 reduce_tile(cb_xmm, cb_scaler, j, scaler0, dst0);
