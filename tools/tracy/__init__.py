@@ -28,7 +28,7 @@ from .common import (
     generate_logs_folder,
 )
 
-import tools.tracy.tracy_state
+import tracy.tracy_state
 
 DEFAULT_CHILD_CALLS = ["CompileProgram", "HWCommandQueue_write_buffer"]
 

@@ -18,7 +18,7 @@ import click
 from loguru import logger
 
 from .common import PROFILER_ARTIFACTS_DIR
-import tools.tracy.device_post_proc_config as device_post_proc_config
+import tracy.device_post_proc_config as device_post_proc_config
 
 SUM_MARKER_ID_START = 3000
 

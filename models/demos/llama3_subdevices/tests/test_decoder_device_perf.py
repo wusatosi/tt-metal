@@ -13,7 +13,7 @@ from models.demos.llama3_subdevices.tt.llama_common import (
 )
 from models.perf.benchmarking_utils import BenchmarkData, BenchmarkProfiler
 from models.perf.device_perf_utils import run_device_perf
-from tools.tracy.process_model_log import (
+from tracy.process_model_log import (
     get_latest_ops_log_filename,
 )
 
