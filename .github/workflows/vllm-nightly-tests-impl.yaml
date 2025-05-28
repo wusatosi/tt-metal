@@ -95,7 +95,6 @@ jobs:
               ;;
             "config-tg")
               export MESH_DEVICE="TG"
-              export TT_LLAMA_TEXT_VER="llama3_subdevices"
               OVERRIDE_TT_CONFIG=(--override-tt-config '{"data_parallel": 16}')
               ;;
             *)
