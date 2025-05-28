@@ -4,7 +4,7 @@
 
 from pathlib import Path
 
-from tools.tracy import *
+from tracy import *
 
 
 def main():
