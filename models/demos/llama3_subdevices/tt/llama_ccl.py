@@ -34,6 +34,7 @@ class TT_CCL:
 
         # Double buffered on each axis
         self.gather_semaphore_handles = [[], []]
+        self.reduce_semaphore_handles = [[], []]
         if mode == "prefill":
             self.from_semaphore_handles = [[], []]
             self.to_semaphore_handles = [[], []]
@@ -43,16 +44,20 @@ class TT_CCL:
                     self.gather_semaphore_handles[i].append(
                         [ttnn.create_global_semaphore(self.mesh_device, self.sub_device_crs, 0) for _ in range(2)]
                     )
-                self.gather_semaphore_handles[i].append(
-                    ttnn.create_global_semaphore(self.mesh_device, self.sub_device_crs, 0)
-                )
-                if mode == "prefill":
-                    self.from_semaphore_handles[i].append(
+                    self.reduce_semaphore_handles[i].append(
+                        [ttnn.create_global_semaphore(self.mesh_device, self.sub_device_crs, 0) for _ in range(3)]
+                    )
+                else:
+                    self.gather_semaphore_handles[i].append(
                         ttnn.create_global_semaphore(self.mesh_device, self.sub_device_crs, 0)
                     )
-                    self.to_semaphore_handles[i].append(
-                        ttnn.create_global_semaphore(self.mesh_device, self.sub_device_crs, 0)
-                    )
+                    if mode == "prefill":
+                        self.from_semaphore_handles[i].append(
+                            ttnn.create_global_semaphore(self.mesh_device, self.sub_device_crs, 0)
+                        )
+                        self.to_semaphore_handles[i].append(
+                            ttnn.create_global_semaphore(self.mesh_device, self.sub_device_crs, 0)
+                        )
 
         self.gather_idx = [0, 0]
         self.reduce_scatter_buffer_idx = [0, 0]
@@ -337,45 +342,72 @@ class TT_CCL:
                 "FF3": [(1, 1, seqlen, 3584), (1, 1, seqlen, 3584 // 4)],
                 "FF2": [(1, 1, seqlen, 2048), (1, 1, seqlen, 2048 // 8)],
             }
-            for key, shape in buffers_dict.items():
-                tt_buffers = []
-                for i in range(1):
-                    tt_buffer = ttnn.as_tensor(
-                        torch.zeros(shape[1]),
-                        device=self.mesh_device,
-                        layout=ttnn.TILE_LAYOUT,
-                        dtype=ttnn.bfloat8_b,
-                        memory_config=ttnn.DRAM_MEMORY_CONFIG,
-                        mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
-                        cache_file_name=self.weight_cache_path / (f"pb_rs_00_{key}_{i}_{seqlen}"),
-                    )
-                    check_mesh_tensor_alloc(tt_buffer)
-                    tt_buffers.append(tt_buffer)
-                for i in range(2):
-                    tt_buffer = ttnn.as_tensor(
+            if self.is_6u:
+                for key, shape in buffers_dict.items():
+                    tt_buffer_intermediate = ttnn.as_tensor(
                         torch.zeros(shape[0]),
                         device=self.mesh_device,
                         layout=ttnn.TILE_LAYOUT,
                         dtype=ttnn.bfloat8_b,
                         memory_config=ttnn.DRAM_MEMORY_CONFIG,
                         mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
-                        cache_file_name=self.weight_cache_path / (f"pb_rs_01_{key}_{i}_{seqlen}"),
+                        cache_file_name=self.weight_cache_path / (f"pb_rs_00_{key}_{seqlen}"),
                     )
-                    check_mesh_tensor_alloc(tt_buffer)
-                    tt_buffers.append(tt_buffer)
-                for i in range(2):
-                    tt_buffer = ttnn.as_tensor(
-                        torch.zeros(shape[1]),
+                    tt_buffer_output = ttnn.as_tensor(
+                        torch.zeros(shape[0]),
                         device=self.mesh_device,
                         layout=ttnn.TILE_LAYOUT,
                         dtype=ttnn.bfloat8_b,
                         memory_config=ttnn.DRAM_MEMORY_CONFIG,
                         mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
-                        cache_file_name=self.weight_cache_path / (f"pb_rs_02_{key}_{i}_{seqlen}"),
+                        cache_file_name=self.weight_cache_path / (f"pb_rs_01_{key}_{seqlen}"),
                     )
-                    check_mesh_tensor_alloc(tt_buffer)
-                    tt_buffers.append(tt_buffer)
-                persistent_buffers[key] = tt_buffers
+                    check_mesh_tensor_alloc(tt_buffer_intermediate)
+                    check_mesh_tensor_alloc(tt_buffer_output)
+                    persistent_buffers[key] = {
+                        "intermediate": tt_buffer_intermediate,
+                        "output": tt_buffer_output,
+                    }
+            else:
+                for key, shape in buffers_dict.items():
+                    tt_buffers = []
+                    for i in range(1):
+                        tt_buffer = ttnn.as_tensor(
+                            torch.zeros(shape[1]),
+                            device=self.mesh_device,
+                            layout=ttnn.TILE_LAYOUT,
+                            dtype=ttnn.bfloat8_b,
+                            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                            mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
+                            cache_file_name=self.weight_cache_path / (f"pb_rs_00_{key}_{i}_{seqlen}"),
+                        )
+                        check_mesh_tensor_alloc(tt_buffer)
+                        tt_buffers.append(tt_buffer)
+                    for i in range(2):
+                        tt_buffer = ttnn.as_tensor(
+                            torch.zeros(shape[0]),
+                            device=self.mesh_device,
+                            layout=ttnn.TILE_LAYOUT,
+                            dtype=ttnn.bfloat8_b,
+                            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                            mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
+                            cache_file_name=self.weight_cache_path / (f"pb_rs_01_{key}_{i}_{seqlen}"),
+                        )
+                        check_mesh_tensor_alloc(tt_buffer)
+                        tt_buffers.append(tt_buffer)
+                    for i in range(2):
+                        tt_buffer = ttnn.as_tensor(
+                            torch.zeros(shape[1]),
+                            device=self.mesh_device,
+                            layout=ttnn.TILE_LAYOUT,
+                            dtype=ttnn.bfloat8_b,
+                            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                            mesh_mapper=ttnn.ReplicateTensorToMesh(self.mesh_device),
+                            cache_file_name=self.weight_cache_path / (f"pb_rs_02_{key}_{i}_{seqlen}"),
+                        )
+                        check_mesh_tensor_alloc(tt_buffer)
+                        tt_buffers.append(tt_buffer)
+                    persistent_buffers[key] = tt_buffers
             persistent_buffers_all[seqlen] = persistent_buffers
         return persistent_buffers_all
 
@@ -550,15 +582,15 @@ class TT_CCL:
         buffer_key=None,
     ):
         if self.mode == "prefill":
-            # if self.is_6u:
-            #     return ring_reduce_scatter(
-            #         input_tensor_mesh,
-            #         memory_config,
-            #         cluster_axis,
-            #         dim=dim,
-            #         num_links=num_links,
-            #         buffer_key=buffer_key,
-            #     )
+            if self.is_6u:
+                return ring_reduce_scatter(
+                    input_tensor_mesh,
+                    memory_config,
+                    cluster_axis,
+                    dim=dim,
+                    num_links=num_links,
+                    buffer_key=buffer_key,
+                )
 
             # reshape input to [1, 1, S, x]
             B = input_tensor_mesh.shape[1]
