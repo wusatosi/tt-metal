@@ -352,6 +352,7 @@ set_target_properties(
 if(BUILD_PROGRAMMING_EXAMPLES)
     add_subdirectory(programming_examples)
 endif()
+add_subdirectory(programming_examples)
 
 # Allow internal files to access the public API "by default" and without the
 # scoping that external consumers must use.  Scoping may still be used if desired.
