@@ -144,18 +144,18 @@ int main(int argc, char *argv[]) {
 
         WAYPOINT("R");
 
-#if !defined(ARCH_WORMHOLE)
-        while (*ncrisc_run != RUN_SYNC_MSG_GO) {
-            invalidate_l1_cache();
-        }
-        auto stack_free = reinterpret_cast<uint32_t (*)()>(kernel_lma)();
-#else
+#if defined(ARCH_WORMHOLE)
         // Jumping to IRAM causes bizarre behavior, so signal the
         // brisc to reset the ncrisc to the IRAM address
         uint32_t kernel_vma = MEM_NCRISC_KERNEL_BASE;
         mailboxes->ncrisc_halt.resume_addr = kernel_vma;
         auto stack_free = notify_brisc_and_halt_to_iram(RUN_SYNC_MSG_WAITING_FOR_RESET,
                                                         kernel_lma - kernel_vma);
+#else
+        while (*ncrisc_run != RUN_SYNC_MSG_GO) {
+            invalidate_l1_cache();
+        }
+        auto stack_free = reinterpret_cast<uint32_t (*)()>(kernel_lma)();
 #endif
         record_stack_usage(stack_free);
         WAYPOINT("D");
