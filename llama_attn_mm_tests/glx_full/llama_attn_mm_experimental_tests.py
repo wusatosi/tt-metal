@@ -53,6 +53,22 @@ def generate_kqv_projection_program_config_new(seq_len):
     if seq_len < 4096:
         return generate_kqv_projection_program_config(seq_len)
 
+    # if seq_len == 4096:
+    #     # breakpoint()
+    #     return ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+    #         compute_with_storage_grid_size=(7, 9),
+    #         in0_block_w=8,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
+    #         out_subblock_h=1,  # Must be divisible by per_core_M
+    #         out_subblock_w=3,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
+    #         out_block_h=19,
+    #         out_block_w=6,
+    #         per_core_M=19,  # M / TILE_HEIGHT / Grid_Size (dynamic based on seqlen)
+    #         per_core_N=6,  # N / TILE_WIDTH / grid width
+    #         transpose_mcast=False,
+    #         fused_activation=None,
+    #         fuse_batch=False,
+    #     )
+
     def largest_divisor_less_than_k(n, k):
         # Start from k-1 and work down
         for i in range(k, 0, -1):
@@ -96,8 +112,8 @@ def generate_kqv_projection_program_config_new(seq_len):
         while count_prime_factors(per_core_M) < 4:
             per_core_M = per_core_M + 1
 
-    out_block_h = largest_divisor_less_than_k(per_core_M, 16)
-    breakpoint()
+    out_block_h = largest_divisor_less_than_k(per_core_M, 12)
+    # breakpoint()
     return ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
         compute_with_storage_grid_size=(7, 9),
         in0_block_w=16,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
@@ -177,7 +193,7 @@ def generate_wo_program_config_new(seq_len):
     out_block_h = largest_divisor_less_than_k(per_core_M, 20)
     return ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
         compute_with_storage_grid_size=(7, 9),
-        in0_block_w=8,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
+        in0_block_w=16,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
         out_subblock_h=3 if out_block_h % 3 == 0 else 1,  # Must be divisible by per_core_M
         out_subblock_w=2
         if out_block_h % 3 == 0
@@ -268,6 +284,8 @@ def test_kqv_projection(mesh_device, stress_test):
                 dtype=ttnn.bfloat8_b,
                 memory_config=ttnn.DRAM_MEMORY_CONFIG,
             )
+            ttnn.deallocate(out_tt)
+        ttnn.deallocate(activations_tt)
 
     # out_torch = ttnn.to_torch(out_tt)
     # passed, msg = comp_pcc(golden, out_torch, 0.99)
