@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2024 Tenstorrent Inc.
+// SPDX-FileCopyrightText: © 2024 Tenstorrent AI ULC
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -170,6 +170,7 @@ void validate_sharding(
 
 void BinaryNgDeviceOperation::validate_on_program_cache_miss(
     const operation_attributes_t& attributes, const tensor_args_t& tensor_args) {
+    tt::log_info(tt::LogOp, "validate_on_program_cache_miss");
     // We don't support sharding for now
     const auto& input_tensor_a = tensor_args.input_tensor_a;
     const auto& input_tensor_b = tensor_args.input_tensor_b;
@@ -254,6 +255,7 @@ void BinaryNgDeviceOperation::validate_on_program_cache_miss(
 
 void BinaryNgDeviceOperation::validate_on_program_cache_hit(
     const operation_attributes_t& attributes, const tensor_args_t& tensor_args) {
+    tt::log_info(tt::LogOp, "validate_on_program_cache_hit");
     const auto& input_tensor_a = tensor_args.input_tensor_a;
     const auto& input_tensor_b = tensor_args.input_tensor_b;
     const auto& output_tensor = tensor_args.output_tensor;
@@ -460,6 +462,7 @@ BinaryNgDeviceOperation::invoke(
     DataType dtype_b = input_tensor_b.get_dtype();
     bool is_sfpu_op = (utils::is_binary_sfpu_op(binary_op_type, dtype_a, dtype_b));
     bool is_quant_op = utils::is_quant_op(binary_op_type);
+    //  tt::log_info(tt::LogOp, "get_worker_grid {}", get_worker_grid(input_tensor_a, &input_tensor_b, output_tensor));
     return {
         operation_attributes_t{
             binary_op_type,

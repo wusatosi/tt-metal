@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2024 Tenstorrent Inc.
+// SPDX-FileCopyrightText: © 2024 Tenstorrent AI ULC
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -86,7 +86,12 @@ std::optional<AllShardSpecs> get_shard_specs(const Tensor& a, const std::optiona
     bool b_sharded = b.has_value() && b->memory_config().is_sharded();
     bool c_sharded = c.memory_config().is_sharded();
 
+    tt::log_info(tt::LogOp, " ****** ng is_sharded A, B , Out {}, {}, {}", a_sharded, b_sharded, c_sharded);
+
     if (!a_sharded && !b_sharded && !c_sharded) {
+        tt::log_info(tt::LogOp, " ****** a {} {}", a.memory_config(), a.get_dtype());
+        // tt::log_info(tt::LogOp, " ****** b {} {}", b->memory_config(), b->get_dtype());
+        tt::log_info(tt::LogOp, " ****** b {} {}", c.memory_config(), c.get_dtype());
         return std::nullopt;
     }
 
@@ -97,6 +102,8 @@ std::optional<AllShardSpecs> get_shard_specs(const Tensor& a, const std::optiona
     ShardSpec c_shard_spec = c_sharded   ? *c.shard_spec()
                              : a_sharded ? adjust_to_shape(*a.shard_spec(), a_shape, c_shape)
                                          : adjust_to_shape(*b->shard_spec(), b_shape, c_shape);
+
+    // tt::log_info(tt::LogOp, " ****** c_shard_spec {}", c_shard_spec);
 
     return AllShardSpecs{
         a_sharded ? *a.shard_spec() : adjust_to_shape(c_shard_spec, c_shape, a_shape),
@@ -178,6 +185,9 @@ void set_or_update_runtime_arguments(
     KernelHandle reader_kernel_id,
     KernelHandle writer_kernel_id,
     KernelHandle compute_kernel_id,
+    const tt::tt_metal::CBHandle cb_src0,
+    const tt::tt_metal::CBHandle cb_src1,
+    const tt::tt_metal::CBHandle cb_output,
     const BinaryNgDeviceOperation::operation_attributes_t& operation_attributes,
     const BinaryNgDeviceOperation::tensor_args_t& tensor_args,
     BinaryNgDeviceOperation::tensor_return_value_t& c,
@@ -188,6 +198,14 @@ void set_or_update_runtime_arguments(
     auto aND = extract_nD_dims(a, out_rank);
     auto bND = b.has_value() ? extract_nD_dims(*b, out_rank) : 1;
     auto cND = extract_nD_dims(c, out_rank);
+
+    bool src0_sharded = a.is_sharded();
+    bool src1_sharded = b.has_value() && b->is_sharded();
+    bool out_sharded = c.is_sharded();
+
+    auto src_buffer_a = a.buffer();
+    auto src_buffer_b = b.has_value() ? b->buffer() : nullptr;
+    auto dst_buffer = c.buffer();
 
     const auto [aN, aC, aHt, aWt] = get_shape_dims(a);
     const auto [bN, bC, bHt, bWt] = b.has_value() ? get_shape_dims(*b) : std::tuple{1u, 1u, 1u, 1u};
@@ -395,6 +413,15 @@ void set_or_update_runtime_arguments(
 
         start_tile_id += c_num_tiles;
     }
+    if (src0_sharded) {
+        UpdateDynamicCircularBufferAddress(program, cb_src0, *src_buffer_a);
+    }
+    if (src1_sharded) {
+        UpdateDynamicCircularBufferAddress(program, cb_src1, *src_buffer_b);
+    }
+    if (out_sharded) {
+        UpdateDynamicCircularBufferAddress(program, cb_output, *dst_buffer);
+    }
 }
 
 }  // namespace CMAKE_UNIQUE_NAMESPACE
@@ -421,11 +448,16 @@ BinaryNgDeviceOperation::ProgramFactory::cached_program_t BinaryNgDeviceOperatio
 
     const auto shard_specs = CMAKE_UNIQUE_NAMESPACE::get_shard_specs(a, b, c);
     const bool has_sharding = shard_specs.has_value();
+    tt::log_info(tt::LogOp, " ****** has_sharding {}", has_sharding);
 
     auto tile_hw = c.tensor_spec().tile().get_tile_hw();
     uint32_t a_num_tiles_per_shard = has_sharding ? shard_specs->a_shard_spec.numel() / tile_hw : 0;
     uint32_t b_num_tiles_per_shard = has_sharding ? shard_specs->b_shard_spec.numel() / tile_hw : 0;
     uint32_t c_num_tiles_per_shard = has_sharding ? shard_specs->c_shard_spec.numel() / tile_hw : 0;
+
+    // tt::log_info(tt::LogOp, " ****** a_num_tiles_per_shard {}", a_num_tiles_per_shard);
+    // tt::log_info(tt::LogOp, " ****** b_num_tiles_per_shard {}", b_num_tiles_per_shard);
+    // tt::log_info(tt::LogOp, " ****** c_num_tiles_per_shard {}", c_num_tiles_per_shard);
 
     const auto a_dtype = a.get_dtype();
     // Always pass the more accurate fp32 when the quantization scale is passed as a scalar
@@ -438,12 +470,19 @@ BinaryNgDeviceOperation::ProgramFactory::cached_program_t BinaryNgDeviceOperatio
     const auto b_data_format = datatype_to_dataformat_converter(b_dtype);
     const auto c_data_format = datatype_to_dataformat_converter(c_dtype);
 
+    if (!has_sharding) {
+        tt::log_info(tt::LogOp, " ****** a {} ", a_dtype);
+        tt::log_info(tt::LogOp, " ****** b {}", b_dtype);
+        tt::log_info(tt::LogOp, " ****** c {}", c_dtype);
+    }
+
     uint32_t a_single_tile_size = tt_metal::detail::TileSize(a_data_format);
     uint32_t b_single_tile_size = tt_metal::detail::TileSize(b_data_format);
     uint32_t c_single_tile_size = tt_metal::detail::TileSize(c_data_format);
 
     // we parallelize the computation across the output tiles
     const auto& all_device_cores = operation_attributes.worker_grid;
+    // tt::log_info(tt::LogOp, " ****** all_device_cores {}", all_device_cores);
 
     Buffer* a_buffer = a.buffer();
     Buffer* b_buffer = b.has_value() ? b->buffer() : nullptr;
@@ -647,12 +686,17 @@ BinaryNgDeviceOperation::ProgramFactory::cached_program_t BinaryNgDeviceOperatio
         reader_kernel_id,
         writer_kernel_id,
         compute_kernel_id,
+        a_cb_handle,
+        b_cb_handle,
+        c_cb_handle,
         operation_attributes,
         tensor_args,
         c,
         set_runtime_args);
 
-    return {std::move(program), {reader_kernel_id, writer_kernel_id, compute_kernel_id}};
+    return {
+        std::move(program),
+        {reader_kernel_id, writer_kernel_id, compute_kernel_id, a_cb_handle, b_cb_handle, c_cb_handle}};
 }
 
 void BinaryNgDeviceOperation::ProgramFactory::override_runtime_arguments(
@@ -665,12 +709,15 @@ void BinaryNgDeviceOperation::ProgramFactory::override_runtime_arguments(
         auto& core_args = all_args.at(core.x).at(core.y);
         std::copy(args.begin(), args.end(), core_args.data());
     };
-
+    const auto& shared_variables = cached_program.shared_variables;
     CMAKE_UNIQUE_NAMESPACE::set_or_update_runtime_arguments(
         cached_program.program,
-        cached_program.shared_variables.reader_kernel_id,
-        cached_program.shared_variables.writer_kernel_id,
-        cached_program.shared_variables.compute_kernel_id,
+        shared_variables.reader_kernel_id,
+        shared_variables.writer_kernel_id,
+        shared_variables.compute_kernel_id,
+        shared_variables.cb_src0,
+        shared_variables.cb_src1,
+        shared_variables.cb_output,
         operation_attributes,
         tensor_args,
         c,

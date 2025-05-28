@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
+# SPDX-FileCopyrightText: © 2024 Tenstorrent AI ULC
 
 # SPDX-License-Identifier: Apache-2.0
 
@@ -118,6 +118,7 @@ class Down4:
         )
 
     def __call__(self, input_tensor):
+        print("------ downsample4-------")
         output_tensor_split = self.conv1(input_tensor)[0]
         output_tensor_split = ttnn.mish(output_tensor_split)
         output_tensor_left = self.conv2(output_tensor_split)[0]

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2025 Tenstorrent Inc.
+# SPDX-FileCopyrightText: © 2025 Tenstorrent AI ULC
 
 # SPDX-License-Identifier: Apache-2.0
 
@@ -424,8 +424,23 @@ class TtMaxSigmoidAttnBlock:
         aw = ttnn.max(aw, dim=-1, keepdim=True)
         aw = ttnn.permute(aw, (0, 1, 2, 4, 3))  # To increase the perfomance of squeeze operation
         aw = ttnn.squeeze(aw, -2)  # If the above permute is removed use ttnn.squeeze(aw, -1)
+        print("-------before div-------")
         aw = ttnn.div(aw, (self.hc**0.5))
-        aw = aw + ttnn.reshape(self.bias, (1, -1, 1, 1))
+        print("-------before add-------")
+        print("-------use typecast-------")
+        # print("a input ", aw)
+        # print("b input", ttnn.reshape(self.bias, (1, -1, 1, 1)))
+        if (
+            aw.get_dtype() != self.bias.get_dtype()
+            and aw.get_dtype() == ttnn.bfloat16
+            and self.bias.get_dtype() == ttnn.float32
+        ):
+            #     print("a input ", aw)
+            #     print(ttnn.max(aw))
+            #     print(ttnn.min(aw))
+            aw = ttnn.typecast(aw, dtype=ttnn.float32)
+        #     print("b input", ttnn.reshape(self.bias, (1, -1, 1, 1)))
+        aw = ttnn.add(aw, ttnn.reshape(self.bias, (1, -1, 1, 1)), use_legacy=False)
         aw = ttnn.sigmoid(aw) * self.scale
 
         x = ttnn.permute(x, (0, 2, 3, 1))  # nchw->nhwc
@@ -435,6 +450,7 @@ class TtMaxSigmoidAttnBlock:
         aw = ttnn.to_memory_config(
             aw, memory_config=ttnn.DRAM_MEMORY_CONFIG
         )  # added as we are facing OOM issue in next line.
+        print("-------before mul-------")
         x = x * ttnn.unsqueeze(aw, 2)
         x = ttnn.to_memory_config(x, memory_config=ttnn.L1_MEMORY_CONFIG)
         ttnn.deallocate(aw)

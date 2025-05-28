@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
+# SPDX-FileCopyrightText: © 2024 Tenstorrent AI ULC
 
 # SPDX-License-Identifier: Apache-2.0
 
@@ -58,6 +58,7 @@ class Down2:
         )
 
     def __call__(self, input_tensor):
+        print("------ downsample2-------")
         output_tensor_split = self.conv1(input_tensor)[0]
         output_tensor_split = ttnn.mish(output_tensor_split)
         output_tensor_left = self.conv2(output_tensor_split)[0]
@@ -71,14 +72,29 @@ class Down2:
         output_tensor = ttnn.mish(output_tensor)
         output_tensor = self.res1_conv2(output_tensor)[0]
         output_tensor = ttnn.mish(output_tensor)
-        res2_split = res1_split + output_tensor
+        print("1st add")
+        # input_torch_b4 = ttnn.to_torch(res1_split)
+        print(res1_split.shape, res1_split.dtype, res1_split.memory_config())
+        print(output_tensor.shape, output_tensor.dtype, output_tensor.memory_config())
+        res2_split = ttnn.add(res1_split, output_tensor, use_legacy=False)
+        # input_torch_a4 = ttnn.to_torch(res1_split)
+        # assrt = torch.equal(input_torch_a4, input_torch_b4)
+        # print("1st add input unchanged ", assrt)
+
         ttnn.deallocate(res1_split)
 
         output_tensor = self.res2_conv1(res2_split)[0]
         output_tensor = ttnn.mish(output_tensor)
         output_tensor = self.res2_conv2(output_tensor)[0]
         output_tensor = ttnn.mish(output_tensor)
-        output_tensor = res2_split + output_tensor
+        print("2nd add")
+        # input_torch_b4 = ttnn.to_torch(res2_split)
+        print(res2_split.shape, res2_split.memory_config())
+        print(output_tensor.shape, output_tensor.dtype, output_tensor.memory_config())
+        output_tensor = ttnn.add(res2_split, output_tensor, use_legacy=False)
+        # input_torch_a4 = ttnn.to_torch(res2_split)
+        # assrt = torch.equal(input_torch_a4, input_torch_b4)
+        # print("2nd add input unchanged ", assrt)
 
         ttnn.deallocate(res2_split)
 

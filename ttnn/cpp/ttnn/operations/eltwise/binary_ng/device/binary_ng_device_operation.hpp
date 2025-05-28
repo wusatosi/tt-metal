@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: © 2024 Tenstorrent Inc.
+// SPDX-FileCopyrightText: © 2024 Tenstorrent AI ULC
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -59,6 +59,9 @@ struct BinaryNgDeviceOperation {
             tt::tt_metal::KernelHandle reader_kernel_id;
             tt::tt_metal::KernelHandle writer_kernel_id;
             tt::tt_metal::KernelHandle compute_kernel_id;
+            tt::tt_metal::CBHandle cb_src0;
+            tt::tt_metal::CBHandle cb_src1;
+            tt::tt_metal::CBHandle cb_output;
         };
 
         using cached_program_t = ttnn::device_operation::CachedProgram<shared_variables_t>;

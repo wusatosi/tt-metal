@@ -1,5 +1,5 @@
 
-// SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
+// SPDX-FileCopyrightText: © 2024 Tenstorrent AI ULC
 //
 // SPDX-License-Identifier: Apache-2.0
 
@@ -335,6 +335,7 @@ inline auto invoke_binary_ng(
     const std::optional<bool>& use_legacy) {
     if (use_legacy ? *use_legacy
                    : binary::is_legacy_only(lhs, rhs, memory_config, output, lhs_activations, rhs_activations)) {
+        tt::log_info(tt::LogOp, " ****** using legacy {}", binary_op_type);
         const std::vector activations(post_activations.begin(), post_activations.end());
         const std::optional lhs_activation =
             lhs_activations.empty() ? std::nullopt : std::optional{lhs_activations.front()};
@@ -349,7 +350,7 @@ inline auto invoke_binary_ng(
                 queue_id, lhs, rhs, binary_op_type, dtype, memory_config, output, activations, lhs_activation);
         }
     }
-
+    tt::log_info(tt::LogOp, " ****** using new ng {}", binary_op_type);
     const auto a_dtype = lhs.get_dtype();
     const auto output_preallocated = output.has_value();
     const auto out_dtype = output_preallocated ? output->get_dtype() : dtype.value_or(a_dtype);

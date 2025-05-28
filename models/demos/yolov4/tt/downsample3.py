@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
+# SPDX-FileCopyrightText: © 2024 Tenstorrent AI ULC
 
 # SPDX-License-Identifier: Apache-2.0
 
@@ -119,6 +119,7 @@ class Down3:
         )
 
     def __call__(self, input_tensor):
+        print("------ downsample3-------")
         output_tensor_split = self.conv1(input_tensor)[0]
         output_tensor_split = ttnn.mish(output_tensor_split)
         output_tensor_left = self.conv2(output_tensor_split)[0]
@@ -132,14 +133,22 @@ class Down3:
         output_tensor = ttnn.mish(output_tensor)
         output_tensor = self.res1_conv2(output_tensor)[0]
         output_tensor = ttnn.mish(output_tensor)
-        res2_split = res1_split + output_tensor
+        print("1st add")
+        print(res1_split.shape, res1_split.dtype, res1_split.memory_config())
+        print(output_tensor.shape, output_tensor.dtype, output_tensor.memory_config())
+        # res2_split = res1_split + output_tensor
+        res2_split = ttnn.add(res1_split, output_tensor)
         ttnn.deallocate(res1_split)
 
         output_tensor = self.res2_conv1(res2_split)[0]
         output_tensor = ttnn.mish(output_tensor)
         output_tensor = self.res2_conv2(output_tensor)[0]
         output_tensor = ttnn.mish(output_tensor)
-        res3_split = res2_split + output_tensor
+        print("2nd add")
+        print(res2_split.shape, res2_split.dtype, res2_split.memory_config())
+        print(output_tensor.shape, output_tensor.dtype, output_tensor.memory_config())
+        # res3_split = res2_split + output_tensor
+        res3_split = ttnn.add(res2_split, output_tensor)
 
         ttnn.deallocate(res2_split)
 
@@ -147,7 +156,11 @@ class Down3:
         output_tensor = ttnn.mish(output_tensor)
         output_tensor = self.res3_conv2(output_tensor)[0]
         output_tensor = ttnn.mish(output_tensor)
-        res4_split = res3_split + output_tensor
+        print("3nd add")
+        print(res3_split.shape, res3_split.dtype, res3_split.memory_config())
+        print(output_tensor.shape, output_tensor.dtype, output_tensor.memory_config())
+        # res4_split = res3_split + output_tensor
+        res4_split = ttnn.add(res3_split, output_tensor)
 
         ttnn.deallocate(res3_split)
 
@@ -155,7 +168,11 @@ class Down3:
         output_tensor = ttnn.mish(output_tensor)
         output_tensor = self.res4_conv2(output_tensor)[0]
         output_tensor = ttnn.mish(output_tensor)
-        res5_split = res4_split + output_tensor
+        print("4nd add")
+        print(res4_split.shape, res4_split.dtype, res4_split.memory_config())
+        print(output_tensor.shape, output_tensor.dtype, output_tensor.memory_config())
+        # res5_split = res4_split + output_tensor
+        res5_split = ttnn.add(res4_split, output_tensor)
 
         ttnn.deallocate(res4_split)
 
@@ -163,7 +180,11 @@ class Down3:
         output_tensor = ttnn.mish(output_tensor)
         output_tensor = self.res5_conv2(output_tensor)[0]
         output_tensor = ttnn.mish(output_tensor)
-        res6_split = res5_split + output_tensor
+        print("5nd add")
+        print(res5_split.shape, res5_split.dtype, res5_split.memory_config())
+        print(output_tensor.shape, output_tensor.dtype, output_tensor.memory_config())
+        # res6_split = res5_split + output_tensor
+        res6_split = ttnn.add(res5_split, output_tensor)
 
         ttnn.deallocate(res5_split)
 
@@ -171,7 +192,11 @@ class Down3:
         output_tensor = ttnn.mish(output_tensor)
         output_tensor = self.res6_conv2(output_tensor)[0]
         output_tensor = ttnn.mish(output_tensor)
-        res7_split = res6_split + output_tensor
+        print("6nd add")
+        print(res6_split.shape, res6_split.dtype, res6_split.memory_config())
+        print(output_tensor.shape, output_tensor.dtype, output_tensor.memory_config())
+        # res7_split = res6_split + output_tensor
+        res7_split = ttnn.add(res6_split, output_tensor)
 
         ttnn.deallocate(res6_split)
 
@@ -179,7 +204,11 @@ class Down3:
         output_tensor = ttnn.mish(output_tensor)
         output_tensor = self.res7_conv2(output_tensor)[0]
         output_tensor = ttnn.mish(output_tensor)
-        res8_split = res7_split + output_tensor
+        print("7nd add")
+        print(res7_split.shape, res7_split.dtype, res7_split.memory_config())
+        print(output_tensor.shape, output_tensor.dtype, output_tensor.memory_config())
+        # res8_split = res7_split + output_tensor
+        res8_split = ttnn.add(res7_split, output_tensor)
 
         ttnn.deallocate(res7_split)
 
@@ -187,7 +216,11 @@ class Down3:
         output_tensor = ttnn.mish(output_tensor)
         output_tensor = self.res8_conv2(output_tensor)[0]
         output_tensor = ttnn.mish(output_tensor)
-        output_tensor = res8_split + output_tensor
+        print("8nd add")
+        print(res8_split.shape, res8_split.dtype, res8_split.memory_config())
+        print(output_tensor.shape, output_tensor.dtype, output_tensor.memory_config())
+        # output_tensor = res8_split + output_tensor
+        output_tensor = ttnn.add(res8_split, output_tensor)
 
         ttnn.deallocate(res8_split)
 

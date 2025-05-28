@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
+# SPDX-FileCopyrightText: © 2024 Tenstorrent AI ULC
 
 # SPDX-License-Identifier: Apache-2.0
 
@@ -78,6 +78,7 @@ class Down1:
         self.convs = [self.conv1, self.conv2, self.conv3, self.conv4, self.conv5, self.conv6, self.conv7, self.conv8]
 
     def __call__(self, input_tensor):
+        print("------ downsample1-------")
         output_tensor = self.conv1(input_tensor)[0]
         output_tensor = ttnn.mish(output_tensor)
 
@@ -97,6 +98,9 @@ class Down1:
         output_tensor = ttnn.mish(output_tensor)
         output_tensor = self.conv6(output_tensor)[0]
         output_tensor = ttnn.mish(output_tensor)
+        print("1st add")
+        print(output_tensor_split_2.shape, output_tensor_split_2.dtype, output_tensor_split_2.memory_config())
+        print(output_tensor.shape, output_tensor.dtype, output_tensor.memory_config())
         output_tensor = output_tensor_split_2 + output_tensor
 
         ttnn.deallocate(output_tensor_split_2)
