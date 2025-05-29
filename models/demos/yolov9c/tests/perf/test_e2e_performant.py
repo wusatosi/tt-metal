@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
+import time
+
 import pytest
 import torch
 from loguru import logger
@@ -54,7 +56,9 @@ def test_e2e_performant(
     inference_times = []
     for _ in range(10):
         # tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+        t0 = time.time()
         out = performant_runner.run(torch_input_tensor)
+        t1 = time.time()
         inference_times.append(t1 - t0)
 
     performant_runner.release()

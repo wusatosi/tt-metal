@@ -49,6 +49,7 @@ class YOLOv4PerformantRunner:
         ttnn.copy_host_to_device_tensor(self.tt_inputs_host, self.tt_image_res, 1)
         self.write_event = ttnn.record_event(self.device, 1)
         ttnn.wait_for_event(0, self.write_event)
+        print(self.input_mem_config)
         self.runner_infra.input_tensor = ttnn.to_memory_config(self.tt_image_res, self.input_mem_config)
         spec = self.runner_infra.input_tensor.spec
         self.op_event = ttnn.record_event(self.device, 0)

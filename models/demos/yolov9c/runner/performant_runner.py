@@ -44,8 +44,13 @@ class YOLOv9PerformantRunner:
         ttnn.wait_for_event(1, self.op_event)
         ttnn.copy_host_to_device_tensor(self.tt_inputs_host, self.tt_image_res, 1)
         self.write_event = ttnn.record_event(self.device, 1)
+        input_mem_config = ttnn.create_sharded_memory_config(
+            [1, 16, 640, 640],
+            ttnn.CoreGrid(x=8, y=8),
+            ttnn.ShardStrategy.HEIGHT,
+        )
         ttnn.wait_for_event(0, self.write_event)
-        self.runner_infra.input_tensor = ttnn.to_memory_config(self.tt_image_res, self.input_mem_config)
+        self.runner_infra.input_tensor = ttnn.to_memory_config(self.tt_image_res, input_mem_config)
         spec = self.runner_infra.input_tensor.spec
         self.op_event = ttnn.record_event(self.device, 0)
         self.runner_infra.run()
