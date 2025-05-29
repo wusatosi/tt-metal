@@ -902,6 +902,8 @@ def test_llama_TG_perf_device_non_overlapped_dispatch(
     df = pd.read_csv(filename)
     df = df[df["OP TYPE"].isin(["tt_dnn_device"])]
     df = merge_device_rows(df)
+    # Add kernel duration of an op to the dispatch time for the next op
+    df["TOTAL DISPATCH TIME [ns]"] = df["OP TO OP LATENCY [ns]"] + df["DEVICE KERNEL DURATION [ns]"].shift(1, fill_value = 0)
     # Exclude compilaton and capture trace runs
     df_model = df[int(len(df) / 3 * 2) :]
     # Add 1 as early return means
@@ -913,7 +915,7 @@ def test_llama_TG_perf_device_non_overlapped_dispatch(
     )
 
     # Build dicts of op_code to list of durations
-    dispatch_duration_dict = build_duration_dict(all_layers_raw_dict, "OP TO OP LATENCY [ns]")
+    dispatch_duration_dict = build_duration_dict(all_layers_raw_dict, "TOTAL DISPATCH TIME [ns]")
 
     # Build dicts of op_code_with_id to list of durations - one list per op instance
     dispatch_duration_per_instance_dict = build_duration_per_instance_dict(dispatch_duration_dict, num_layers)
