@@ -910,7 +910,7 @@ def test_llama_TG_perf_device_non_overlapped_dispatch(
     df_layers = df_model[DECODER_OP_START_INDEX:DECODER_OP_END_INDEX]
     assert len(df_layers) % num_layers == 0
 
-    all_layers_raw_dict = df_layers[["OP CODE", "DEVICE KERNEL DURATION [ns]", "OP TO OP LATENCY [ns]"]].to_dict(
+    all_layers_raw_dict = df_layers[["OP CODE", "DEVICE KERNEL DURATION [ns]", "OP TO OP LATENCY [ns]", "TOTAL DISPATCH TIME [ns]"]].to_dict(
         orient="records"
     )
 
