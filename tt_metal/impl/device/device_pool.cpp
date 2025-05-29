@@ -307,6 +307,16 @@ void DevicePool::initialize_active_devices() const {
     const auto& active_devices = this->get_all_active_devices();
     std::cout << "Num of active devices: " << active_devices.size() << std::endl;
 
+    for (const auto& dev : active_devices) {
+        for (const auto& eth_core : dev->get_active_ethernet_cores()) {
+            static uint32_t zero_vec_size = tt::tt_metal::hal::get_erisc_l1_unreserved_size();
+            auto zero_vec_addr = tt::tt_metal::hal::get_erisc_l1_unreserved_base();
+            static std::vector<uint32_t> zero_vec(zero_vec_size / sizeof(uint32_t), 0);
+            CoreCoord virtual_core = dev->ethernet_core_from_logical_core(eth_core);
+            llrt::write_hex_vec_to_core(dev->id(), virtual_core, zero_vec, zero_vec_addr);
+        }
+    }
+
     // Activate fabric (must be before FD)
     FabricConfig fabric_config = tt::tt_metal::MetalContext::instance().get_cluster().get_fabric_config();
     if (tt_fabric::is_tt_fabric_config(fabric_config) || tt_fabric::is_2d_fabric_config(fabric_config)) {
