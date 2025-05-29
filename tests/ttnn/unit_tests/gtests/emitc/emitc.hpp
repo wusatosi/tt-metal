@@ -69,13 +69,13 @@ private:
 
 // Wrapper to abstract const-eval logic out of runtime funcs to keep them
 // cleaner.  Invokes constEvalFunc iff outputs is empty.
-void constEvalFuncWrapper(
-    std::function<std::vector<ttnn::Tensor>(std::vector<ttnn::Tensor>)> constEvalFunc,
-    const std::vector<ttnn::Tensor>& inputs,
-    std::vector<ttnn::Tensor>* outputs) {
-    if (outputs->empty()) {
-        *outputs = constEvalFunc(inputs);
-    }
-}
+// void constEvalFuncWrapper(
+//     std::function<std::vector<ttnn::Tensor>(std::vector<ttnn::Tensor>)> constEvalFunc,
+//     const std::vector<ttnn::Tensor>& inputs,
+//     std::vector<ttnn::Tensor>* outputs) {
+//     if (outputs->empty()) {
+//         *outputs = constEvalFunc(inputs);
+//     }
+// }
 
 }  // namespace ttnn
