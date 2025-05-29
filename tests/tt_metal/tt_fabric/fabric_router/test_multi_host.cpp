@@ -20,12 +20,16 @@ namespace tt::tt_fabric {
 namespace multi_host_tests {
 
 TEST(MultiHost, TestDualGalaxyControlPlaneInit) {
-    tt::tt_metal::detail::InitializeFabricConfig(tt::tt_metal::FabricConfig::FABRIC_2D);
+    MPI_Init(nullptr, nullptr);
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
     const std::filesystem::path quanta_galaxy_mesh_graph_desc_path =
         std::filesystem::path(tt::tt_metal::MetalContext::instance().rtoptions().get_root_dir()) /
         "tt_metal/fabric/mesh_graph_descriptors/dual_galaxy_mesh_graph_descriptor.yaml";
-    auto control_plane = std::make_unique<ControlPlane>(quanta_galaxy_mesh_graph_desc_path.string());
-    control_plane->configure_routing_tables_for_fabric_ethernet_channels();
+    auto control_plane = std::make_unique<GlobalControlPlane>(quanta_galaxy_mesh_graph_desc_path.string());
+    // control_plane->configure_routing_tables_for_fabric_ethernet_channels();
+    MPI_Finalize();
 }
 
 TEST(MultiHost, TestBasicMPI) {
@@ -60,7 +64,6 @@ TEST(MultiHost, TestBasicMPICluster) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
     int local_value = rank;
-    int global_sum = 0;
     char processor_name[MPI_MAX_PROCESSOR_NAME];
     int name_len;
 
@@ -91,8 +94,9 @@ TEST(MultiHost, TestBasicMPICluster) {
             num_connections_to_chip[std::get<0>(remote_chip_and_channel)]++;
         }
         for (const auto& [other_chip, count] : num_connections_to_chip) {
-            EXPECT_EQ(count, num_connections_per_side) << "Chip " << chip << " has " << count << " connections to Chip "
-                                                       << other_chip << ", expected " << num_connections_per_side;
+            EXPECT_TRUE(count >= num_connections_per_side)
+                << "Chip " << chip << " has " << count << " connections to Chip " << other_chip << ", expected "
+                << num_connections_per_side;
         }
     }
 

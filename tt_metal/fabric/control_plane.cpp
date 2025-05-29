@@ -206,10 +206,19 @@ void ControlPlane::validate_mesh_connections() const {
     }
 }
 
+// TODO: refactor mesh_ns_size/mesh_ew_size to use MeshCoordinateRange
+// TODO: update logical_mesh_chip_id_to_physical_chip_id_mapping_ to be updated here probably
 std::vector<chip_id_t> ControlPlane::get_mesh_physical_chip_ids(
     std::uint32_t mesh_ns_size,
     std::uint32_t mesh_ew_size,
-    chip_id_t nw_chip_physical_chip_id) const {
+    chip_id_t nw_chip_physical_chip_id,
+    MeshCoordinateRange mesh_coordinate_range = MeshCoordinateRange(MeshShape(0, 0))) const {
+    auto start_coord = mesh_coordinate_range.start_coord();
+    auto end_coord = mesh_coordinate_range.end_coord();
+    mesh_ns_size = end_coord[0] - start_coord[0] + 1;
+    mesh_ew_size = end_coord[1] - start_coord[1] + 1;
+
+    std::cout << " mesh ns size " << mesh_ns_size << " ew size " << mesh_ew_size << std::endl;
     std::uint32_t num_ports_per_side =
         routing_table_generator_->mesh_graph->get_chip_spec().num_eth_ports_per_direction;
 
@@ -386,7 +395,6 @@ std::map<FabricNodeId, chip_id_t> ControlPlane::get_physical_chip_mapping_from_m
     } else if (
         mesh_graph_desc_filename == "quanta_galaxy_mesh_graph_descriptor.yaml" ||
         mesh_graph_desc_filename == "quanta_galaxy_torus_2d_graph_descriptor.yaml" ||
-        mesh_graph_desc_filename == "dual_galaxy_mesh_graph_descriptor.yaml" ||
         mesh_graph_desc_filename == "p100_mesh_graph_descriptor.yaml" ||
         mesh_graph_desc_filename == "p150_mesh_graph_descriptor.yaml" ||
         mesh_graph_desc_filename == "p150_x2_mesh_graph_descriptor.yaml" ||
@@ -401,6 +409,26 @@ std::map<FabricNodeId, chip_id_t> ControlPlane::get_physical_chip_mapping_from_m
         for (std::uint32_t i = 0; i < physical_chip_ids.size(); i++) {
             logical_mesh_chip_id_to_physical_chip_id_mapping.insert({FabricNodeId(0, i), physical_chip_ids[i]});
         }
+
+    } else if (mesh_graph_desc_filename == "dual_galaxy_mesh_graph_descriptor.yaml") {
+        int rank, size;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        std::cout << " MY RANK " << rank << std::endl;
+        std::cout << "coord range " << this->routing_table_generator_->mesh_graph->get_host_rank_coord_range(0, rank)
+                  << std::endl;
+        auto mesh_coordinate_range = this->routing_table_generator_->mesh_graph->get_host_rank_coord_range(0, rank);
+        nw_chip_physical_id = 0;
+        const auto& physical_chip_ids =
+            this->get_mesh_physical_chip_ids(0, 0, nw_chip_physical_id, mesh_coordinate_range);
+        auto start_coord = mesh_coordinate_range.start_coord();
+        auto end_coord = mesh_coordinate_range.end_coord();
+        std::uint32_t submesh_ns_size = end_coord[0] - start_coord[0] + 1;
+        std::uint32_t submesh_ew_size = end_coord[1] - start_coord[1] + 1;
+        std::uint32_t start_device_id = start_coord[1] * submesh_ns_size + start_coord[0];
+        for (std::uint32_t i = start_device_id; i < physical_chip_ids.size(); i++) {
+            logical_mesh_chip_id_to_physical_chip_id_mapping.insert({FabricNodeId(0, i), physical_chip_ids[i]});
+        }
+
     } else if (
         mesh_graph_desc_filename == "t3k_mesh_graph_descriptor.yaml" ||
         mesh_graph_desc_filename == "n150_mesh_graph_descriptor.yaml" ||
@@ -1170,7 +1198,9 @@ void GlobalControlPlane::initialize_host_mapping() {
         MeshShape mesh_shape = this->routing_table_generator_->mesh_graph->get_mesh_shape(mesh_id);
         const auto& host_ranks = this->routing_table_generator_->mesh_graph->get_host_ranks(mesh_id);
         for (const auto& [coord, rank] : host_ranks) {
-            this->host_rank_to_sub_mesh_shape_[rank].push_back(coord);
+            std::cout << " rank " << coord << " " << rank << std::endl;
+            // contains mapping of the mesh boards to host rank, but not sure how to be used just yet
+            // this->host_rank_to_sub_mesh_shape_[rank].push_back(coord);
         }
     }
 }
