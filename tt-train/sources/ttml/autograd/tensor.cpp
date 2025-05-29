@@ -29,7 +29,14 @@ void topological_sort(
 
 namespace ttml::autograd {
 
+static uint64_t tensor_id_counter = 0;
+
+Tensor::Tensor() {
+    tensor_id = tensor_id_counter++;
+}
+
 Tensor::Tensor(const tt::tt_metal::Tensor& value, bool requires_grad) : m_value(value), m_requires_grad(requires_grad) {
+    tensor_id = tensor_id_counter++;
 }
 
 void Tensor::add_grad(const tt::tt_metal::Tensor& grad) {

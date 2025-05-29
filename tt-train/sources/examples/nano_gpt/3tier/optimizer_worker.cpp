@@ -6,6 +6,7 @@
 
 #include <CLI/CLI.hpp>
 #include <core/ttnn_all_includes.hpp>
+#include <functional>
 #include <ttnn/operations/creation.hpp>
 
 #include "autograd/auto_context.hpp"
@@ -19,31 +20,32 @@
 
 using SortedParameters = std::map<std::string, ttml::autograd::TensorPtr>;
 
+// using three_tier_arch::SortedParameters;
+using Rank = ttml::core::distributed::Rank;
+using Tag = ttml::core::distributed::Tag;
+
 void send_weights_to_aggregator(
     const ttml::autograd::DistributedContext &ctx, const SortedParameters &sorted_model_parameters) {
     auto aggregator_rank = ttml::core::distributed::Rank(*ctx.rank() - 1);
+    // for (auto &[name, tensor_ptr] : sorted_model_parameters) {
+    //     if (!tensor_ptr->get_requires_grad()) {
+    //         continue;
+    //     }
+
+    //     auto tensor = tensor_ptr->get_value();
+    //     ttml::core::distributed::send_tensor(ctx, tensor, aggregator_rank);
+    // }
+
+    std::vector<ttnn::Tensor> tensors;
+    tensors.reserve(sorted_model_parameters.size());
     for (auto &[name, tensor_ptr] : sorted_model_parameters) {
         if (!tensor_ptr->get_requires_grad()) {
             continue;
         }
-
-        auto tensor = tensor_ptr->get_value();
-        ttml::core::distributed::send_tensor(ctx, tensor, aggregator_rank);
+        tensors.push_back(tensor_ptr->get_value());
     }
-}
 
-void receive_gradients_from_aggregator(
-    const ttml::autograd::DistributedContext &ctx, const SortedParameters &sorted_model_parameters) {
-    auto aggregator_rank = ttml::core::distributed::Rank(*ctx.rank() - 1);
-    for (auto &[name, tensor_ptr] : sorted_model_parameters) {
-        if (!tensor_ptr->get_requires_grad()) {
-            continue;
-        }
-
-        auto tensor = ttnn::empty_like(tensor_ptr->get_value());
-        ttml::core::distributed::recv_tensor(ctx, tensor, aggregator_rank);
-        tensor_ptr->set_grad(tensor);
-    }
+    ttml::core::distributed::send_all_tensors(ctx, tensors, aggregator_rank);
 }
 
 using ttml::optimizers::AdamWConfig;
@@ -115,6 +117,71 @@ private:
     ttml::serialization::NamedParameters m_second_moment;
 };
 
+class ReceiveRequestGuard {
+public:
+    ReceiveRequestGuard(
+        std::reference_wrapper<ttnn::Tensor> tensor,
+        ttnn::Tensor &&cpu_tensor,
+        std::string name,
+        std::shared_ptr<CustomOptimizer> optimizer,
+        std::vector<tt::tt_metal::distributed::multihost::RequestPtr> requests) :
+        m_tensor(tensor),
+        m_cpu_tensor(std::move(cpu_tensor)),
+        m_name(std::move(name)),
+        m_optimizer(optimizer),
+        m_requests(std::move(requests)) {
+    }
+
+    ~ReceiveRequestGuard() {
+        if (m_requests.empty()) {
+            return;
+        }
+
+        for (auto &request : m_requests) {
+            [[maybe_unused]] auto status = request->wait();
+        }
+
+        ttnn::assign(m_cpu_tensor.to_device(m_tensor.get().device()), m_tensor.get());
+
+        m_optimizer->step(m_name, m_tensor.get());
+    }
+
+    ReceiveRequestGuard(const ReceiveRequestGuard &) = delete;
+    ReceiveRequestGuard(ReceiveRequestGuard &&) noexcept = default;
+    ReceiveRequestGuard &operator=(const ReceiveRequestGuard &) = delete;
+    ReceiveRequestGuard &operator=(ReceiveRequestGuard &&) noexcept = default;
+
+private:
+    std::reference_wrapper<ttnn::Tensor> m_tensor;
+    ttnn::Tensor m_cpu_tensor;
+    std::string m_name;
+    std::shared_ptr<CustomOptimizer> m_optimizer;
+    std::vector<tt::tt_metal::distributed::multihost::RequestPtr> m_requests;
+};
+
+ReceiveRequestGuard irecv_tensor_and_optimizer_step(
+    const ttml::autograd::DistributedContext &ctx,
+    ttnn::Tensor &tensor,
+    const std::string &name,
+    auto &optimizer,
+    Rank source,
+    Tag tag) {
+    auto cpu_tensor = tensor.cpu();
+    auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensor);
+
+    std::vector<tt::tt_metal::distributed::multihost::RequestPtr> requests;
+    requests.reserve(buffers.size());
+
+    // workaround for now
+    int tag_value = *tag;
+    tag_value *= 1000;
+
+    for (auto buffer : buffers) {
+        requests.push_back(ctx.irecv(buffer, source, Tag{tag_value++}));
+    }
+    return ReceiveRequestGuard(tensor, std::move(cpu_tensor), name, optimizer, std::move(requests));
+}
+
 int main(int argc, char **argv) {
     auto &ctx = ttml::autograd::ctx();
     ctx.initialize_distributed_context(argc, argv);
@@ -170,6 +237,7 @@ int main(int argc, char **argv) {
 
     auto model_parameters = model->parameters();
     auto sorted_model_parameters = SortedParameters(model_parameters.begin(), model_parameters.end());
+    // auto sorted_model_parameters = SortedParameters(model_parameters);
 
     auto adamw_params = ttml::optimizers::AdamWConfig();
     adamw_params.lr = config.learning_rate;
@@ -188,7 +256,7 @@ int main(int argc, char **argv) {
 
     // auto optimizer = select_optimizer(config.use_moreh_adamw);
 
-    auto optimizer = std::make_unique<CustomOptimizer>(model_parameters, adamw_params);
+    auto optimizer = std::make_shared<CustomOptimizer>(model_parameters, adamw_params);
 
     send_weights_to_aggregator(*aggregator_and_optimizer_ctx, sorted_model_parameters);
 
@@ -205,25 +273,54 @@ int main(int argc, char **argv) {
         for (uint32_t step = 0; step < steps_per_dataset; ++step, ++global_step) {
             optimizer->increase_step();
             auto aggregator_rank = ttml::core::distributed::Rank(*(aggregator_and_optimizer_ctx->rank()) - 1);
+
+            {
+                std::vector<ReceiveRequestGuard> receive_guards;
+                receive_guards.reserve(sorted_model_parameters.size());
+
+                int32_t tag_counter = 0;
+                for (auto &[name, tensor_ptr] : sorted_model_parameters) {
+                    if (!tensor_ptr->get_requires_grad()) {
+                        continue;
+                    }
+                    receive_guards.emplace_back(irecv_tensor_and_optimizer_step(
+                        *aggregator_and_optimizer_ctx,
+                        tensor_ptr->get_grad(),
+                        name,
+                        optimizer,
+                        aggregator_rank,
+                        Tag{tag_counter++}));
+                }
+            }
+
+            // for (auto &[name, tensor_ptr] : sorted_model_parameters) {
+            //     if (!tensor_ptr->get_requires_grad()) {
+            //         continue;
+            //     }
+
+            //     auto tensor = tensor_ptr->get_grad();
+            //     ttml::core::distributed::recv_tensor(*aggregator_and_optimizer_ctx, tensor, aggregator_rank, Tag{0});
+            //     optimizer->step(name, tensor);
+            // }
+
+            // for (auto &[name, tensor_ptr] : sorted_model_parameters) {
+            //     if (!tensor_ptr->get_requires_grad()) {
+            //         continue;
+            //     }
+
+            //     auto tensor = tensor_ptr->get_value();
+            //     ttml::core::distributed::send_tensor(*aggregator_and_optimizer_ctx, tensor, aggregator_rank);
+            // }
+
+            std::vector<ttnn::Tensor> tensors;
+            tensors.reserve(sorted_model_parameters.size());
             for (auto &[name, tensor_ptr] : sorted_model_parameters) {
                 if (!tensor_ptr->get_requires_grad()) {
                     continue;
                 }
-
-                auto grad = tensor_ptr->get_grad();
-                ttml::core::distributed::recv_tensor(*aggregator_and_optimizer_ctx, grad, aggregator_rank);
-
-                optimizer->step(name, grad);
+                tensors.push_back(tensor_ptr->get_value());
             }
-
-            for (auto &[name, tensor_ptr] : sorted_model_parameters) {
-                if (!tensor_ptr->get_requires_grad()) {
-                    continue;
-                }
-
-                auto tensor = tensor_ptr->get_value();
-                ttml::core::distributed::send_tensor(*aggregator_and_optimizer_ctx, tensor, aggregator_rank);
-            }
+            ttml::core::distributed::send_all_tensors(*aggregator_and_optimizer_ctx, tensors, aggregator_rank);
 
             if (global_step >= config.max_steps) {
                 break;

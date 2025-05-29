@@ -17,6 +17,8 @@
 #include "tokenizers/char_tokenizer.hpp"
 
 using SortedParameters = std::map<std::string, ttml::autograd::TensorPtr>;
+// using three_tier_arch::SortedParameters;
+
 using Rank = ttml::core::distributed::Rank;
 using Tag = ttml::core::distributed::Tag;
 
@@ -26,6 +28,11 @@ void send_aggregated_gradients_from_workers_to_optimizer(
     const SortedParameters &sorted_model_parameters,
     int workers) {
     Rank optimizer_rank{*aggregator_and_optimizer_ctx.rank() + 1};
+
+    std::vector<ttml::core::distributed::SendRequestGuard> send_guards;
+    send_guards.reserve(sorted_model_parameters.size());
+    int tag_counter = 0;
+
     for (auto &[name, tensor_ptr] : sorted_model_parameters) {
         if (!tensor_ptr->get_requires_grad()) {
             continue;
@@ -41,7 +48,9 @@ void send_aggregated_gradients_from_workers_to_optimizer(
         }
         tensor = ttnn::multiply(tensor, 1.0F / static_cast<float>(workers));
 
-        ttml::core::distributed::send_tensor(aggregator_and_optimizer_ctx, tensor, optimizer_rank);
+        // ttml::core::distributed::send_tensor(aggregator_and_optimizer_ctx, tensor, optimizer_rank);
+        send_guards.emplace_back(ttml::core::distributed::isend_tensor(
+            aggregator_and_optimizer_ctx, tensor, optimizer_rank, Tag{tag_counter++}));
     }
 }
 
@@ -120,7 +129,7 @@ void send_aggregated_gradients_from_workers_to_optimizer(
 //     }
 // }
 
-void recv_and_braodcast_tensor(
+void recv_and_broadcast_tensor(
     const ttml::autograd::DistributedContext &recv_ctx,
     const ttml::autograd::DistributedContext &broadcast_ctx,
     ttnn::Tensor &tensor,
@@ -138,21 +147,67 @@ void recv_and_braodcast_tensor(
     }
 }
 
+void recv_and_broadcast_all(
+    const ttml::autograd::DistributedContext &recv_ctx,
+    const ttml::autograd::DistributedContext &broadcast_ctx,
+    const SortedParameters &sorted_model_parameters,
+    Rank source,
+    Rank root) {
+    fmt::println("receive and broadcast all tensors from rank {} to rank {}", source, root);
+
+    std::vector<ttnn::Tensor> cpu_tensors;
+    cpu_tensors.reserve(sorted_model_parameters.size());
+
+    std::size_t total_size = 0;
+    for (auto &[name, tensor_ptr] : sorted_model_parameters) {
+        auto tensor = tensor_ptr->get_value();
+
+        auto cpu_tensor = tensor.cpu();
+        cpu_tensors.push_back(cpu_tensor);
+        auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensor);
+        for (auto buffer : buffers) {
+            total_size += buffer.size();
+        }
+    }
+
+    std::vector<std::byte> combined_buffer(total_size);
+    recv_ctx.recv(combined_buffer, source, Tag{0});
+
+    auto *ptr = combined_buffer.data();
+    for (auto &tensor : cpu_tensors) {
+        auto buffers = ttml::core::get_bytes_from_cpu_tensor(tensor);
+        for (auto &buffer : buffers) {
+            std::copy(ptr, ptr + buffer.size(), buffer.begin());
+            ptr += buffer.size();
+
+            broadcast_ctx.broadcast(buffer, root);
+        }
+    }
+
+    fmt::println("[done] receive and broadcast all tensors from rank {} to rank {}", source, root);
+}
+
 void send_weights_from_optimizer_to_workers(
     const ttml::autograd::DistributedContext &workers_and_aggregator_ctx,
     const ttml::autograd::DistributedContext &aggregator_and_optimizer_ctx,
     const SortedParameters &sorted_model_parameters,
     int workers) {
     Rank optimizer_rank{*aggregator_and_optimizer_ctx.rank() + 1};
-    for (auto &[name, tensor_ptr] : sorted_model_parameters) {
-        auto tensor = tensor_ptr->get_value();
-        recv_and_braodcast_tensor(
-            aggregator_and_optimizer_ctx,
-            workers_and_aggregator_ctx,
-            tensor,
-            optimizer_rank,
-            workers_and_aggregator_ctx.rank());
-    }
+    recv_and_broadcast_all(
+        aggregator_and_optimizer_ctx,
+        workers_and_aggregator_ctx,
+        sorted_model_parameters,
+        optimizer_rank,
+        workers_and_aggregator_ctx.rank());
+    // for (auto &[name, tensor_ptr] : sorted_model_parameters) {
+    //     auto tensor = tensor_ptr->get_value();
+    //     recv_and_broadcast_tensor(
+    //         aggregator_and_optimizer_ctx,
+    //         workers_and_aggregator_ctx,
+    //         tensor,
+    //         optimizer_rank,
+    //         workers_and_aggregator_ctx.rank());
+    // }
 }
 
 int main(int argc, char **argv) {
@@ -201,6 +256,7 @@ int main(int argc, char **argv) {
 
     auto model_parameters = model->parameters();
     auto sorted_model_parameters = SortedParameters(model_parameters.begin(), model_parameters.end());
+    // auto sorted_model_parameters = SortedParameters(model_parameters);
 
     auto workers = config.num_mh_workers;
 

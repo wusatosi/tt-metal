@@ -20,8 +20,11 @@ private:
     bool m_requires_grad = true;
     std::optional<NodeId> m_node_id;
 
+    uint64_t tensor_id{0};
+
 public:
-    Tensor() = default;
+    // Tensor() = default;
+    Tensor();
     Tensor(const Tensor &) = default;
     Tensor(Tensor &&) noexcept = default;
     Tensor &operator=(const Tensor &) = default;
@@ -47,6 +50,10 @@ public:
     void backward(bool retain_graph = false);
 
     bool is_grad_initialized() const;
+
+    uint64_t get_tensor_id() const {
+        return tensor_id;
+    }
 
 private:
     void try_init_grad(bool init_ones = false);

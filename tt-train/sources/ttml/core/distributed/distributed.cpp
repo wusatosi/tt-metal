@@ -39,52 +39,155 @@ void synchronize_parameters(const serialization::NamedParameters& parameters) {
     }
 }
 
+// void send_tensor(const autograd::DistributedContext& ctx, const ttnn::Tensor& tensor, Rank dest, Tag tag) {
+//     // static Timer to_cpu_timer(fmt::format("Rank {}, Send to CPU", *ctx.rank()));
+//     // static Timer send_buffer_timer(fmt::format("Rank {}, Send buffer", *ctx.rank()));
+
+//     // to_cpu_timer.start();
+//     auto cpu_tensor = tensor.cpu();
+//     auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensor);
+//     // to_cpu_timer.end();
+
+//     // send_buffer_timer.start();
+//     for (auto buffer : buffers) {
+//         ctx.send(buffer, dest, tag);
+//     }
+//     // send_buffer_timer.end();
+// }
+
+// void recv_tensor(const autograd::DistributedContext& ctx, ttnn::Tensor& tensor, Rank source, Tag tag) {
+//     // static Timer to_cpu_timer(fmt::format("Rank {}, Recv to CPU", *ctx.rank()));
+//     // static Timer recv_buffer_timer(fmt::format("Rank {}, Recv buffer", *ctx.rank()));
+//     // static Timer assign_timer(fmt::format("Rank {}, To device", *ctx.rank()));
+
+//     // to_cpu_timer.start();
+//     auto cpu_tensor = tensor.cpu();
+//     auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensor);
+//     // to_cpu_timer.end();
+
+//     // recv_buffer_timer.start();
+//     for (auto buffer : buffers) {
+//         ctx.recv(buffer, source, tag);
+//     }
+//     // recv_buffer_timer.end();
+
+//     // assign_timer.start();
+//     ttnn::assign(cpu_tensor.to_device(tensor.device()), tensor);
+//     // assign_timer.end();
+// }
+
+SendRequestGuard isend_tensor(const autograd::DistributedContext& ctx, const ttnn::Tensor& tensor, Rank dest, Tag tag) {
+    auto cpu_tensor = tensor.cpu();
+    auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensor);
+    std::vector<tt::tt_metal::distributed::multihost::RequestPtr> requests;
+    requests.reserve(buffers.size());
+
+    // workaround for now
+    int tag_value = *tag;
+    tag_value *= 1000;
+
+    for (auto buffer : buffers) {
+        requests.push_back(ctx.isend(buffer, dest, Tag{tag_value++}));
+    }
+    return SendRequestGuard(cpu_tensor, std::move(requests));
+}
+
 void send_all_tensors(const autograd::DistributedContext& ctx, std::vector<ttnn::Tensor>& tensors, Rank dest) {
+    // std::vector<ttnn::Tensor> cpu_tensors;
+    // cpu_tensors.reserve(tensors.size());
+
+    // std::vector<tt::tt_metal::distributed::multihost::RequestPtr> requests;
+    // requests.reserve(tensors.size());
+    // int tag_counter = 0;
+    // for (auto& tensor : tensors) {
+    //     cpu_tensors.push_back(tensor.cpu());
+
+    //     auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensors.back());
+    //     for (auto buffer : buffers) {
+    //         requests.push_back(ctx.isend(buffer, dest, Tag{tag_counter++}));
+    //     }
+    // }
+
+    // for (auto& request : requests) {
+    //     // what should i do with the status?
+    //     [[maybe_unused]] auto status = request->wait();
+    // }
+
     std::vector<ttnn::Tensor> cpu_tensors;
     cpu_tensors.reserve(tensors.size());
-
-    std::vector<tt::tt_metal::distributed::multihost::RequestPtr> requests;
-    requests.reserve(tensors.size());
-    int tag_counter = 0;
+    std::size_t total_size = 0;
     for (auto& tensor : tensors) {
         cpu_tensors.push_back(tensor.cpu());
-
         auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensors.back());
         for (auto buffer : buffers) {
-            requests.push_back(ctx.isend(buffer, dest, Tag{tag_counter++}));
+            total_size += buffer.size();
         }
     }
 
-    for (auto& request : requests) {
-        // what should i do with the status?
-        [[maybe_unused]] auto status = request->wait();
+    fmt::println("SEND ALL: TOTAL BUFFER SIZE {} bytes", total_size);
+
+    std::vector<std::byte> combined_buffer;
+    combined_buffer.reserve(total_size);
+    for (auto& cpu_tensor : cpu_tensors) {
+        auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensor);
+        for (auto buffer : buffers) {
+            std::copy(buffer.begin(), buffer.end(), std::back_inserter(combined_buffer));
+        }
     }
+
+    ctx.send(combined_buffer, dest, Tag{0});
 }
 
 void receive_all_tensors(const autograd::DistributedContext& ctx, std::vector<ttnn::Tensor>& tensors, Rank source) {
     std::vector<ttnn::Tensor> cpu_tensors;
     cpu_tensors.reserve(tensors.size());
 
-    std::vector<tt::tt_metal::distributed::multihost::RequestPtr> requests;
-    requests.reserve(tensors.size());
-    int tag_counter = 0;
+    std::size_t total_size = 0;
     for (auto& tensor : tensors) {
-        cpu_tensors.push_back(tensor.cpu());
-
-        auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensors.back());
+        auto cpu_tensor = tensor.cpu();
+        cpu_tensors.push_back(cpu_tensor);
+        auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensor);
         for (auto buffer : buffers) {
-            requests.push_back(ctx.irecv(buffer, source, Tag{tag_counter++}));
+            total_size += buffer.size();
         }
     }
 
-    for (auto& request : requests) {
-        // what should i do with the status?
-        [[maybe_unused]] auto status = request->wait();
+    std::vector<std::byte> combined_buffer(total_size);
+    ctx.recv(combined_buffer, source, Tag{0});
+
+    auto* ptr = combined_buffer.data();
+    for (auto& tensor : cpu_tensors) {
+        auto buffers = ttml::core::get_bytes_from_cpu_tensor(tensor);
+        for (auto& buffer : buffers) {
+            std::copy(ptr, ptr + buffer.size(), buffer.begin());
+            ptr += buffer.size();
+        }
     }
 
     for (size_t i = 0; i < tensors.size(); ++i) {
         ttnn::assign(cpu_tensors[i].to_device(tensors[i].device()), tensors[i]);
     }
+
+    // std::vector<tt::tt_metal::distributed::multihost::RequestPtr> requests;
+    // requests.reserve(tensors.size());
+    // int tag_counter = 0;
+    // for (auto& tensor : tensors) {
+    //     cpu_tensors.push_back(tensor.cpu());
+
+    //     auto buffers = ttml::core::get_bytes_from_cpu_tensor(cpu_tensors.back());
+    //     for (auto buffer : buffers) {
+    //         requests.push_back(ctx.irecv(buffer, source, Tag{tag_counter++}));
+    //     }
+    // }
+
+    // for (auto& request : requests) {
+    //     // what should i do with the status?
+    //     [[maybe_unused]] auto status = request->wait();
+    // }
+
+    // for (size_t i = 0; i < tensors.size(); ++i) {
+    //     ttnn::assign(cpu_tensors[i].to_device(tensors[i].device()), tensors[i]);
+    // }
 }
 
 class Timer {

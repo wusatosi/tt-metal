@@ -10,6 +10,7 @@ RemoteOptimizer::RemoteOptimizer(ttml::serialization::NamedParameters parameters
     ttml::optimizers::OptimizerBase(std::move(parameters)) {
     m_aggregator_rank = ttml::core::distributed::Rank{aggregator_rank};
     m_sorted_parameters = SortedParameters(m_parameters.begin(), m_parameters.end());
+    // m_sorted_parameters = SortedParameters(m_parameters);
 
     auto workers_and_aggregator_ranks =
         three_tier_arch::get_workers_and_aggregator_ranks(static_cast<uint32_t>(*m_aggregator_rank));

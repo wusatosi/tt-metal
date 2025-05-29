@@ -6,6 +6,7 @@
 
 #include "core/distributed/distributed.hpp"
 #include "models/gpt2.hpp"
+#include "serialization/serializable.hpp"
 
 // namespace name can't start with a digit
 namespace three_tier_arch {
@@ -14,7 +15,7 @@ constexpr auto gpt2_tokenizer_file_name = "/gpt2-tokenizer.json";
 
 class Timer {
 public:
-    Timer(const std::string &name) : m_name(name) {
+    Timer(const std::string& name) : m_name(name) {
     }
 
     void start() {
@@ -67,16 +68,71 @@ struct TrainingConfig {
     uint32_t num_mh_workers = 1U;
 };
 
-TrainingConfig parse_config(const YAML::Node &yaml_config);
+TrainingConfig parse_config(const YAML::Node& yaml_config);
 
-std::pair<uint32_t, uint32_t> get_steps_per_dataset_and_vocab_size(const TrainingConfig &config);
+std::pair<uint32_t, uint32_t> get_steps_per_dataset_and_vocab_size(const TrainingConfig& config);
 
 std::vector<int> get_workers_and_aggregator_ranks(uint32_t workers);
 
-std::string read_file_to_str(const std::string &file_path);
+std::string read_file_to_str(const std::string& file_path);
 
 uint32_t round_up_to_tile(uint32_t value, uint32_t tile_size = 32U);
 
 void initialize_device(bool ddp, bool tp);
+
+class SortedParameters {
+public:
+    using value_type = std::pair<std::string, ttml::autograd::TensorPtr>;
+    using iterator = std::vector<value_type>::iterator;
+    using const_iterator = std::vector<value_type>::const_iterator;
+
+    SortedParameters() = default;
+    SortedParameters(const SortedParameters&) = default;
+    SortedParameters(SortedParameters&&) noexcept = default;
+    SortedParameters& operator=(const SortedParameters&) = default;
+    SortedParameters& operator=(SortedParameters&&) noexcept = default;
+
+    // explicit SortedParameters(std::vector<value_type> parameters) : m_parameters(std::move(parameters)) {}
+    explicit SortedParameters(const ttml::serialization::NamedParameters& parameters) {
+        m_parameters.reserve(parameters.size());
+        for (const auto& [key, tensor_ptr] : parameters) {
+            m_parameters.emplace_back(key, tensor_ptr);
+        }
+        std::sort(m_parameters.begin(), m_parameters.end(), [](const value_type& a, const value_type& b) {
+            return a.second->get_tensor_id() > b.second->get_tensor_id() || a.second->get_tensor_id() == 1UL;
+        });
+    }
+
+    [[nodiscard]] size_t size() const {
+        return m_parameters.size();
+    }
+    [[nodiscard]] bool empty() const {
+        return m_parameters.empty();
+    }
+
+    [[nodiscard]] ttml::autograd::TensorPtr& operator[](const std::string& key) {
+        for (auto& [name, tensor_ptr] : m_parameters) {
+            if (name == key) {
+                return tensor_ptr;
+            }
+        }
+        throw std::out_of_range("Parameter not found: " + key);
+    }
+    [[nodiscard]] iterator begin() {
+        return m_parameters.begin();
+    }
+    [[nodiscard]] iterator end() {
+        return m_parameters.end();
+    }
+    [[nodiscard]] const_iterator begin() const {
+        return m_parameters.begin();
+    }
+    [[nodiscard]] const_iterator end() const {
+        return m_parameters.end();
+    }
+
+private:
+    std::vector<std::pair<std::string, ttml::autograd::TensorPtr>> m_parameters;
+};
 
 }  // namespace three_tier_arch
