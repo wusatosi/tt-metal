@@ -81,7 +81,7 @@ PYBIND11_MODULE(_ttnn, module) {
     ttnn::graph::py_graph_module(m_graph);
 
 #if defined(TRACY_ENABLE)
-    py::function tracy_decorator = py::module::import("tools.tracy.ttnn_profiler_wrapper").attr("callable_decorator");
+    py::function tracy_decorator = py::module::import("tracy.ttnn_profiler_wrapper").attr("callable_decorator");
 
     tracy_decorator(m_device);
     tracy_decorator(m_tensor);
