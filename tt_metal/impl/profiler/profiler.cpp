@@ -711,14 +711,14 @@ void DeviceProfiler::logNocTracePacketDataToJson(
                 {"timestamp", timestamp},
             });
         } else if (std::holds_alternative<EMD::FabricRoutingFields>(ev_md_contents)) {
-            EMD::FabricRoutingFields fabric_routing_fields_event = std::get<EMD::FabricRoutingFields>(ev_md_contents);
+            uint32_t routing_fields_value = std::get<EMD::FabricRoutingFields>(ev_md_contents).routing_fields_value;
             noc_trace_json_log.push_back(nlohmann::ordered_json{
                 {"run_host_id", run_host_id},
                 {"op_name", opname},
                 {"proc", risc_name},
                 {"sx", core_x},
                 {"sy", core_y},
-                {"routing_fields_value", fabric_routing_fields_event.routing_fields_value},
+                {"routing_fields_value", routing_fields_value},
                 {"timestamp", timestamp},
             });
         }
