@@ -111,5 +111,21 @@ inline void dumpClusterCoordinatesAsJson(const std::filesystem::path& filepath) 
     }
 }
 
+// determines the implied unicast hop count in tt_fabric::LowLatencyRoutingFields
+inline int get_low_latency_routing_hops(uint32_t llrf_value) {
+    uint32_t value = llrf_value;
+    uint32_t hops = 0;
+    while (value) {
+        value >>= tt::tt_fabric::LowLatencyRoutingFields::FIELD_WIDTH;
+        hops++;
+    }
+    return hops;
+}
+
+// determines the implied unicast hop count in tt_fabric::RoutingFields
+inline int get_routing_hops(uint8_t routing_fields_value) {
+    return tt::tt_fabric::RoutingFields::HOP_DISTANCE_MASK & routing_fields_value;
+}
+
 }  // namespace tt_metal
 }  // namespace tt

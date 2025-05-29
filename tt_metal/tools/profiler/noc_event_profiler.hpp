@@ -121,10 +121,14 @@ void recordNocEventWithAddr(
 
 template <typename NocAddrU64>
 FORCE_INLINE void recordFabricNocEvent(
-    KernelProfilerNocEventMetadata::NocEventType noc_event_type, NocAddrU64 noc_addr, uint8_t routing_hops) {
+    KernelProfilerNocEventMetadata::NocEventType noc_event_type,
+    KernelProfilerNocEventMetadata::FabricPacketType packet_type,
+    NocAddrU64 noc_addr,
+    uint32_t routing_fields) {
     static_assert(std::is_same_v<NocAddrU64, uint64_t>);
     auto [decoded_x, decoded_y] = decode_noc_addr_to_coord(noc_addr);
 
+    // first profiler packet stores XY address data as well as packet type tag (used to decode routing fields)
     KernelProfilerNocEventMetadata ev_md;
     ev_md.noc_xfer_type = noc_event_type;
 
@@ -133,10 +137,18 @@ FORCE_INLINE void recordFabricNocEvent(
     fabric_noc_event.dst_y = decoded_y;
     fabric_noc_event.mcast_end_dst_x = -1;
     fabric_noc_event.mcast_end_dst_y = -1;
-    fabric_noc_event.routing_hops = routing_hops;
+    fabric_noc_event.routing_fields_type = packet_type;
 
     kernel_profiler::flush_to_dram_if_full<kernel_profiler::DoingDispatch::DISPATCH>();
     kernel_profiler::timeStampedData<12345, kernel_profiler::DoingDispatch::DISPATCH>(ev_md.asU64());
+
+    // following profiler event just stores the routing fields value
+    KernelProfilerNocEventMetadata event_routing_fields;
+    event_routing_fields.noc_xfer_type = KernelProfilerNocEventMetadata::NocEventType::FABRIC_ROUTING_FIELDS;
+    event_routing_fields.data.fabric_routing_fields.routing_fields_value = routing_fields;
+
+    kernel_profiler::flush_to_dram_if_full<kernel_profiler::DoingDispatch::DISPATCH>();
+    kernel_profiler::timeStampedData<12345, kernel_profiler::DoingDispatch::DISPATCH>(event_routing_fields.asU64());
 }
 }  // namespace noc_event_profiler
 

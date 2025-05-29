@@ -32,19 +32,26 @@ struct alignas(uint64_t) KernelProfilerNocEventMetadata {
         uint32_t getNumBytes() const { return payload_chunks * PAYLOAD_CHUNK_SIZE; }
     };
 
-    // Existing struct for fabric NOC events
+    // represents a fabric NOC event
+    enum class FabricPacketType : unsigned char { REGULAR, LOW_LATENCY, LOW_LATENCY_MESH };
     struct FabricNoCEvent {
         int8_t dst_x;
         int8_t dst_y;
         int8_t mcast_end_dst_x;
         int8_t mcast_end_dst_y;
-        int8_t routing_hops;
+        FabricPacketType routing_fields_type;
     };
+
+    // represents a fabric routing fields event; follows a FabricNoCEvent
+    struct FabricRoutingFields {
+        uint32_t routing_fields_value;
+    } __attribute__((packed));
 
     // Union to hold either local or fabric event data
     union EventData {
         LocalNocEvent local_event;
         FabricNoCEvent fabric_event;
+        FabricRoutingFields fabric_routing_fields;
     } data;
 
     // --- Type enum (tag) --- Must be defined before use in constructor
@@ -88,8 +95,9 @@ struct alignas(uint64_t) KernelProfilerNocEventMetadata {
         FABRIC_UNICAST_ATOMIC_INC = 31,
         FABRIC_FUSED_UNICAST_ATOMIC_INC = 32,
         FABRIC_MULTICAST_ATOMIC_INC = 33,
+        FABRIC_ROUTING_FIELDS = 34,
 
-        UNSUPPORTED = 34
+        UNSUPPORTED = 35
     };
     NocEventType noc_xfer_type;
 
@@ -104,11 +112,14 @@ struct alignas(uint64_t) KernelProfilerNocEventMetadata {
         return noc_xfer_type >= NocEventType::FABRIC_UNICAST_WRITE &&
                noc_xfer_type <= NocEventType::FABRIC_MULTICAST_ATOMIC_INC;
     }
+    bool isFabricRoutingFields() const { return noc_xfer_type == NocEventType::FABRIC_ROUTING_FIELDS; }
 
     // Getter to return the correct variant based on the tag
-    std::variant<LocalNocEvent, FabricNoCEvent> getContents() const {
+    std::variant<LocalNocEvent, FabricNoCEvent, FabricRoutingFields> getContents() const {
         if (isFabricEventType()) {
             return data.fabric_event;
+        } else if (isFabricRoutingFields()) {
+            return data.fabric_routing_fields;
         } else {
             return data.local_event;
         }

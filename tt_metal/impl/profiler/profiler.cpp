@@ -46,7 +46,6 @@
 namespace tt {
 
 namespace tt_metal {
-
 static kernel_profiler::PacketTypes get_packet_type(uint32_t timer_id) {
     return static_cast<kernel_profiler::PacketTypes>((timer_id >> 16) & 0x7);
 }
@@ -650,7 +649,8 @@ void DeviceProfiler::logNocTracePacketDataToJson(
     } else if (packet_type == kernel_profiler::TS_DATA) {
         using EMD = KernelProfilerNocEventMetadata;
         EMD ev_md(data);
-        std::variant<EMD::LocalNocEvent, EMD::FabricNoCEvent> ev_md_contents = ev_md.getContents();
+        std::variant<EMD::LocalNocEvent, EMD::FabricNoCEvent, EMD::FabricRoutingFields> ev_md_contents =
+            ev_md.getContents();
         if (std::holds_alternative<EMD::LocalNocEvent>(ev_md_contents)) {
             auto local_noc_event = std::get<EMD::LocalNocEvent>(ev_md_contents);
 
@@ -694,7 +694,7 @@ void DeviceProfiler::logNocTracePacketDataToJson(
             }
 
             noc_trace_json_log.push_back(std::move(data));
-        } else {
+        } else if (std::holds_alternative<EMD::FabricNoCEvent>(ev_md_contents)) {
             EMD::FabricNoCEvent fabric_noc_event = std::get<EMD::FabricNoCEvent>(ev_md_contents);
             auto phys_coord =
                 getPhysicalAddressFromVirtual(device_id, {fabric_noc_event.dst_x, fabric_noc_event.dst_y});
@@ -707,7 +707,18 @@ void DeviceProfiler::logNocTracePacketDataToJson(
                 {"type", magic_enum::enum_name(ev_md.noc_xfer_type)},
                 {"dx", phys_coord.x},
                 {"dy", phys_coord.y},
-                {"routing_hops", fabric_noc_event.routing_hops},
+                {"routing_fields_type", magic_enum::enum_name(fabric_noc_event.routing_fields_type)},
+                {"timestamp", timestamp},
+            });
+        } else if (std::holds_alternative<EMD::FabricRoutingFields>(ev_md_contents)) {
+            EMD::FabricRoutingFields fabric_routing_fields_event = std::get<EMD::FabricRoutingFields>(ev_md_contents);
+            noc_trace_json_log.push_back(nlohmann::ordered_json{
+                {"run_host_id", run_host_id},
+                {"op_name", opname},
+                {"proc", risc_name},
+                {"sx", core_x},
+                {"sy", core_y},
+                {"routing_fields_value", fabric_routing_fields_event.routing_fields_value},
                 {"timestamp", timestamp},
             });
         }
@@ -781,87 +792,125 @@ void DeviceProfiler::serializeJsonNocTraces(
 
     constexpr tt::tt_fabric::mesh_id_t mesh_id = 0;  // Assuming single mesh
 
-    std::unordered_map<RuntimeID, nlohmann::json::array_t> processed_events_by_opname;
+    auto process_fabric_event_group_if_valid =
+        [&](const nlohmann::ordered_json& fabric_event,
+            const nlohmann::ordered_json& fabric_routing_fields_event,
+            const nlohmann::ordered_json& local_noc_write_event) -> std::optional<nlohmann::ordered_json> {
+        bool local_event_is_valid_type =
+            local_noc_write_event.contains("type") && local_noc_write_event["type"] == "WRITE_";
+        if (!local_event_is_valid_type) {
+            log_error(
+                "[profiler noc tracing] local noc event following fabric event is not a regular noc write, but instead "
+                ": {}",
+                local_noc_write_event["type"].get<std::string>());
+            return std::nullopt;
+        }
 
+        // Check if timestamps are close enough; otherwise
+        double ts_diff = local_noc_write_event.value("timestamp", 0.0) - fabric_event.value("timestamp", 0.0);
+        if (ts_diff > 1000) {
+            log_warning(
+                "[profiler noc tracing] Failed to coalesce fabric noc trace events because timestamps are implausibly "
+                "far apart.");
+            return std::nullopt;
+        }
+
+        try {
+            // router eth core location is derived from the following noc WRITE_ event
+            CoreCoord virt_eth_route_coord = {
+                local_noc_write_event.at("dx").get<int>(), local_noc_write_event.at("dy").get<int>()};
+            CoreCoord phys_eth_route_coord = getPhysicalAddressFromVirtual(device_id, virt_eth_route_coord);
+
+            auto routing_fields_type_str = fabric_event.at("routing_fields_type").get<std::string>();
+            auto maybe_routing_fields_type =
+                magic_enum::enum_cast<KernelProfilerNocEventMetadata::FabricPacketType>(routing_fields_type_str);
+            if (!maybe_routing_fields_type) {
+                log_error("[profiler noc tracing] Failed to parse routing fields type: {}", routing_fields_type_str);
+                return std::nullopt;
+            }
+            auto routing_fields_type = maybe_routing_fields_type.value();
+
+            // determine hop count and other routing metadata from routing fields value
+            uint32_t routing_fields_value = fabric_routing_fields_event.at("routing_fields_value").get<uint32_t>();
+            int hops = 0;
+            // TODO: extract multicast start hop and end hop from routing fields value
+            switch (routing_fields_type) {
+                case KernelProfilerNocEventMetadata::FabricPacketType::REGULAR: {
+                    hops = get_routing_hops(routing_fields_value);
+                    break;
+                }
+                case KernelProfilerNocEventMetadata::FabricPacketType::LOW_LATENCY: {
+                    hops = get_low_latency_routing_hops(routing_fields_value);
+                    break;
+                }
+                case KernelProfilerNocEventMetadata::FabricPacketType::LOW_LATENCY_MESH: {
+                    log_error("[profiler noc tracing] noc tracing does not support LOW_LATENCY_MESH packets!");
+                    return std::nullopt;
+                }
+            }
+
+            auto eth_chan_opt = routing_lookup.getRouterEthCoreToChannelLookup(device_id, phys_eth_route_coord);
+            if (!eth_chan_opt) {
+                log_warning(
+                    "[profiler noc tracing] Fabric edm_location->channel lookup failed for event in op '{}' at ts {}: "
+                    "src_dev={}, "
+                    "eth_core=({}, {}), hops={}. Keeping original events.",
+                    fabric_event.value("op_name", "N/A"),
+                    fabric_event.value("timestamp", 0.0),
+                    device_id,
+                    phys_eth_route_coord.x,
+                    phys_eth_route_coord.y,
+                    hops);
+                return std::nullopt;
+            }
+
+            tt::tt_fabric::chan_id_t eth_chan = *eth_chan_opt;
+
+            CoreCoord dst_coord = {fabric_event.at("dx").get<int>(), fabric_event.at("dy").get<int>()};
+
+            nlohmann::ordered_json modified_write_event = local_noc_write_event;
+            modified_write_event["timestamp"] = fabric_event["timestamp"];
+
+            // replace original eth core destination with true destination
+            modified_write_event["dx"] = dst_coord.x;
+            modified_write_event["dy"] = dst_coord.y;
+
+            // replace the type with fabric event type
+            modified_write_event["type"] = fabric_event["type"];
+
+            modified_write_event["fabric_send"] = {{"eth_chan", eth_chan}, {"hops", hops}};
+
+            return modified_write_event;
+        } catch (const nlohmann::json::exception& e) {
+            log_warning(
+                "[profiler noc tracing] JSON parsing error during event coalescing for event in op '{}': {}",
+                fabric_event.value("op_name", "N/A"),
+                e.what());
+            return std::nullopt;
+        }
+    };
+
+    // coalesce fabric events into single logical trace events with extra 'fabric_send' metadata
+    std::unordered_map<RuntimeID, nlohmann::json::array_t> processed_events_by_opname;
     for (auto& [runtime_id, events] : events_by_opname) {
         nlohmann::json::array_t coalesced_events;
         for (size_t i = 0; i < events.size(); /* manual increment */) {
             const auto& current_event = events[i];
-            bool coalesced = false;
 
-            if (current_event.contains("type") && current_event["type"].get<std::string>().starts_with("FABRIC_") &&
-                (i + 1 < events.size())) {
-                const auto& fabric_event = current_event;
-                const auto& local_noc_write_event = events[i + 1];
-                if (local_noc_write_event.contains("type") && local_noc_write_event["type"] == "WRITE_") {
-                    // Check if timestamps are close enough; otherwise
-                    double ts_diff =
-                        local_noc_write_event.value("timestamp", 0.0) - fabric_event.value("timestamp", 0.0);
-                    if (ts_diff > 1000) {
-                        log_warning(
-                            "Failed to coalesce fabric noc trace events because timestamps are implausibly far apart.");
-                    } else {
-                        try {
-                            // router eth core location is derived from the following noc WRITE_ event
-                            CoreCoord virt_eth_route_coord = {
-                                local_noc_write_event.at("dx").get<int>(), local_noc_write_event.at("dy").get<int>()};
-                            CoreCoord phys_eth_route_coord =
-                                getPhysicalAddressFromVirtual(device_id, virt_eth_route_coord);
-
-                            int hops = fabric_event.at("routing_hops").get<int>();
-
-                            std::optional<tt::tt_fabric::chan_id_t> eth_chan_opt =
-                                routing_lookup.getRouterEthCoreToChannelLookup(device_id, phys_eth_route_coord);
-                            if (eth_chan_opt) {
-                                tt::tt_fabric::chan_id_t eth_chan = *eth_chan_opt;
-
-                                CoreCoord dst_coord = {
-                                    fabric_event.at("dx").get<int>(), fabric_event.at("dy").get<int>()};
-
-                                nlohmann::ordered_json modified_write_event = local_noc_write_event;
-                                modified_write_event["timestamp"] = current_event["timestamp"];
-
-                                // replace original eth core destination with true destination
-                                modified_write_event["dx"] = dst_coord.x;
-                                modified_write_event["dy"] = dst_coord.y;
-
-                                // replace the type with fabric event type
-                                modified_write_event["type"] = fabric_event["type"];
-
-                                modified_write_event["fabric_send"] = {{"eth_chan", eth_chan}, {"hops", hops}};
-
-                                coalesced_events.push_back(std::move(modified_write_event));
-                                coalesced = true;
-                            } else {
-                                log_warning(
-                                    "Fabric routing lookup failed for event in op '{}' at ts {}: src_dev={}, "
-                                    "eth_core=({}, {}), hops={}. Keeping original events.",
-                                    fabric_event.value("op_name", "N/A"),
-                                    fabric_event.value("timestamp", 0.0),
-                                    device_id,
-                                    phys_eth_route_coord.x,
-                                    phys_eth_route_coord.y,
-                                    hops);
-                            }
-                        } catch (const nlohmann::json::exception& e) {
-                            log_warning(
-                                "JSON parsing error during event coalescing for event in op '{}' at index {}: {}. "
-                                "Keeping original events.",
-                                current_event.value("op_name", "N/A"),
-                                i,
-                                e.what());
-                        }
-                    }
-                } else {
-                    log_info(
-                        "noc event following fabric event is not a WRITE_, but instead : {}", current_event.dump(2));
+            bool fabric_event_group_detected =
+                (current_event.contains("type") && current_event["type"].get<std::string>().starts_with("FABRIC_") &&
+                 (i + 2 < events.size()));
+            if (fabric_event_group_detected) {
+                if (auto maybe_fabric_event =
+                        process_fabric_event_group_if_valid(events[i], events[i + 1], events[i + 2]);
+                    maybe_fabric_event) {
+                    coalesced_events.push_back(maybe_fabric_event.value());
                 }
-            }
-
-            if (coalesced) {
-                i += 2;  // Skip both original events
+                // Unconditionally advance past all coalesced events (fabric_event, fabric_routing_fields,
+                // local_noc_write_event), even if a valid event cannot be generated
+                i += 3;
             } else {
-                // If not coalesced or lookup failed, add the current event
+                // If not a fabric event group, simply copy existing event as-is
                 coalesced_events.push_back(current_event);
                 i += 1;
             }
