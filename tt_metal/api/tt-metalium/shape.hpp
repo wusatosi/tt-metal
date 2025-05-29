@@ -51,6 +51,6 @@ public:
 
 std::ostream& operator<<(std::ostream& os, const tt::tt_metal::Shape& shape);
 
-tt::stl::SmallVector<uint32_t> compute_strides(const tt::tt_metal::Shape& shape);
+tt::stl::SmallVector<size_t> compute_strides(const tt::tt_metal::Shape& shape);
 
 }  // namespace tt::tt_metal
