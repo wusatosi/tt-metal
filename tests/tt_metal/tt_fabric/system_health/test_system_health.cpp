@@ -52,15 +52,11 @@ TEST(Cluster, ReportSystemHealth) {
                 if (eth_connections.at(chip_id).find(chan) != eth_connections.at(chip_id).end()) {
                     const auto& [connected_chip_id, connected_eth_core] =
                         cluster.get_connected_ethernet_core(std::make_tuple(chip_id, eth_core));
-                    std::cout << "Connected chip: " << connected_chip_id
-                              << " connected eth core: " << connected_eth_core.str() << std::endl;
                     eth_ss << " link UP, retrain: " << read_vec[0] << ", connected to chip " << connected_chip_id << " "
                            << connected_eth_core.str();
                 } else {
                     const auto& [connected_chip_unique_id, connected_eth_core] =
                         cluster.get_connected_ethernet_core_to_remote_mmio_device(std::make_tuple(chip_id, eth_core));
-                    std::cout << "Connected unique chip: " << connected_chip_unique_id
-                              << " connected eth core: " << connected_eth_core.str() << std::endl;
                     eth_ss << " link UP, retrain: " << read_vec[0] << ", connected to chip " << connected_chip_unique_id
                            << " " << connected_eth_core.str();
                 }
