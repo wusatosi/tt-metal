@@ -12,6 +12,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <mpi.h>
 #include <ostream>
 #include <queue>
 #include <set>

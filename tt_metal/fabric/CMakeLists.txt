@@ -50,6 +50,7 @@ target_link_libraries(
         yaml-cpp::yaml-cpp
         Metalium::Metal::Impl
         TT::Metalium::HostDevCommon
+        OpenMPI::MPI
 )
 
 target_precompile_headers(fabric REUSE_FROM TT::CommonPCH)
