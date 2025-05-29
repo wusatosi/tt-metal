@@ -133,7 +133,7 @@ void MAIN {
         tile_regs_release();
         index_h_offset += block_w;
     }
-    reduce_revert_delta(cb_ex_partial2);
+    reduce_revert_delta();
     cb_push_back(cb_ex_partial2, block_h);
     reconfig_data_format_srcb(cb_scaler, cb_in);
 #else
@@ -191,7 +191,7 @@ void MAIN {
         tile_regs_release();
         index_h_offset += block_w;
     }
-    reduce_revert_delta(cb_ex_partial2);
+    reduce_revert_delta();
     cb_pop_front(cb_x2, num_tiles_per_block);
     cb_push_back(cb_ex_partial2, block_h);
 
@@ -225,7 +225,7 @@ void MAIN {
 #endif
             tile_regs_release();
         }
-        reduce_revert_delta(cb_reduction_out);
+        reduce_revert_delta();
         cb_push_back(cb_reduction_out, num_tiles_per_partial_result * num_tiles_per_allgather_worker);
     }
 }

@@ -31,7 +31,7 @@ ALWI void calc_numeric_stable(uint32_t cb_in, uint32_t cb_bcast_scaler, uint32_t
         constexpr uint32_t bcast_scaler0 = 0;
         reduce_tile<PoolType::MAX, ReduceDim::REDUCE_ROW>(cb_in, cb_bcast_scaler, w, bcast_scaler0, 0);
     }
-    reduce_revert_delta<ReduceDim::REDUCE_ROW>(cb_max);
+    reduce_revert_delta();
     pack_tile(0, cb_max);
     cb_push_back(cb_max, 1);
     REL();
@@ -211,7 +211,7 @@ void MAIN {
             constexpr uint32_t bcast_scaler0 = 0;
             reduce_tile(cb_exps, cb_bcast_scaler, w, bcast_scaler0, dst0);
         }
-        reduce_revert_delta(cb_recipsumexps);
+        reduce_revert_delta();
         recip_tile_init();
         recip_tile(dst0);
         pack_tile(dst0, cb_recipsumexps);

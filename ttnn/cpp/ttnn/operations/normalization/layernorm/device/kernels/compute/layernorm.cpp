@@ -131,7 +131,7 @@ void MAIN {
             // we don't pop cb_x until we compute Ex
         }
         pack_tile(dst0, cb_ex);
-        reduce_revert_delta(cb_ex);
+        reduce_revert_delta();
         REL();
 
         cb_push_back(cb_ex, 1);
@@ -206,7 +206,7 @@ void MAIN {
         }
         cb_pop_front(cb_xmm2, Wt);
         pack_tile(dst0, cb_ex2);
-        reduce_revert_delta(cb_ex2);
+        reduce_revert_delta();
         REL();
 
         cb_push_back(cb_ex2, 1);

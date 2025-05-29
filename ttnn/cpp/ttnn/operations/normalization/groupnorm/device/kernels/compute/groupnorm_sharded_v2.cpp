@@ -216,7 +216,7 @@ void MAIN {
             pack_tile(dst0, cb_ex_partial);
             tile_regs_release();
             cb_push_back(cb_ex_partial, 1);
-            reduce_revert_delta(cb_ex_partial);
+            reduce_revert_delta();
 
             if constexpr (is_mcast_sender and num_cores_per_mcast_group > 1) {
                 reduce_init(cb_ex_external, cb_scaler_global, cb_ex_global);
@@ -231,7 +231,7 @@ void MAIN {
                 tile_regs_wait();
                 pack_tile(dst0, cb_ex_global);
                 tile_regs_release();
-                reduce_revert_delta(cb_ex_global);
+                reduce_revert_delta();
                 cb_push_back(cb_ex_global, 1);
                 cb_push_back(cb_ex, 1);
             }
@@ -334,7 +334,7 @@ void MAIN {
             tile_regs_release();
             cb_push_back(cb_ex_partial, 1);
             cb_pop_front(cb_xmm, block_hw);
-            reduce_revert_delta(cb_ex_partial);
+            reduce_revert_delta();
 
             if constexpr (is_mcast_sender and num_cores_per_mcast_group > 1) {
                 reduce_init(cb_ex_external, cb_scaler_global, cb_ex_global);
@@ -349,7 +349,7 @@ void MAIN {
                 tile_regs_wait();
                 pack_tile(dst0, cb_ex_global);
                 tile_regs_release();
-                reduce_revert_delta(cb_ex_global);
+                reduce_revert_delta();
                 cb_push_back(cb_ex_global, 1);
                 cb_push_back(cb_ex, 1);
             }

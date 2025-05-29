@@ -123,7 +123,7 @@ void MAIN {
             // reduce_tile(cb_xmm, cb_scaler, wt+wtr, scaler0, dst0);
         }
         cb_pop_front(cb_x2, Wt);
-        reduce_revert_delta(cb_ex2);
+        reduce_revert_delta();
         pack_tile(dst0, cb_ex2);
         REL();
 

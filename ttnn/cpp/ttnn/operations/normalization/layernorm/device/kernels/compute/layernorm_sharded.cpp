@@ -156,7 +156,7 @@ void MAIN {
         tile_regs_release();
         index_h_offset += block_w;
     }
-    reduce_revert_delta(cb_ex_partial);
+    reduce_revert_delta();
     cb_push_back(cb_ex_partial, block_h);
 
     reconfig_data_format_srca(cb_in, cb_ex_external);
@@ -183,7 +183,7 @@ void MAIN {
             pack_tile(dst0, cb_ex);
             tile_regs_release();
         }
-        reduce_revert_delta(cb_ex);
+        reduce_revert_delta();
         cb_push_back(cb_ex, num_tiles_per_allgather_worker);
         cb_wait_front(cb_ex, num_tiles_per_allgather_worker);
     }
@@ -275,7 +275,7 @@ void MAIN {
         tile_regs_release();
         index_h_offset += block_w;
     }
-    reduce_revert_delta(cb_ex_partial2);
+    reduce_revert_delta();
     cb_pop_front(cb_xmm2, num_tiles_per_block);
     cb_push_back(cb_ex_partial2, block_h);
 
@@ -302,7 +302,7 @@ void MAIN {
             pack_tile(dst0, cb_ex2);
             tile_regs_release();
         }
-        reduce_revert_delta(cb_ex2);
+        reduce_revert_delta();
         cb_push_back(cb_ex2, num_tiles_per_allgather_worker);
 
         if (enable_sqrt) {

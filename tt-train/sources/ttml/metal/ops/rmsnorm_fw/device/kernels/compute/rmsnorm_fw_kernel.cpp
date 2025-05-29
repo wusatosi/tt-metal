@@ -305,7 +305,7 @@ void MAIN {
                 /* tile_idx */ 0,
                 /* tile_idx */ 0,
                 reduction_register);
-            reduce_revert_delta<ReduceDim::REDUCE_ROW>(cb_rms_before_reduction_intermediate);
+            reduce_revert_delta();
 
             const uint32_t eps_register = 1U;
             reconfig_data_format_srca(cb_eps);

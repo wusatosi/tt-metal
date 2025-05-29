@@ -50,19 +50,6 @@ ALWI void reduce_init_delta(uint32_t icb0, uint32_t icb1, uint32_t ocb) {
     PACK((llk_pack_reduce_config_v2<reduce_dim, at_start, false, DST_ACCUM_MODE>(ocb)));
 }
 
-template <PoolType reduce_type = REDUCE_OP, ReduceDim reduce_dim = REDUCE_DIM>
-ALWI void reduce_init_delta_no_pack(uint32_t icb0, uint32_t icb1) {
-    // FIXME: API Update needed in compute kernel?
-    UNPACK((llk_unpack_AB_init<>(icb0, icb1)));
-
-    MATH((llk_math_reduce_init<reduce_type, reduce_dim, MATH_FIDELITY>()));
-}
-
-template <PoolType reduce_type = REDUCE_OP, ReduceDim reduce_dim = REDUCE_DIM>
-ALWI void reduce_init_delta_math() {
-    MATH((llk_math_reduce_init<reduce_type, reduce_dim, MATH_FIDELITY>()));
-}
-
 ALWI void reduce_revert_delta() { PACK((llk_pack_reduce_mask_clear())); }
 
 // clang-format off

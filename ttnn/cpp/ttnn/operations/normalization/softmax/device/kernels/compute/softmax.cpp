@@ -39,7 +39,7 @@ void calc_numeric_stable(
         constexpr uint32_t bcast_scaler0 = 0;
         reduce_tile<PoolType::MAX, ReduceDim::REDUCE_ROW>(cb_in, cb_bcast_scaler, wt, bcast_scaler0, 0);
     }
-    reduce_revert_delta<ReduceDim::REDUCE_ROW>(cb_max);
+    reduce_revert_delta();
     pack_tile(0, cb_max);
     cb_push_back(cb_max, 1);
     REL();
@@ -262,7 +262,7 @@ void MAIN {
             constexpr uint32_t bcast_scaler0 = 0;  // 0th index from bcast_scaler CB
             reduce_tile(cb_exps, cb_bcast_scaler, wt, bcast_scaler0, dst0);
         }
-        reduce_revert_delta(cb_recipsumexps);
+        reduce_revert_delta();
         recip_tile_init();
         recip_tile(dst0);  // DST[0] = 1/sum(exp(x))
         pack_tile(dst0, cb_recipsumexps);

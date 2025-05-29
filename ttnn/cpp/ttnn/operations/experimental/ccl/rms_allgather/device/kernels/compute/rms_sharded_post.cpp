@@ -79,7 +79,7 @@ void MAIN {
 
             pack_tile(dst0, cb_var);
             tile_regs_release();
-            reduce_revert_delta(cb_var);
+            reduce_revert_delta();
             cb_push_back(cb_var, 1);
 
             // 1/[sqrt(Var + eps)],

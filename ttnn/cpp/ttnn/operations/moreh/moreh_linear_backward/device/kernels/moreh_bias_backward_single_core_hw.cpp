@@ -103,7 +103,7 @@ void MAIN {
 #endif
                 reduce_init(cb_reduce, cb_scaler, cb_out0);
                 reduce_tile((do_mask) ? (cb_intermed0) : (cb_in0), cb_scaler, 0, 0, 0);
-                reduce_revert_delta(cb_out0);
+                reduce_revert_delta();
 
                 if (do_mask) {
                     cb_pop_front(cb_intermed0, onetile);

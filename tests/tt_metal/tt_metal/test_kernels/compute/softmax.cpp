@@ -131,7 +131,7 @@ void MAIN {
             constexpr uint32_t bcast_scaler0 = 0;  // 0th index from bcast_scaler CB
             reduce_tile(cb_exps, cb_bcast_scaler, wt, bcast_scaler0, dst0);
         }
-        reduce_revert_delta(cb_recipsumexps);
+        reduce_revert_delta();
         recip_tile_init();
         recip_tile(dst0);  // DST[0] = 1/sum(exp(x))
         pack_tile(dst0, cb_recipsumexps);

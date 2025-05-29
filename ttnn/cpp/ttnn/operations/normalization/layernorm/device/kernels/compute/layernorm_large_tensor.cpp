@@ -100,7 +100,7 @@ void MAIN {
 #endif
         tile_regs_commit();
         pack_tile(dst0, cb_ex);
-        reduce_revert_delta(cb_ex);
+        reduce_revert_delta();
         tile_regs_release();
         cb_push_back(cb_ex, onetile);
         // End of
@@ -174,7 +174,7 @@ void MAIN {
             }
             cb_pop_front(cb_xmm, blk);
             cb_reserve_back(cb_ex2, onetile);
-            reduce_revert_delta(cb_ex2);
+            reduce_revert_delta();
             tile_regs_commit();
             pack_tile(dst0, cb_ex2);
             cb_push_back(cb_ex2, onetile);

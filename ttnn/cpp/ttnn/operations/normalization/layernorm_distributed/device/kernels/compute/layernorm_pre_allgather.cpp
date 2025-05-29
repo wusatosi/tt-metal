@@ -80,7 +80,7 @@ void MAIN {
         cb_push_back(cb_out, onetile);
         cb_pop_front(cb_x2, Wt);
 
-        reduce_revert_delta(cb_out);
+        reduce_revert_delta();
 
 #ifndef RMSNORM
 
@@ -99,7 +99,7 @@ void MAIN {
         REL();
         cb_push_back(cb_out, onetile);
 
-        reduce_revert_delta(cb_out);
+        reduce_revert_delta();
 
 #endif
 

@@ -201,7 +201,7 @@ void reduce_c() {
         release_dst();
     }
 
-    reduce_revert_delta<reduce_dim>(out_cb);
+    reduce_revert_delta();
     UNPACK(tensix_sync());  // Workaround for issue #9370
 }
 

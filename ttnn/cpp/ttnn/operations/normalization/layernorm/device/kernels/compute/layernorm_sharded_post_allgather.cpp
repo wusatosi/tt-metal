@@ -130,7 +130,7 @@ void MAIN {
             pack_tile(dst1, cb_ex2);
 #endif
             tile_regs_release();
-            reduce_revert_delta(cb_var);
+            reduce_revert_delta();
 #ifdef RMSNORM
             cb_push_back(cb_var, stats_tiles);
 #else

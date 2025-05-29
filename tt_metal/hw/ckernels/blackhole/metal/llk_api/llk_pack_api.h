@@ -134,6 +134,8 @@ inline void llk_pack_init(const std::uint32_t pack_output = 16) {
     TT_SETADCXX(p_setadc::PAC, FACE_C_DIM - 1, 0x0);
 }
 
+llk_set_pack_strides() { set_packer_strides(); }
+
 template <bool out_of_order_output, bool untilize>
 inline std::uint32_t get_output_tile_address(std::uint8_t output_id, std::uint32_t output_tile_index) {
     std::uint32_t pack_tile_addr;

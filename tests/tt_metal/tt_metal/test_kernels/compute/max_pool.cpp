@@ -91,7 +91,7 @@ inline void reduce_h(
         release_dst();
         base_tile_id += in_ntiles_hw;
     }
-    reduce_revert_delta(out_cb_id);
+    reduce_revert_delta();
     cb_push_back(out_cb_id, out_ntiles_c * out_nelems);
     cb_pop_front(in_cb_id, in_ntiles_hwc * out_nelems);
 }
