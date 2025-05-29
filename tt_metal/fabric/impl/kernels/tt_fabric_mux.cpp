@@ -10,6 +10,7 @@
 #include "tt_metal/fabric/hw/inc/tt_fabric_mux_interface.hpp"
 
 #include <cstddef>
+#include <array>
 // clang-format on
 
 constexpr uint8_t NUM_FULL_SIZE_CHANNELS = get_compile_time_arg_val(0);
