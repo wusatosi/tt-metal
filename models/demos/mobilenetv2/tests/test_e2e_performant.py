@@ -8,7 +8,6 @@ import pytest
 import torch
 from loguru import logger
 
-import ttnn
 from models.demos.mobilenetv2.tests.mobilenetv2_e2e_performant import MobileNetV2Trace2CQ
 from models.utility_functions import run_for_wormhole_b0
 
@@ -39,15 +38,13 @@ def test_run_mobilenetv2_trace_2cqs_inference(
     input_shape = (batch_size, 3, 224, 224)
     torch_input_tensor = torch.randn(input_shape, dtype=torch.float32)
     n, c, h, w = torch_input_tensor.shape
-    torch_input_tensor = torch_input_tensor.permute(0, 2, 3, 1)
-    torch_input_tensor = torch_input_tensor.reshape(1, 1, h * w * n, c)
-    tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
-    tt_inputs_host = ttnn.pad(tt_inputs_host, [1, 1, n * h * w, 16], [0, 0, 0, 0], 0)
     inference_iter_count = 10
     inference_time_iter = []
     for iter in range(0, inference_iter_count):
         t0 = time.time()
-        output = mobilenetv2_trace_2cq.execute_mobilenetv2_trace_2cqs_inference(tt_inputs_host)
+        # tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+        # tt_inputs_host = ttnn.pad(tt_inputs_host, [1, 1, n * h * w, 16], [0, 0, 0, 0], 0)
+        output = mobilenetv2_trace_2cq.run(torch_input_tensor)
         t1 = time.time()
         inference_time_iter.append(t1 - t0)
     mobilenetv2_trace_2cq.release_mobilenetv2_trace_2cqs_inference()

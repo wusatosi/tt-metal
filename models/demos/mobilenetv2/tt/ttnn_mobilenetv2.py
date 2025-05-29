@@ -223,6 +223,19 @@ class TtMobileNetV2:
         self,
         x,
     ):
+        print(x.shape)
+        N, C, H, W = x.shape
+        min_channels = 16
+        if C < min_channels:
+            channel_padding_needed = min_channels - C
+            nchw = ttnn.pad(x, ((0, 0), (0, channel_padding_needed), (0, 0), (0, 0)), value=0.0)
+        else:
+            nchw = x
+        nhwc = ttnn.permute(nchw, (0, 2, 3, 1))  # NCHW -> NHWC
+        ttnn.deallocate(nchw)
+        ttnn.deallocate(x)
+        nhwc = ttnn.reallocate(nhwc)
+        x = ttnn.reshape(nhwc, [1, 1, nhwc.shape[0] * nhwc.shape[1] * nhwc.shape[2], nhwc.shape[-1]])
         output_tensor, h, w = self.conv1(x)
         output_tensor = ttnn.relu6(output_tensor)
         output_tensor, h, w = self.conv2(output_tensor)

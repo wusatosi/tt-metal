@@ -42,6 +42,8 @@ def test_run_ufldv2_trace_2cqs_inference(
     inference_time_iter = []
     for iter in range(0, inference_iter_count):
         t0 = time.time()
+        tt_inputs_host = ttnn.from_torch(torch_input_tensor, dtype=ttnn.bfloat16, layout=ttnn.ROW_MAJOR_LAYOUT)
+        tt_inputs_host = ttnn.pad(tt_inputs_host, [1, 1, n * h * w, 16], [0, 0, 0, 0], 0)
         output = ufldv2_trace_2cq.execute_ufldv2_trace_2cqs_inference(tt_inputs_host)
         t1 = time.time()
         inference_time_iter.append(t1 - t0)

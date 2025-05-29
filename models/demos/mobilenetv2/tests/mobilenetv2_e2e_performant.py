@@ -86,5 +86,12 @@ class MobileNetV2Trace2CQ:
 
         return outputs
 
+    def run(self, torch_input_tensor=None):
+        if torch_input_tensor is not None:
+            self.tt_inputs_host, _ = self.test_infra.setup_l1_sharded_input(self.device, torch_input_tensor)
+        else:
+            self.tt_inputs_host = self.test_infra.tt_inputs_host
+        return self.execute_mobilenetv2_trace_2cqs_inference(self.tt_inputs_host)
+
     def release_mobilenetv2_trace_2cqs_inference(self):
         ttnn.release_trace(self.device, self.tid)
