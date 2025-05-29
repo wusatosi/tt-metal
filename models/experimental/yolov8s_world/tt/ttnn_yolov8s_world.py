@@ -425,7 +425,17 @@ class TtMaxSigmoidAttnBlock:
         aw = ttnn.permute(aw, (0, 1, 2, 4, 3))  # To increase the perfomance of squeeze operation
         aw = ttnn.squeeze(aw, -2)  # If the above permute is removed use ttnn.squeeze(aw, -1)
         print("-------before div-------")
+        torch.set_printoptions(linewidth=200, threshold=10000, precision=15, sci_mode=False, edgeitems=17)
+
+        # div_aw_tor = ttnn.to_torch(aw) # bf16
+        # print("div_aw_tor", div_aw_tor)
+        # div_b_tor = ((self.hc**0.5)) # sqrt 32
+        # print("div_b_tor", div_b_tor)
+
         aw = ttnn.div(aw, (self.hc**0.5))
+        # aw_tor = ttnn.to_torch(aw)
+        # print("aw_tor", aw_tor)
+
         print("-------before add-------")
         print("-------use typecast-------")
         # print("a input ", aw)
@@ -435,13 +445,18 @@ class TtMaxSigmoidAttnBlock:
             and aw.get_dtype() == ttnn.bfloat16
             and self.bias.get_dtype() == ttnn.float32
         ):
-            #     print("a input ", aw)
-            #     print(ttnn.max(aw))
-            #     print(ttnn.min(aw))
+            # print("a input ", aw)
+            # print(ttnn.max(aw))
+            # print(ttnn.min(aw))
             aw = ttnn.typecast(aw, dtype=ttnn.float32)
-        #     print("b input", ttnn.reshape(self.bias, (1, -1, 1, 1)))
-        aw = ttnn.add(aw, ttnn.reshape(self.bias, (1, -1, 1, 1)), use_legacy=False)
+            # b_tor = ttnn.to_torch(ttnn.reshape(self.bias, (1, -1, 1, 1)))
+            # print("b input", b_tor)
+        aw = ttnn.add(aw, ttnn.reshape(self.bias, (1, -1, 1, 1)), use_legacy=True)
+        # out_add = ttnn.to_torch(aw)
+        # print("out_notyp", out_add)
         aw = ttnn.sigmoid(aw) * self.scale
+        # out_sig = ttnn.to_torch(aw)
+        # print("out_sig", out_sig)
 
         x = ttnn.permute(x, (0, 2, 3, 1))  # nchw->nhwc
         x, _, _ = self.proj_conv(x)

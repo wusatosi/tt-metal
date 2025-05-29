@@ -241,6 +241,8 @@ Tensor ExecuteDiv::invoke(
     tt::stl::Span<const ttnn::operations::unary::UnaryWithParam> lhs_activations,
     tt::stl::Span<const ttnn::operations::unary::UnaryWithParam> rhs_activations,
     const std::optional<bool>& use_legacy) {
+    tt::log_info(tt::LogOp, " ****** using unary ttnn.div {}", input.get_dtype());
+    tt::log_info(tt::LogOp, " ****** using unary ttnn.div {}", value);
     const auto has_legacy_only_args = round_mode.has_value() or accurate_mode;
     if (not(use_legacy ? *use_legacy
                        : has_legacy_only_args or
