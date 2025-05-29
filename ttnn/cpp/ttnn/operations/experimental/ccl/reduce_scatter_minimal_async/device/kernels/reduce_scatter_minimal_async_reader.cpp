@@ -29,6 +29,9 @@ constexpr uint32_t batch_slice_num_pages = get_compile_time_arg_val(9);
 constexpr uint32_t ring_size = get_compile_time_arg_val(10);
 constexpr uint32_t num_batches = get_compile_time_arg_val(11);
 constexpr uint32_t fuse_op = get_compile_time_arg_val(12);
+constexpr uint32_t contig_pages_advanced = 4;
+
+constexpr uint32_t N_DRAM_BANKS = 12;
 
 void kernel_main() {
     ///////////////////////////////////////////////////
@@ -47,6 +50,8 @@ void kernel_main() {
     if constexpr (fuse_op) {
         matmul_receiver = ReduceScatterOpReceiver(arg_idx);
     }
+
+    uint32_t payload_size_bytes = contig_pages_advanced * input_tensor_page_size;
 
     constexpr uint32_t slice_Wt = input_tensor_Wt / ring_size;
 
@@ -104,6 +109,7 @@ void kernel_main() {
                 while (*reinterpret_cast<volatile tt_l1_ptr uint32_t*>(out_ready_sem_bwd) <= i - 1);
             }
             bool read_forward = true;
+            uint32_t packet_id = 0;
             while (tiles_read < tiles_to_read) {
                 uint32_t num_pages_to_read = std::min(tiles_to_read - tiles_read, tile_granularity);
 
@@ -134,19 +140,19 @@ void kernel_main() {
                     // read the next intermediate slice out of the intermediate buffer, and put it in intermediate CB
                     cb_reserve_back(cb_intermediate_id, num_pages_to_read);
                     size_t intermediate_l1_write_addr = get_write_ptr(cb_intermediate_id);
-                    for (uint32_t j = 0; j < num_pages_to_read; j++) {
-                        noc_async_read_tile(
-                            (read_forward ? fwd_intermediate_tile_id_start : bwd_intermediate_tile_id_start) +
-                                intermediate_row_offset + intermediate_pages_read_in_row,
-                            intermediate_tensor_addrgen,
-                            intermediate_l1_write_addr);
-                        intermediate_l1_write_addr += input_tensor_page_size;
+                    for (uint32_t j = 0; j < num_pages_to_read; j += contig_pages_advanced) {
+                        uint32_t intermediate_packet_id =
+                            (read_forward ? actual_fwd_slice_idx : actual_bwd_slice_idx) + packet_id * ring_size;
 
-                        intermediate_pages_read_in_row++;
-                        if (intermediate_pages_read_in_row >= slice_Wt) {
-                            intermediate_row_offset += stride_Wt;
-                            intermediate_pages_read_in_row = 0;
-                        }
+                        uint32_t intermediate_packet_first_tile_id =
+                            (intermediate_packet_id % N_DRAM_BANKS) +
+                            contig_pages_advanced * N_DRAM_BANKS * (intermediate_packet_id / N_DRAM_BANKS);
+                        uint64_t packet_addr = get_noc_addr(
+                            intermediate_packet_first_tile_id, intermediate_tensor_addrgen, 0 /*offset*/, 0 /*noc_id*/);
+
+                        noc_async_read(packet_addr, intermediate_l1_write_addr, payload_size_bytes);
+                        intermediate_l1_write_addr += payload_size_bytes;
+                        packet_id++;
                     }
 
                     noc_async_read_barrier();

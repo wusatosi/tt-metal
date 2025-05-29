@@ -33,6 +33,8 @@ constexpr uint32_t batch_slice_num_pages = get_compile_time_arg_val(10);
 constexpr uint32_t ring_size = get_compile_time_arg_val(11);
 constexpr uint32_t num_batches = get_compile_time_arg_val(12);
 
+constexpr uint32_t N_DRAM_BANKS = 12;
+
 void kernel_main() {
     ///////////////////////////////////////////////////
     // ARGS
@@ -73,7 +75,7 @@ void kernel_main() {
 
     uint32_t slice_Wt = input_tensor_Wt / ring_size;
 
-    uint32_t contig_pages_advanced = 1;  // always 1 for interleaved
+    uint32_t contig_pages_advanced = 4;  // always 1 for interleaved
     uint32_t payload_size_bytes = contig_pages_advanced * intermediate_page_size;
 
     // interleaved addrgen
@@ -104,13 +106,13 @@ void kernel_main() {
             uint32_t cb_output_id = i > 0 ? cb_compute_output_id : cb_reader_output_id;
             // If not the last slice, write what's on cb_output_id forward
             if (i < (ring_size - 1)) {
-                uint32_t pages_read_in_row = 0;
-                uint32_t row_offset = 0;
                 uint32_t tiles_read = 0;
                 uint32_t tiles_to_read = batch_slice_num_pages;
                 uint32_t fwd_tile_id_start = actual_fwd_slice_idx * slice_Wt;
                 uint32_t bwd_tile_id_start = actual_bwd_slice_idx * slice_Wt;
                 bool write_forward = true;
+
+                uint32_t packet_id = 0;
                 while (tiles_read < tiles_to_read) {
                     // Alternate writes in forward and backward direction
                     cb_wait_front(cb_output_id, tile_granularity);
@@ -119,11 +121,13 @@ void kernel_main() {
 
                     for (uint32_t j = 0; j < num_pages_to_read; j += contig_pages_advanced) {
                         if (write_forward) {
+                            uint32_t intermediate_packet_id = actual_fwd_slice_idx + packet_id * ring_size;
+                            uint32_t intermediate_packet_first_tile_id =
+                                (intermediate_packet_id % N_DRAM_BANKS) +
+                                contig_pages_advanced * N_DRAM_BANKS * (intermediate_packet_id / N_DRAM_BANKS);
+
                             uint64_t remote_noc0_dest_noc_addr = get_noc_addr(
-                                fwd_tile_id_start + row_offset + pages_read_in_row,
-                                intermediate_addrgen,
-                                0 /*offset*/,
-                                0 /*noc_id*/);
+                                intermediate_packet_first_tile_id, intermediate_addrgen, 0 /*offset*/, 0 /*noc_id*/);
                             pkt_hdr_forward->to_noc_unicast_write(
                                 tt::tt_fabric::NocUnicastCommandHeader{remote_noc0_dest_noc_addr}, payload_size_bytes);
                             if (fabric_connection.has_forward_connection()) {
@@ -135,11 +139,13 @@ void kernel_main() {
                                     (uint32_t)pkt_hdr_forward, sizeof(PACKET_HEADER_TYPE));
                             }
                         } else {
+                            uint32_t intermediate_packet_id = actual_bwd_slice_idx + packet_id * ring_size;
+                            uint32_t intermediate_packet_first_tile_id =
+                                (intermediate_packet_id % N_DRAM_BANKS) +
+                                contig_pages_advanced * N_DRAM_BANKS * (intermediate_packet_id / N_DRAM_BANKS);
+
                             uint64_t remote_noc0_dest_noc_addr = get_noc_addr(
-                                bwd_tile_id_start + row_offset + pages_read_in_row,
-                                intermediate_addrgen,
-                                0 /*offset*/,
-                                0 /*noc_id*/);
+                                intermediate_packet_first_tile_id, intermediate_addrgen, 0 /*offset*/, 0 /*noc_id*/);
                             pkt_hdr_backward->to_noc_unicast_write(
                                 tt::tt_fabric::NocUnicastCommandHeader{remote_noc0_dest_noc_addr}, payload_size_bytes);
                             if (fabric_connection.has_backward_connection()) {
@@ -154,15 +160,9 @@ void kernel_main() {
                         }
                         // Note: Must flush write for correctness
                         noc_async_writes_flushed();
-
+                        packet_id++;
                         l1_read_addr += payload_size_bytes;
-
                         tiles_read += contig_pages_advanced;
-                        pages_read_in_row += contig_pages_advanced;
-                        if (pages_read_in_row >= slice_Wt) {
-                            row_offset += input_tensor_Wt;
-                            pages_read_in_row = 0;
-                        }
                     }
 
                     cb_pop_front(cb_output_id, tile_granularity);
