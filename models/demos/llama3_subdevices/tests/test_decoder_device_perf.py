@@ -925,6 +925,18 @@ def test_llama_TG_perf_device_non_overlapped_dispatch(
 
     print(f"dispatch_duration_per_instance_averaged_dict: {dispatch_duration_per_instance_averaged_dict}")
 
+    # Build dicts of op_code to list of durations
+    kernel_duration_dict = build_duration_dict(all_layers_raw_dict, "DEVICE KERNEL DURATION [ns]")
+
+    # Build dicts of op_code_with_id to list of durations - one list per op instance
+    kernel_duration_per_instance_dict = build_duration_per_instance_dict(kernel_duration_dict, num_layers)
+
+    # Average over all iterations of each op instance
+    kernel_duration_per_instance_averaged_dict = average_per_instance_dict(kernel_duration_per_instance_dict)
+    kernel_duration_per_instance_min_dict = min_per_instance_dict(kernel_duration_per_instance_dict)
+    kernel_duration_per_instance_max_dict = max_per_instance_dict(kernel_duration_per_instance_dict)
+    print(f"kernel_duration_per_instance_averaged_dict: {kernel_duration_per_instance_averaged_dict}")
+
     assert len(dispatch_duration_per_instance_averaged_dict) == len(
         perf_targets
     ), f"Expected {len(perf_targets)} operations, got {len(dispatch_duration_per_instance_averaged_dict)}. If the number or type of operations changed, expected times must be updated."
