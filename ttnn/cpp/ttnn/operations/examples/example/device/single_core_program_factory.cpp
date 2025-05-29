@@ -10,7 +10,7 @@
 #include <tt-metalium/util.hpp>
 #include <tt-metalium/host_api.hpp>
 
-// #define USE_WRITER 1
+#define USE_WRITER 1
 
 namespace ttnn::operations::examples {
 ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::SingleCore::create(
@@ -19,6 +19,9 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     tensor_return_value_t& tensor_return_value) {
     using namespace tt;
     using namespace tt::tt_metal;
+
+    // test env var
+    bool test_write_tiles = false;
 
     const auto& input_tensor = tensor_args.input_tensor;
     const auto& output_tensor = tensor_args.output_tensor;
@@ -34,7 +37,7 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     uint32_t ncores = shard_spec.num_cores();
     auto out_shard_spec = output_tensor.shard_spec().value();
 
-    std::cout << "dtype : " << input_tensor.get_dtype() << std::endl;
+    std::cout << "Dtype : " << input_tensor.get_dtype() << std::endl;
     tt::DataFormat in_df = tt::tt_metal::datatype_to_dataformat_converter(input_tensor.get_dtype());
     uint32_t in_tile_size = tt::tt_metal::detail::TileSize(in_df);
     tt::DataFormat out_df = tt::tt_metal::datatype_to_dataformat_converter(output_tensor.get_dtype());
@@ -76,7 +79,6 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
     auto cb_in = tt::tt_metal::CreateCircularBuffer(program, all_cores, cb_in_config);
 
     // out buffer wrapped by CB
-    std::cout << "Address of out buffer : " << out_buffer->address() << std::endl;
     uint32_t out_cb_index = tt::CBIndex::c_1;
 #ifdef USE_WRITER
     tt::tt_metal::CircularBufferConfig cb_out_config =
@@ -106,7 +108,8 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
         all_cores,
         tt::tt_metal::ReaderDataMovementConfig(reader_compile_time_args, {}));
 
-    std::vector<uint32_t> compute_kernel_args_group_1 = {1, num_tile_per_core};
+    std::vector<uint32_t> compute_kernel_args_group_1 = {
+        1, num_tile_per_core, in_buffer->address(), out_buffer->address()};
 
     bool math_approx_mode = false;
     auto compute_kernel = tt::tt_metal::CreateKernel(
@@ -119,7 +122,6 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
             .compile_args = compute_kernel_args_group_1});
 
     tt::tt_metal::SetRuntimeArgs(program, unary_reader_kernel_id, all_cores, {num_tile_per_core});
-
     // test for writer kernel
 #ifdef USE_WRITER
     uint32_t dst_cb_index = tt::CBIndex::c_2;
@@ -133,11 +135,15 @@ ExampleDeviceOperation::SingleCore::cached_program_t ExampleDeviceOperation::Sin
         dst_cb_index,
     };
 
-    tt::tt_metal::KernelHandle unary_writer_kernel_id = tt::tt_metal::CreateKernel(
-        program,
-        "ttnn/cpp/ttnn/operations/examples/example/device/kernels/dataflow/writer_unary_sharded.cpp",
-        all_cores,
-        tt::tt_metal::WriterDataMovementConfig());
+    auto writer_path =
+        test_write_tiles
+            ? "ttnn/cpp/ttnn/operations/examples/example/device/kernels/dataflow/writer_unary_sharded.cpp"
+            : "ttnn/cpp/ttnn/operations/examples/example/device/kernels/dataflow/wrtier_unary_sharded_bytes.cpp";
+
+    std::cout << "Path of writer kernel : " << writer_path << std::endl;
+
+    tt::tt_metal::KernelHandle unary_writer_kernel_id =
+        tt::tt_metal::CreateKernel(program, writer_path, all_cores, tt::tt_metal::WriterDataMovementConfig());
 
     tt::tt_metal::SetRuntimeArgs(
         program, unary_writer_kernel_id, all_cores, {num_tile_per_core, out_buffer->address()});

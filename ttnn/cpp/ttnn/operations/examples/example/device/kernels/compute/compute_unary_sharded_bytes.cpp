@@ -43,6 +43,7 @@ void MAIN {
         cb_wait_front(cb_in, per_core_block_dim);
         cb_reserve_back(cb_out, per_core_block_dim);
 
+        // DeviceZoneScopedN("WRITE_WITH_PACK");
         for (uint32_t tile_id = 0; tile_id < per_core_block_dim; ++tile_id) {
             tile_regs_acquire();
             copy_tile_to_dst_init_short(cb_in);
@@ -51,6 +52,38 @@ void MAIN {
 
             write_through_pack_tile(tile_id, cb_out);
         }
+
+        // PACK(TTI_STALLWAIT(p_stall::STALL_THCON, p_stall::PACK)); // stall Thread Controller until pack becomes idle
+        // PACK(TTI_FLUSHDMA(0x8));
+
+#ifdef TEST_TILE_UNIT
+        {
+            DeviceZoneScopedN("WRITE_WITH_MOVER");
+            mover.configure(src_addr, dst_addr, tile_size_bytes * per_core_block_dim);
+            mover.run_and_wait();
+        }
+#else
+        // {
+        //     DeviceZoneScopedN("WRITE_WITH_MOVER");
+        //     for(uint j = 0; j < num_rows; j++) {
+        //         PACK(mover.configure(src_addr, dst_addr, one_row_bytes));
+        //         PACK(mover.run());
+        //         PACK(mover.wait());
+        //         src_addr += one_row_bytes;
+        //         dst_addr += one_row_bytes;
+        //     }
+        // }
+        // constexpr auto temp_size = one_row_bytes / 4;
+        // {
+        //     DeviceZoneScopedN("WRITE_WITH_MOVER");
+        //     PACK(mover.configure(src_addr, dst_addr, one_row_bytes));
+        //     PACK(mover.run());
+        //     PACK(mover.wait());
+        // }
+        // src_addr += one_row_bytes;
+        // dst_addr += one_row_bytes;
+
+#endif
 
         cb_push_back(cb_out, per_core_block_dim);
         cb_pop_front(cb_in, per_core_block_dim);
@@ -65,6 +98,3 @@ void MAIN {
 // PACK(TTI_WRCFG(tile_size_bytes >> 4, false, THCON_SEC0_REG6_Buffer_size_ADDR32));
 // PACK(TTI_WRCFG(mover.transfer_direction, false, THCON_SEC0_REG6_Transfer_direction_ADDR32));
 // PACK(TTI_XMOV(0, 0));
-
-// PACK(TTI_STALLWAIT(p_stall::STALL_THCON, p_stall::PACK)); // stall Thread Controller until pack becomes idle
-// PACK(TTI_FLUSHDMA(0x8));
