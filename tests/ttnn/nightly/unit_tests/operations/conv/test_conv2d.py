@@ -3073,6 +3073,7 @@ def test_conv2d_model_fruit(
 
         # UNet
         # kernel 3x3
+        (1, 528, 528, 192, 192, ttnn.bfloat16, ttnn.bfloat16, 2, (3, 3), (2, 2), (1, 1), (1, 1), True, 0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
         (2, 1280, 1280, 32, 32, ttnn.bfloat8_b, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, 0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
         (2, 1280, 1280, 64, 64, ttnn.bfloat8_b, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True, 0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
         (2, 1280, 640, 64, 64, ttnn.bfloat8_b, ttnn.bfloat16, 1, (3, 3), (1, 1), (1, 1), (1, 1), True,  0, 1, False, ttnn.MathFidelity.LoFi, False, False, False, 1, 1),
