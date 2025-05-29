@@ -105,7 +105,10 @@ ub_buildtime_packages()
      build-essential \
      xz-utils \
      libopenmpi-dev \
+     pandoc \
+     libtbb-dev \
      libcapstone-dev \
+     pkg-config \
     )
 }
 
