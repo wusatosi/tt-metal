@@ -105,6 +105,7 @@ ub_buildtime_packages()
      build-essential \
      xz-utils \
      libopenmpi-dev \
+     libcapstone-dev \
     )
 }
 
