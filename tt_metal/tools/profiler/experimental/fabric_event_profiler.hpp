@@ -1,6 +1,6 @@
 #pragma once
 
-#include "noc_event_profiler.hpp"
+#include "tools/profiler/noc_event_profiler.hpp"
 #include "api/tt-metalium/fabric_edm_packet_header.hpp"
 
 namespace kernel_profiler {
