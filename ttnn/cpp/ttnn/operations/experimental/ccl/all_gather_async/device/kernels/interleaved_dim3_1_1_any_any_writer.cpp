@@ -129,16 +129,15 @@ void kernel_main() {
     uint32_t backward_writes = 0;
 
     // Write out the local slice to both DRAM and forward and backward
-    uint32_t pages_read_in_row = 0;
-    uint32_t row_offset = 0;
+    uint32_t pages_read_in_row = input_tile_id_start % input_tensor_Wt;
+    uint32_t row_offset = (input_tile_id_start / input_tensor_Wt) * output_tensor_Wt;
     uint32_t tiles_read = input_tile_id_start;
     uint32_t tiles_to_read = input_tile_id_end;
     uint32_t tile_id_start = my_chip_id * input_tensor_Wt;
-    uint32_t packet_id = 0;
+    uint32_t packet_id = input_tile_id_start / contig_pages_advanced;
     DPRINT << "WRITER: Reading tiles...\n";
     while (tiles_read < tiles_to_read) {
         uint32_t num_pages_to_read = std::min(tiles_to_read - tiles_read, packet_size_in_pages);
-        DPRINT << "WRITER: Waiting on cb... " << tiles_read << " / " << tiles_to_read << "\n";
         cb_wait_front(cb_forward_id, num_pages_to_read);
         size_t l1_read_addr = get_read_ptr(cb_forward_id);
 
@@ -179,7 +178,6 @@ void kernel_main() {
             packet_id++;
         }
         cb_pop_front(cb_forward_id, num_pages_to_read);
-        DPRINT << "WRITER: Popped cb " << tiles_read << " / " << tiles_to_read << "\n";
     }
 
     DPRINT << "WRITER: Done first\n";
@@ -291,12 +289,11 @@ void kernel_main() {
             tiles_read = input_tile_id_start;
             uint32_t slice_chip_id = my_chip_id + backward_writes + 1;
             uint32_t actual_slice_chip_id = (slice_chip_id >= ring_size) ? slice_chip_id - ring_size : slice_chip_id;
-            tiles_to_read = input_tile_id_end - input_tile_id_start;
+            tiles_to_read = input_tile_id_end;
 
             uint32_t packet_id = input_tile_id_start / contig_pages_advanced;
             while (tiles_read < tiles_to_read) {
                 uint32_t num_pages_to_read = std::min(tiles_to_read - tiles_read, packet_size_in_pages);
-                // DPRINT << "WRITER: waiting on backward cb\n";
                 cb_wait_front(cb_backward_id, num_pages_to_read);
                 size_t l1_read_addr = get_read_ptr(cb_backward_id);
                 for (uint32_t j = 0; j < num_pages_to_read; j += contig_pages_advanced) {
