@@ -116,4 +116,16 @@ CPMAddPackage(
     OPTIONS
         "CMAKE_MESSAGE_LOG_LEVEL NOTICE"
 )
+
+CPMAddPackage(
+  NAME               benchmark
+  GITHUB_REPOSITORY  google/benchmark
+  GIT_TAG            v1.9.1
+  OPTIONS
+      "BENCHMARK_ENABLE_TESTING:BOOL=OFF"
+      "BENCHMARK_ENABLE_GTEST_TESTS:BOOL=OFF"
+)
+
+target_compile_definitions(benchmark PRIVATE NDEBUG)
+
 # gersemi: on
