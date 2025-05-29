@@ -917,17 +917,81 @@ class TtModelArgs:
 
             self.model_config["PREFILL_MLP_W2_PRG_CONFIG"] = w2_prg_config
 
-            self.model_config["WO_PREFILL_PROGCFG"] = lambda seq_len: ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
-                compute_with_storage_grid_size=(7, 10),
-                in0_block_w=8,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
-                out_subblock_h=1,  # Must be divisible by per_core_M
-                out_subblock_w=2,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
-                per_core_M=max(1, 4 if seq_len >= 1024 else seq_len // self.tile_size // 8),  # 8~10 rows
-                per_core_N=math.ceil(2048 / 32 / 7),  # N / TILE_WIDTH / grid width
-                transpose_mcast=False,
-                fused_activation=None,
-                fuse_batch=seq_len <= 1024,
-            )
+            def wo_prg_config(seq_len):
+                if seq_len < 4096:
+                    return ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+                        compute_with_storage_grid_size=(7, 10),
+                        in0_block_w=8,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
+                        out_subblock_h=1,  # Must be divisible by per_core_M
+                        out_subblock_w=2,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
+                        per_core_M=max(1, 4 if seq_len >= 1024 else seq_len // TILE_SIZE // 8),  # 8~10 rows
+                        per_core_N=math.ceil(2048 / 32 / 7),  # N / TILE_WIDTH / grid width
+                        transpose_mcast=False,
+                        fused_activation=None,
+                        fuse_batch=seq_len <= 1024,
+                    )
+
+                def largest_divisor_less_than_k(n, k):
+                    # Start from k-1 and work down
+                    for i in range(k, 0, -1):
+                        if n % i == 0:
+                            return i
+
+                    # If no divisor is found (other than 1), return None
+                    # return None
+                    assert False, "No divisor fount"
+
+                def count_prime_factors(n):
+                    if n <= 1:
+                        return 0
+
+                    count = 0
+
+                    # Check divisibility by 2
+                    while n % 2 == 0:
+                        count += 1
+                        n //= 2
+
+                    # Check divisibility by odd numbers starting from 3
+                    i = 3
+                    while i * i <= n:
+                        while n % i == 0:
+                            count += 1
+                            n //= i
+                        i += 2
+
+                    # If n > 1, it is a prime factor itself
+                    if n > 1:
+                        count += 1
+
+                    return count
+
+                out_block_w = 10
+                per_core_N = 10
+
+                per_core_M = math.ceil(seq_len / (TILE_SIZE * 9))
+                if per_core_M > 20:
+                    while count_prime_factors(per_core_M) < 4:
+                        per_core_M = per_core_M + 1
+
+                out_block_h = largest_divisor_less_than_k(per_core_M, 20)
+                return ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+                    compute_with_storage_grid_size=(7, 9),
+                    in0_block_w=16,  # FIXME: optimize this config for prefill, careful use DI_DT_WORKAROUND if necessary
+                    out_subblock_h=3 if out_block_h % 3 == 0 else 1,  # Must be divisible by per_core_M
+                    out_subblock_w=2
+                    if out_block_h % 3 == 0
+                    else 5,  # Must be divisible by per_core_N, out_subblock_w * out_subblock_h <= 4
+                    out_block_h=out_block_h,
+                    out_block_w=out_block_w,
+                    per_core_M=per_core_M,  # M / TILE_HEIGHT / Grid_Size (dynamic based on seqlen)
+                    per_core_N=per_core_N,  # N / TILE_WIDTH / grid width
+                    transpose_mcast=False,
+                    fused_activation=None,
+                    fuse_batch=False,
+                )
+
+            self.model_config["WO_PREFILL_PROGCFG"] = wo_prg_config
 
             # Calculate largest number of lm_head_num_rows such that self.dim % (lm_head_num_rows * 8) == 0
             if self.num_devices == 32:

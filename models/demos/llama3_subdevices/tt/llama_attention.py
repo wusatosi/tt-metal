@@ -159,7 +159,7 @@ class TtLlamaAttention(LightweightModule):
             configuration.dim // configuration.num_devices, configuration.dim
         )
 
-        self.wo = ttnn.as_tensor(
+        self.wo_sharded = ttnn.as_tensor(
             pt_wo,
             dtype=ttnn.bfloat8_b,
             layout=ttnn.TILE_LAYOUT,
@@ -172,10 +172,27 @@ class TtLlamaAttention(LightweightModule):
                 dims=(2, 3) if (self.use_fused_all_gather_matmul or self.TG) else (3, 2),
                 mesh_shape=configuration.cluster_shape,
             ),
-            cache_file_name=cache_name("wo_width_sharded_2d_prefetcher")
+            cache_file_name="/localdev/lpanos/llama_weights" / f"{layer_name}.wo_width_sharded_2d_prefetcher"
             if (self.use_fused_all_gather_matmul or self.TG)
-            else cache_name("wo"),
+            else "/localdev/lpanos/llama_weights" / (f"{layer_name}.wo_sharded"),
         )
+
+        self.wo_interleaved = ttnn.as_tensor(
+            pt_wo,
+            dtype=ttnn.bfloat8_b,
+            layout=ttnn.TILE_LAYOUT,
+            device=self.mesh_device,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG if (self.use_fused_all_gather_matmul or self.TG) else wo_mem_config,
+            mesh_mapper=ttnn.ShardTensor2dMesh(
+                self.mesh_device,
+                dims=(2, 3) if (self.use_fused_all_gather_matmul or self.TG) else (3, 2),
+                mesh_shape=configuration.cluster_shape,
+            ),
+            cache_file_name="/localdev/lpanos/llama_weights" / f"{layer_name}.wo_interleaved_2d_prefetcher"
+            if (self.use_fused_all_gather_matmul or self.TG)
+            else "/localdev/lpanos/llama_weights" / (f"{layer_name}.wo_interleaved"),
+        )
+
         if not use_paged_kv_cache:
             # vLLM provides its own kv cache
             self.init_kv_cache(configuration, weight_cache_path)
@@ -603,12 +620,14 @@ class TtLlamaAttention(LightweightModule):
         )
         ttnn.deallocate(attn_output_1QSD)
         # reshaping long sequence to matmul fit on device
-        if seq_len > 1024:
+        if 1024 < seq_len < 4096:
             attn_output_11SH = ttnn.reshape(attn_output_11SH, [1, seq_len // 1024, 1024, -1])
+        if seq_len >= 4096:
+            attn_output_11SH = ttnn.reshape(attn_output_11SH, [1, 1, seq_len, -1])
 
         output_11SH = ttnn.linear(
             attn_output_11SH,
-            self.wo,
+            self.wo_sharded if seq_len < 4096 else self.wo_interleaved,
             compute_kernel_config=self.compute_kernel_config_hifi2_fp16,
             dtype=ttnn.bfloat8_b,
             memory_config=ttnn.DRAM_MEMORY_CONFIG,
