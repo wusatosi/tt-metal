@@ -41,6 +41,8 @@ show_help() {
     echo "  --configure-only                 Only configure the project, do not build."
     echo "  --enable-coverage                Instrument the binaries for code coverage."
     echo "  --without-python-bindings        Disable Python bindings (ttnncpp will be available as standalone library, otherwise ttnn will include the cpp backend and the python bindings), Enabled by default"
+    echo "  --enable-operation-timeout       Enable operation timeout for ttnn. (use it to troubleshoot hangs with graph capture)"
+    echo "  --operation-timeout-seconds      Set the operation timeout in seconds for ttnn, depends on --enable-operation-timeout. (default: 30)"
 }
 
 clean() {
@@ -75,6 +77,7 @@ cpm_use_local_packages="OFF"
 c_compiler_path=""
 ttnn_shared_sub_libs="OFF"
 toolchain_path="cmake/x86_64-linux-clang-17-libstdcpp-toolchain.cmake"
+enable_operation_timeout="OFF"
 
 # Requested handling for 20.04 -> 22.04 migration
 if [[ "$FLAVOR" == "ubuntu" && "$VERSION" == "20.04" ]]; then
@@ -121,6 +124,8 @@ toolchain-path:
 configure-only
 enable-coverage
 without-python-bindings
+enable-operation-timeout
+operation-timeout-seconds:
 "
 
 # Flatten LONGOPTIONS into a comma-separated string for getopt
@@ -178,6 +183,10 @@ while true; do
             configure_only="ON";;
         --without-python-bindings)
             with_python_bindings="OFF";;
+        --enable-operation-timeout)
+            enable_operation_timeout="ON";;
+        --operation-timeout-seconds)
+            operation_timeout_seconds="$2";shift;;
         --disable-unity-builds)
 	    unity_builds="OFF";;
         --disable-light-metal-trace)
@@ -254,6 +263,7 @@ echo "INFO: Enable Unity builds: $unity_builds"
 echo "INFO: TTNN Shared sub libs : $ttnn_shared_sub_libs"
 echo "INFO: Enable Light Metal Trace: $light_metal_trace"
 echo "INFO: With python bindings: $with_python_bindings"
+echo "INFO: Enable Operation Timeout: $enable_operation_timeout"
 
 # Prepare cmake arguments
 cmake_args+=("-B" "$build_dir")
@@ -365,6 +375,15 @@ if [ "$with_python_bindings" = "ON" ]; then
     cmake_args+=("-DWITH_PYTHON_BINDINGS=ON")
 else
     cmake_args+=("-DWITH_PYTHON_BINDINGS=OFF")
+fi
+
+if [ "$enable_operation_timeout" = "ON" ]; then
+    cmake_args+=("-DTTNN_ENABLE_OPERATION_TIMEOUT=ON")
+    if [ ! -z "$operation_timeout_seconds" ]; then
+        cmake_args+=("-DTTNN_OPERATION_TIMEOUT_SECONDS=$operation_timeout_seconds")
+    fi
+else
+    cmake_args+=("-DTTNN_ENABLE_OPERATION_TIMEOUT=OFF")
 fi
 
 # toolchain and cxx_compiler settings would conflict with eachother
