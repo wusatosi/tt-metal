@@ -52,5 +52,7 @@ jobs:
           source ${{ github.workspace }}/python_env/bin/activate
           pytest tests/ttnn/stress_tests/
 
-      - uses: tenstorrent/tt-metal/.github/actions/cleanup@main
-        if: always()
+      # - uses: tenstorrent/tt-metal/.github/actions/cleanup@main
+      #   if: always()
+      #   with:
+      #     path: ${{ github.workspace }}
