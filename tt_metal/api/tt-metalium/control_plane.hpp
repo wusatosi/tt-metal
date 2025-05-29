@@ -17,10 +17,12 @@ class FabricContext;
 
 class ControlPlane {
 public:
-    explicit ControlPlane(const std::string& mesh_graph_desc_yaml_file);
+    explicit ControlPlane(
+        const std::string& mesh_graph_desc_yaml_file, tt_metal::FabricReliabilityMode system_setup_mode);
     explicit ControlPlane(
         const std::string& mesh_graph_desc_yaml_file,
-        const std::map<FabricNodeId, chip_id_t>& logical_mesh_chip_id_to_physical_chip_id_mapping);
+        const std::map<FabricNodeId, chip_id_t>& logical_mesh_chip_id_to_physical_chip_id_mapping,
+        tt_metal::FabricReliabilityMode system_setup_mode);
     ~ControlPlane();
 
     // Printing functions
@@ -107,6 +109,13 @@ private:
     std::map<FabricNodeId, std::vector<std::vector<chan_id_t>>>
         inter_mesh_routing_tables_;  // table that will be written to each ethernet core
 
+    // Strict system health mode requires (expects) all links/devices to be live. When enabled, it
+    // is expected that any downed devices/links will result in some sort of error condition being
+    // reported. When set to false, the control plane is free to instantiate fewer routing planes
+    // according to which links are available.
+    tt_metal::FabricReliabilityMode system_setup_mode_ =
+        tt_metal::FabricReliabilityMode::STRICT_SYSTEM_HEALTH_SETUP_MODE;
+
     // custom logic to order eth channels
     void order_ethernet_channels();
 
@@ -125,7 +134,10 @@ private:
 
     void load_physical_chip_mapping(
         const std::map<FabricNodeId, chip_id_t>& logical_mesh_chip_id_to_physical_chip_id_mapping);
-    size_t initialize_dynamic_routing_plane_counts(const IntraMeshConnectivity& intra_mesh_connectivity);
+    size_t get_num_live_routing_planes(FabricNodeId fabric_node_id, RoutingDirection routing_direction) const;
+    void initialize_dynamic_routing_plane_counts(
+        const std::map<FabricNodeId, chip_id_t>& logical_mesh_chip_id_to_physical_chip_id_mapping,
+        const IntraMeshConnectivity& intra_mesh_connectivity);
 
     void validate_mesh_connections(mesh_id_t mesh_id) const;
     void validate_mesh_connections() const;
@@ -146,10 +158,12 @@ private:
 
 class GlobalControlPlane {
 public:
-    explicit GlobalControlPlane(const std::string& mesh_graph_desc_yaml_file);
+    explicit GlobalControlPlane(
+        const std::string& mesh_graph_desc_yaml_file, tt_metal::FabricReliabilityMode system_setup_mode);
     explicit GlobalControlPlane(
         const std::string& mesh_graph_desc_yaml_file,
-        const std::map<FabricNodeId, chip_id_t>& logical_mesh_chip_id_to_physical_chip_id_mapping);
+        const std::map<FabricNodeId, chip_id_t>& logical_mesh_chip_id_to_physical_chip_id_mapping,
+        tt_metal::FabricReliabilityMode system_setup_mode);
     ~GlobalControlPlane();
 
     void initialize_host_mapping();

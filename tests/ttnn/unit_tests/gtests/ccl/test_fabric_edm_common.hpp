@@ -107,10 +107,14 @@ public:
     BaseFabricFixture() : device_open(false) {}
 
     BaseFabricFixture(tt::tt_metal::FabricConfig fabric_config) : device_open(false) {
-        tt::tt_metal::detail::InitializeFabricConfig(fabric_config);
+        tt::tt_metal::detail::InitializeFabricConfig(
+            fabric_config, tt::tt_metal::FabricReliabilityMode::STRICT_SYSTEM_HEALTH_SETUP_MODE);
     }
 
-    virtual ~BaseFabricFixture() { tt::tt_metal::detail::InitializeFabricConfig(tt::tt_metal::FabricConfig::DISABLED); }
+    virtual ~BaseFabricFixture() {
+        tt::tt_metal::detail::InitializeFabricConfig(
+            tt::tt_metal::FabricConfig::DISABLED, tt::tt_metal::FabricReliabilityMode::STRICT_SYSTEM_HEALTH_SETUP_MODE);
+    }
 
     virtual void SetupDevices() = 0;
     virtual void TearDown() = 0;

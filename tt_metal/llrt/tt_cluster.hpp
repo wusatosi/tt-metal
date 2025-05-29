@@ -319,7 +319,8 @@ public:
 
     void set_default_control_plane_mesh_graph();
 
-    void initialize_fabric_config(tt_metal::FabricConfig fabric_config);
+    void initialize_fabric_config(
+        tt_metal::FabricConfig fabric_config, tt_metal::FabricReliabilityMode reliability_mode);
 
     // Returns whether we are running on Galaxy.
     bool is_galaxy_cluster() const;
@@ -374,7 +375,7 @@ private:
     void disable_ethernet_cores_with_retrain();
 
     // Initialize control plane, which has mapping of physical device id to MeshGraph config
-    void initialize_control_plane();
+    void initialize_control_plane(tt_metal::FabricReliabilityMode reliability_mode);
 
     // Set tunnels from mmio
     void set_tunnels_from_mmio_device();
@@ -414,6 +415,8 @@ private:
     void release_ethernet_cores_for_fabric_routers();
 
     tt_metal::FabricConfig fabric_config_ = tt_metal::FabricConfig::DISABLED;
+    tt_metal::FabricReliabilityMode reliability_mode_ =
+        tt_metal::FabricReliabilityMode::STRICT_SYSTEM_HEALTH_SETUP_MODE;
 
     std::unique_ptr<tt::tt_fabric::GlobalControlPlane> global_control_plane_;
 

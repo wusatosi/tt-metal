@@ -27,6 +27,7 @@
 namespace tt {
 namespace tt_metal {
 enum class FabricConfig : uint32_t;
+enum class FabricReliabilityMode : uint32_t;
 }  // namespace tt_metal
 }  // namespace tt
 
@@ -40,7 +41,7 @@ namespace detail {
 bool DispatchStateCheck(bool isFastDispatch);
 
 // Call before CreateDevices to enable fabric, which uses all free ethernet cores
-void InitializeFabricConfig(FabricConfig fabric_config);
+void InitializeFabricConfig(FabricConfig fabric_config, FabricReliabilityMode reliability_mode);
 
 std::map<chip_id_t, IDevice*> CreateDevices(
     // TODO: delete this in favour of DevicePool

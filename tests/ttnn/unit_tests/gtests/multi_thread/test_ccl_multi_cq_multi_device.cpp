@@ -54,11 +54,14 @@ using tt::tt_metal::distributed::MeshShape;
 class T3000MultiCQFabricMeshDeviceFixture : public T3000MultiCQMeshDeviceFixture {
 protected:
     T3000MultiCQFabricMeshDeviceFixture() {
-        tt::tt_metal::detail::InitializeFabricConfig(tt::tt_metal::FabricConfig::FABRIC_1D);
+        tt::tt_metal::detail::InitializeFabricConfig(
+            tt::tt_metal::FabricConfig::FABRIC_1D,
+            tt::tt_metal::FabricReliabilityMode::STRICT_SYSTEM_HEALTH_SETUP_MODE);
     }
     void TearDown() override {
         T3000MultiCQMeshDeviceFixture::TearDown();
-        tt::tt_metal::detail::InitializeFabricConfig(tt::tt_metal::FabricConfig::DISABLED);
+        tt::tt_metal::detail::InitializeFabricConfig(
+            tt::tt_metal::FabricConfig::DISABLED, tt::tt_metal::FabricReliabilityMode::STRICT_SYSTEM_HEALTH_SETUP_MODE);
     }
 };
 

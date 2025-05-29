@@ -373,8 +373,8 @@ bool ReadRegFromDevice(IDevice* device, const CoreCoord& logical_core, uint32_t 
     return true;
 }
 
-void InitializeFabricConfig(FabricConfig fabric_config) {
-    tt::tt_metal::MetalContext::instance().get_cluster().initialize_fabric_config(fabric_config);
+void InitializeFabricConfig(FabricConfig fabric_config, FabricReliabilityMode reliability_mode) {
+    tt::tt_metal::MetalContext::instance().get_cluster().initialize_fabric_config(fabric_config, reliability_mode);
 }
 
 std::map<chip_id_t, IDevice*> CreateDevices(

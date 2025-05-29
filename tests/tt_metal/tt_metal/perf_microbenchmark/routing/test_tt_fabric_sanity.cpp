@@ -169,7 +169,8 @@ struct test_board_t {
             throw std::runtime_error("Odd number of chips detected, not supported currently");
         }
 
-        tt::tt_metal::detail::InitializeFabricConfig(tt::tt_metal::FabricConfig::CUSTOM);
+        tt::tt_metal::detail::InitializeFabricConfig(
+            tt::tt_metal::FabricConfig::CUSTOM, tt::tt_metal::FabricReliabilityMode::STRICT_SYSTEM_HEALTH_SETUP_MODE);
 
         device_handle_map = tt::tt_metal::detail::CreateDevices(available_chip_ids);
         control_plane = tt::tt_metal::MetalContext::instance().get_cluster().get_control_plane();
@@ -215,7 +216,8 @@ struct test_board_t {
             const std::filesystem::path mesh_graph_desc_path =
                 std::filesystem::path(tt::tt_metal::MetalContext::instance().rtoptions().get_root_dir()) /
                 "tt_metal/fabric/mesh_graph_descriptors" / mesh_graph_descriptor;
-            cp_owning_ptr = std::make_unique<tt::tt_fabric::ControlPlane>(mesh_graph_desc_path.string());
+            cp_owning_ptr = std::make_unique<tt::tt_fabric::ControlPlane>(
+                mesh_graph_desc_path.string(), tt::tt_metal::FabricReliabilityMode::STRICT_SYSTEM_HEALTH_SETUP_MODE);
             control_plane = cp_owning_ptr.get();
         } catch (const std::exception& e) {
             log_fatal(e.what());
